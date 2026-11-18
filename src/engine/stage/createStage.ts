@@ -1,0 +1,967 @@
+/**
+ * Builds materials, meshes and render passes (depth prepass + EqualDepth color, mirrored floor reflection,
+ * baked floor shadows, leg-on-leg shadow maps) and returns the stage API.
+ */
+import * as THREE from "three";
+import { DEFAULT_LEG_SPEC } from "../catalog/presets";
+import { resolveLegLook } from "../catalog/resolveLegLook";
+import { createBowGeometry } from "./bow";
+import { BACKDROPS, SCENES, makeCustomBackdrop } from "./scenes";
+import { BACKDROP_FRAGMENT_SHADER, BACKDROP_VERTEX_SHADER } from "./shaders/backdrop";
+import { BOW_FRAGMENT_SHADER, BOW_VERTEX_SHADER } from "./shaders/bow";
+import {
+  FLOOR_FRAGMENT_SHADER,
+  FLOOR_SHADOW_FRAGMENT_SHADER,
+  FLOOR_SHADOW_VERTEX_SHADER,
+  FLOOR_VERTEX_SHADER,
+} from "./shaders/floor";
+import { LEG_DEPTH_FRAGMENT_SHADER, LEG_FRAGMENT_SHADER, LEG_VERTEX_SHADER } from "./shaders/leg";
+import { OUTLINE_FRAGMENT_SHADER, OUTLINE_VERTEX_SHADER } from "./shaders/outline";
+import {
+  BLUR_FRAGMENT_SHADER,
+  CASTER_FRAGMENT_SHADER,
+  CASTER_VERTEX_SHADER,
+  COMPOSITE_FRAGMENT_SHADER,
+  FULLSCREEN_VERTEX_SHADER,
+} from "./shaders/post";
+import { createDecalAtlas, createKnitTexture, createLogoTexture } from "./textures";
+
+const toColor = (hex) => new THREE.Color(hex);
+
+export function createStage(renderer, model) {
+  const mainScene = new THREE.Scene();
+  const viewport = new THREE.Vector2(1, 1);
+  const knitTexture = createKnitTexture(renderer);
+  const blankTexture = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+  blankTexture.needsUpdate = true;
+  const backdropUniforms = {
+    uTopColor: {
+      value: toColor("#f6f2f6"),
+    },
+    uBottomColor: {
+      value: toColor("#e4dce8"),
+    },
+    uGlowColor: {
+      value: toColor("#3a3438"),
+    },
+    uResolution: {
+      value: viewport,
+    },
+    uBackdropTime: {
+      value: 0,
+    },
+    uPixelAngle: {
+      value: 0.001,
+    },
+    uFocusDist: {
+      value: 2,
+    },
+    uRain: {
+      value: 0,
+    },
+    uFloorFade: {
+      value: 0,
+    },
+  };
+  const lightUniforms = {
+    uKeyDir: {
+      value: new THREE.Vector3(-0.5, 0.75, 0.45).normalize(),
+    },
+    uKeyColor: {
+      value: toColor("#fffaf4"),
+    },
+    uRimDir: {
+      value: new THREE.Vector3(0.75, 0.25, -0.6).normalize(),
+    },
+    uRimColor: {
+      value: toColor("#d8e4ff"),
+    },
+    uFillTop: {
+      value: new THREE.Vector3(1, 0.99, 1),
+    },
+    uFillBottom: {
+      value: new THREE.Vector3(0.8, 0.76, 0.86),
+    },
+    uRim2Dir: {
+      value: new THREE.Vector3(0, 0, 1),
+    },
+    uRim2Color: {
+      value: toColor("#000000"),
+    },
+    uEnvLo: {
+      value: new THREE.Vector3(0.55, 0.53, 0.62),
+    },
+    uEnvHi: {
+      value: new THREE.Vector3(1.5, 1.48, 1.55),
+    },
+    uEnvAColor: {
+      value: new THREE.Vector3(),
+    },
+    uEnvADir: {
+      value: new THREE.Vector3(0, 1, 0),
+    },
+    uEnvBColor: {
+      value: new THREE.Vector3(),
+    },
+    uEnvBDir: {
+      value: new THREE.Vector3(0, 1, 0),
+    },
+    uCaustic: {
+      value: 0,
+    },
+    uMirrorFlipY: {
+      value: 1,
+    },
+    uMirrorFalloff: {
+      value: 0,
+    },
+  };
+  const fabricUniforms = {
+    uSkinLit: {
+      value: toColor("#ffebe3"),
+    },
+    uSkinShade: {
+      value: toColor("#eec4bc"),
+    },
+    uSkinScatter: {
+      value: toColor("#ffae9f"),
+    },
+    uKnitTex: {
+      value: knitTexture,
+    },
+    uKnitMean: {
+      value: knitTexture.userData.mean,
+    },
+    uDecalAtlas: {
+      value: createDecalAtlas(renderer),
+    },
+    uWetMap: {
+      value: blankTexture,
+    },
+    uTime: {
+      value: 0,
+    },
+    uHighlightFalloff: {
+      value: 0.7,
+    },
+  };
+  const makeBackdropMaterial = (sceneId) =>
+    new THREE.ShaderMaterial({
+      vertexShader: BACKDROP_VERTEX_SHADER,
+      fragmentShader: BACKDROP_FRAGMENT_SHADER,
+      uniforms: backdropUniforms,
+      defines: {
+        SCENE: sceneId,
+      },
+      depthTest: false,
+      depthWrite: false,
+    });
+  const backdropMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), makeBackdropMaterial(0));
+  backdropMesh.frustumCulled = false;
+  backdropMesh.renderOrder = -10;
+  mainScene.add(backdropMesh);
+  const floorMapSize = 640;
+  const floorTargetOptions = {
+    type: THREE.HalfFloatType,
+    depthBuffer: false,
+  };
+  const floorShadowTarget = new THREE.WebGLRenderTarget(floorMapSize, floorMapSize, floorTargetOptions);
+  const floorContactTarget = new THREE.WebGLRenderTarget(floorMapSize, floorMapSize, floorTargetOptions);
+  const blurTempTarget = new THREE.WebGLRenderTarget(floorMapSize, floorMapSize, floorTargetOptions);
+  const floorMapRect = new THREE.Vector4(-0.65, -0.72, 1.3, 1.3);
+  const ripples = Array.from(
+    {
+      length: 16,
+    },
+    () => new THREE.Vector4(0, 0, -10, 0),
+  );
+  const floorUniforms = {
+    ...backdropUniforms,
+    uFloorShadow: {
+      value: floorShadowTarget.texture,
+    },
+    uContactShadow: {
+      value: floorContactTarget.texture,
+    },
+    uPuddleTex: {
+      value: blankTexture,
+    },
+    uShadowRect: {
+      value: floorMapRect,
+    },
+    uPuddleRect: {
+      value: new THREE.Vector4(-0.4, -0.37, 0.8, 0.8),
+    },
+    uLogoTex: {
+      value: createLogoTexture(renderer),
+    },
+    uLogoRect: {
+      value: new THREE.Vector4(-0.15, 0.27, 0.3, 0.0375),
+    },
+    uFloorColor: {
+      value: toColor("#ece4ee"),
+    },
+    uShadowColor: {
+      value: toColor("#b7a6c4"),
+    },
+    uSpotCenter: {
+      value: new THREE.Vector2(-0.005, 0.05),
+    },
+    uRipples: {
+      value: ripples,
+    },
+    uTime: {
+      value: 0,
+    },
+    uFloorFade: backdropUniforms.uFloorFade,
+    uMirror: {
+      value: blankTexture,
+    },
+    uMirrorStrength: {
+      value: 0,
+    },
+    uPuddleLight: {
+      value: 1,
+    },
+    uMarkColor: {
+      value: new THREE.Vector4(0, 0, 0, 0.5),
+    },
+  };
+  const makeFloorMaterial = (sceneId) =>
+    new THREE.ShaderMaterial({
+      vertexShader: FLOOR_VERTEX_SHADER,
+      fragmentShader: FLOOR_FRAGMENT_SHADER,
+      uniforms: floorUniforms,
+      defines: {
+        SCENE: sceneId,
+      },
+    });
+  const floorMesh = new THREE.Mesh(new THREE.CircleGeometry(1.6, 96), makeFloorMaterial(0));
+  floorMesh.rotation.x = -Math.PI / 2;
+  floorMesh.renderOrder = -5;
+  mainScene.add(floorMesh);
+  const shadowScene = new THREE.Scene();
+  const shadowProjUniforms = {
+    uProjDir: {
+      value: new THREE.Vector3(),
+    },
+    uContactMode: {
+      value: 0,
+    },
+  };
+  const shadowMapSize = matchMedia("(pointer: coarse)").matches ? 640 : 1024;
+  const castShadowUniforms = {
+    uCastShadowMatrix: {
+      value: new THREE.Matrix4(),
+    },
+    uCastShadowTexel: {
+      value: 1 / shadowMapSize,
+    },
+  };
+  const lightCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 6);
+  const castTargets = [0, 1].map(() => {
+    const depthTexture = new THREE.DepthTexture(shadowMapSize, shadowMapSize);
+    depthTexture.compareFunction = THREE.LessEqualCompare;
+    depthTexture.minFilter = depthTexture.magFilter = THREE.LinearFilter;
+    return new THREE.WebGLRenderTarget(shadowMapSize, shadowMapSize, {
+      depthTexture: depthTexture,
+    });
+  });
+  const skinOutlineColor = {
+    value: toColor("#a06a66"),
+  };
+  const lineWidth = {
+    value: 1.6,
+  };
+  const mirrorScene = new THREE.Scene();
+  const flipYMatrix = new THREE.Matrix4().makeScale(1, -1, 1);
+  const mirrorTarget = new THREE.WebGLRenderTarget(4, 4, {
+    type: THREE.HalfFloatType,
+  });
+  floorUniforms.uMirror.value = mirrorTarget.texture;
+  const transparentOptions = {
+    transparent: true,
+  };
+  const bowGeometry = createBowGeometry();
+  function createLeg(index) {
+    const rigUniforms = {
+      uToeRot: {
+        value: new THREE.Matrix3(),
+      },
+      uAnkleRot: {
+        value: new THREE.Matrix3(),
+      },
+      uKneeRot: {
+        value: new THREE.Matrix3(),
+      },
+      uRigOn: {
+        value: 0,
+      },
+    };
+    const defaultLook = resolveLegLook(DEFAULT_LEG_SPEC);
+    const stockingUniforms = {
+      uDye: {
+        value: toColor(defaultLook.dye),
+      },
+      uDye2: {
+        value: toColor(defaultLook.dye2),
+      },
+      uSheenColor: {
+        value: toColor(defaultLook.sheen),
+      },
+      uStripe: {
+        value: defaultLook.stripe,
+      },
+      uShade: {
+        value: new THREE.Vector3(...defaultLook.shade),
+      },
+      uThrough: {
+        value: defaultLook.through,
+      },
+      uSheenAmount: {
+        value: defaultLook.sheenAmt,
+      },
+      uDenier: {
+        value: defaultLook.denier,
+      },
+      uPattern: {
+        value: defaultLook.pattern,
+      },
+      uGloss: {
+        value: defaultLook.gloss,
+      },
+      uCuffY: {
+        value: defaultLook.cuffY,
+      },
+      uHasCuff: {
+        value: defaultLook.hasCuff,
+      },
+      uCuffBulge: {
+        value: 1,
+      },
+      uCuffStyle: {
+        value: defaultLook.cuff,
+      },
+      uBand: {
+        value: defaultLook.band,
+      },
+      uGarter: {
+        value: defaultLook.garter,
+      },
+      uPrint: {
+        value: defaultLook.print,
+      },
+      uMirror: {
+        value: index === 0 ? 1 : -1,
+      },
+      uMatWet: {
+        value: new THREE.Vector4(...defaultLook.mat),
+      },
+      uMatKnit: {
+        value: new THREE.Vector4(...defaultLook.mat2),
+      },
+      uSecret: {
+        value: new THREE.Vector4(0, 0, 0, 0),
+      },
+      uWetDye: {
+        value: new THREE.Vector4(0, 0, 0, 0),
+      },
+      uFadeStart: {
+        value: defaultLook.fade0,
+      },
+      uFadeEnd: {
+        value: defaultLook.fade1,
+      },
+      uOpacity: {
+        value: 1,
+      },
+      uWetMapSlot: {
+        value: new THREE.Vector2(0.5, index * 0.5),
+      },
+      uCastShadowMap: {
+        value: castTargets[1 - index].depthTexture,
+      },
+      uCastShadowStrength: {
+        value: 0,
+      },
+      ...castShadowUniforms,
+    };
+    const surfaceUniforms = {
+      ...lightUniforms,
+      ...fabricUniforms,
+      ...stockingUniforms,
+      ...rigUniforms,
+    };
+    const legGroup = new THREE.Group();
+    legGroup.matrixAutoUpdate = false;
+    mainScene.add(legGroup);
+    const addMesh = (geometry, material, renderOrder) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.frustumCulled = false;
+      mesh.renderOrder = renderOrder;
+      legGroup.add(mesh);
+      return mesh;
+    };
+    const addSurfacePasses = (isSkin) => {
+      const uniforms = {
+        ...surfaceUniforms,
+        uIsSkin: {
+          value: isSkin,
+        },
+      };
+      const offsetOptions = isSkin
+        ? {
+            polygonOffset: true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: 2,
+          }
+        : {};
+      const geometry = isSkin ? model.skin : model.stocking;
+      const depthMesh = addMesh(
+        geometry,
+        new THREE.ShaderMaterial({
+          vertexShader: LEG_VERTEX_SHADER,
+          fragmentShader: LEG_DEPTH_FRAGMENT_SHADER,
+          uniforms: uniforms,
+          side: THREE.DoubleSide,
+          colorWrite: false,
+          ...transparentOptions,
+          ...offsetOptions,
+        }),
+        0,
+      );
+      const colorMesh = addMesh(
+        geometry,
+        new THREE.ShaderMaterial({
+          vertexShader: LEG_VERTEX_SHADER,
+          fragmentShader: LEG_FRAGMENT_SHADER,
+          uniforms: uniforms,
+          side: THREE.DoubleSide,
+          depthFunc: THREE.EqualDepth,
+          depthWrite: false,
+          ...transparentOptions,
+          ...offsetOptions,
+        }),
+        1,
+      );
+      return [depthMesh, colorMesh];
+    };
+    const outlineUniforms = {
+      uResolution: backdropUniforms.uResolution,
+      uLineWidth: lineWidth,
+      uOutlineColor: {
+        value: toColor(defaultLook.outline),
+      },
+      uSkinOutlineColor: skinOutlineColor,
+      uCuffY: stockingUniforms.uCuffY,
+      uHasCuff: stockingUniforms.uHasCuff,
+      uFadeStart: stockingUniforms.uFadeStart,
+      uFadeEnd: stockingUniforms.uFadeEnd,
+      uOpacity: stockingUniforms.uOpacity,
+      ...rigUniforms,
+    };
+    const addOutline = (isSkin) =>
+      addMesh(
+        isSkin ? model.skin : model.stocking,
+        new THREE.ShaderMaterial({
+          vertexShader: OUTLINE_VERTEX_SHADER,
+          fragmentShader: OUTLINE_FRAGMENT_SHADER,
+          uniforms: {
+            ...outlineUniforms,
+            uIsSkin: {
+              value: isSkin,
+            },
+          },
+          side: THREE.BackSide,
+          ...transparentOptions,
+        }),
+        2,
+      );
+    const stockingPasses = addSurfacePasses(0);
+    const skinPasses = addSurfacePasses(1);
+    const skinParts = [...skinPasses, addOutline(1)];
+    addOutline(0);
+    const mirrorGroup = new THREE.Group();
+    mirrorGroup.matrixAutoUpdate = false;
+    mirrorScene.add(mirrorGroup);
+    const addMirrorMesh = (geometry, source, renderOrder) => {
+      const mesh = new THREE.Mesh(geometry, source.material);
+      mesh.frustumCulled = false;
+      mesh.renderOrder = renderOrder;
+      mirrorGroup.add(mesh);
+      return mesh;
+    };
+    addMirrorMesh(model.stockingLow, stockingPasses[0], 0);
+    addMirrorMesh(model.stockingLow, stockingPasses[1], 1);
+    skinParts.push(addMirrorMesh(model.skin, skinPasses[0], 0), addMirrorMesh(model.skin, skinPasses[1], 1));
+    const bowUniforms = {
+      ...lightUniforms,
+      ...rigUniforms,
+      uBowMatrix: {
+        value: new THREE.Matrix4(),
+      },
+      uBowColor: {
+        value: toColor("#f6f3f4"),
+      },
+      uBowShade: {
+        value: new THREE.Vector3(0.8, 0.74, 0.86),
+      },
+      uFadeStart: stockingUniforms.uFadeStart,
+      uFadeEnd: stockingUniforms.uFadeEnd,
+      uOpacity: stockingUniforms.uOpacity,
+    };
+    const bowMesh = addMesh(
+      bowGeometry,
+      new THREE.ShaderMaterial({
+        vertexShader: BOW_VERTEX_SHADER,
+        fragmentShader: BOW_FRAGMENT_SHADER,
+        uniforms: bowUniforms,
+        side: THREE.DoubleSide,
+        ...transparentOptions,
+      }),
+      1.5,
+    );
+    bowMesh.visible = false;
+    const shadowMesh = new THREE.Mesh(
+      model.stockingLow,
+      new THREE.ShaderMaterial({
+        vertexShader: FLOOR_SHADOW_VERTEX_SHADER,
+        fragmentShader: FLOOR_SHADOW_FRAGMENT_SHADER,
+        uniforms: {
+          ...shadowProjUniforms,
+          uOpacity: stockingUniforms.uOpacity,
+          ...rigUniforms,
+        },
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.CustomBlending,
+        blendEquation: THREE.MaxEquation,
+        blendSrc: THREE.OneFactor,
+        blendDst: THREE.OneFactor,
+      }),
+    );
+    shadowMesh.frustumCulled = false;
+    shadowMesh.matrixAutoUpdate = false;
+    shadowScene.add(shadowMesh);
+    const casterMesh = new THREE.Mesh(
+      model.stockingLow,
+      new THREE.ShaderMaterial({
+        vertexShader: CASTER_VERTEX_SHADER,
+        fragmentShader: CASTER_FRAGMENT_SHADER,
+        uniforms: {
+          ...rigUniforms,
+        },
+        side: THREE.DoubleSide,
+        colorWrite: false,
+      }),
+    );
+    casterMesh.frustumCulled = false;
+    casterMesh.matrixAutoUpdate = false;
+    const castScene = new THREE.Scene();
+    castScene.add(casterMesh);
+    return {
+      index: index,
+      group: legGroup,
+      mirror: mirrorGroup,
+      rig: rigUniforms,
+      fabric: stockingUniforms,
+      outlineUniforms: outlineUniforms,
+      stocking: stockingPasses[1],
+      skin: skinPasses[1],
+      skinParts: skinParts,
+      shadow: shadowMesh,
+      caster: casterMesh,
+      castScene: castScene,
+      bow: bowMesh,
+      bowU: bowUniforms,
+      matrix: legGroup.matrix,
+    };
+  }
+  const legs = [createLeg(0), createLeg(1)];
+  function setLegPose(index, rig, matrix) {
+    const leg = legs[index];
+    leg.rig.uToeRot.value.set(...rig.T);
+    leg.rig.uAnkleRot.value.set(...rig.A);
+    leg.rig.uKneeRot.value.set(...rig.K);
+    leg.rig.uRigOn.value = rig.on;
+    leg.group.matrix.fromArray(matrix);
+    leg.group.matrixWorldNeedsUpdate = true;
+    leg.mirror.matrix.fromArray(matrix).premultiply(flipYMatrix);
+    leg.mirror.matrixWorldNeedsUpdate = true;
+    leg.shadow.matrix.fromArray(matrix);
+    leg.shadow.matrixWorldNeedsUpdate = true;
+    leg.caster.matrix.fromArray(matrix);
+    leg.caster.matrixWorldNeedsUpdate = true;
+  }
+  function setLegOpacity(index, opacity) {
+    const leg = legs[index];
+    leg.fabric.uOpacity.value = opacity;
+    leg.group.visible = leg.shadow.visible = leg.mirror.visible = opacity > 0.003;
+  }
+  function setOrder(frontIndex) {
+    for (let i = 0; i < 2; i++) {
+      legs[i].group.renderOrder = legs[i].mirror.renderOrder = frontIndex === i ? 20 : 10;
+    }
+  }
+  setOrder(0);
+  const floorCamera = new THREE.OrthographicCamera(
+    floorMapRect.x,
+    floorMapRect.x + floorMapRect.z,
+    -floorMapRect.y,
+    -(floorMapRect.y + floorMapRect.w),
+    -2,
+    2,
+  );
+  floorCamera.position.set(0, 1, 0);
+  floorCamera.up.set(0, 0, -1);
+  floorCamera.lookAt(0, 0, 0);
+  const blurScene = new THREE.Scene();
+  const quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const blurMaterial = new THREE.ShaderMaterial({
+    vertexShader: FULLSCREEN_VERTEX_SHADER,
+    fragmentShader: BLUR_FRAGMENT_SHADER,
+    uniforms: {
+      uBlurTex: {
+        value: null,
+      },
+      uBlurStep: {
+        value: new THREE.Vector2(),
+      },
+    },
+    depthTest: false,
+    depthWrite: false,
+  });
+  const blurQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blurMaterial);
+  blurQuad.frustumCulled = false;
+  blurScene.add(blurQuad);
+  const worldUp = new THREE.Vector3(0, 1, 0);
+  function renderFloorShadow(target, lightDir, contactMode, blurRadius) {
+    shadowProjUniforms.uProjDir.value.copy(lightDir);
+    shadowProjUniforms.uContactMode.value = contactMode;
+    renderer.setRenderTarget(target);
+    renderer.clear();
+    renderer.render(shadowScene, floorCamera);
+    blurMaterial.uniforms.uBlurTex.value = target.texture;
+    blurMaterial.uniforms.uBlurStep.value.set(blurRadius / floorMapSize, 0);
+    renderer.setRenderTarget(blurTempTarget);
+    renderer.clear();
+    renderer.render(blurScene, quadCamera);
+    blurMaterial.uniforms.uBlurTex.value = blurTempTarget.texture;
+    blurMaterial.uniforms.uBlurStep.value.set(0, blurRadius / floorMapSize);
+    renderer.setRenderTarget(target);
+    renderer.clear();
+    renderer.render(blurScene, quadCamera);
+  }
+  const castPoints = [];
+  const tmpVec = new THREE.Vector3();
+  const biasMatrix = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
+  function setCastPoints(points) {
+    castPoints.length = 0;
+    for (const point of points) {
+      castPoints.push(point);
+    }
+  }
+  function updateLegShadows() {
+    const bothVisible = legs[0].fabric.uOpacity.value > 0.003 && legs[1].fabric.uOpacity.value > 0.003;
+    legs[0].fabric.uCastShadowStrength.value = bothVisible ? legs[1].fabric.uOpacity.value : 0;
+    legs[1].fabric.uCastShadowStrength.value = bothVisible ? legs[0].fabric.uOpacity.value : 0;
+    if (!bothVisible || !castPoints.length) {
+      return;
+    }
+    const keyDir = lightUniforms.uKeyDir.value;
+    lightCamera.position.set(0, 0.45, 0.05).addScaledVector(keyDir, 2.5);
+    lightCamera.up.set(0, 1, 0);
+    lightCamera.lookAt(0, 0.45, 0.05);
+    lightCamera.updateMatrixWorld();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const point of castPoints) {
+      tmpVec.set(point[0], point[1], point[2]).applyMatrix4(lightCamera.matrixWorldInverse);
+      minX = Math.min(minX, tmpVec.x);
+      maxX = Math.max(maxX, tmpVec.x);
+      minY = Math.min(minY, tmpVec.y);
+      maxY = Math.max(maxY, tmpVec.y);
+      minZ = Math.min(minZ, -tmpVec.z);
+      maxZ = Math.max(maxZ, -tmpVec.z);
+    }
+    const margin = 0.14;
+    lightCamera.left = minX - margin;
+    lightCamera.right = maxX + margin;
+    lightCamera.bottom = minY - margin;
+    lightCamera.top = maxY + margin;
+    lightCamera.near = Math.max(0.05, minZ - 0.3);
+    lightCamera.far = maxZ + 0.3;
+    lightCamera.updateProjectionMatrix();
+    castShadowUniforms.uCastShadowMatrix.value
+      .multiplyMatrices(biasMatrix, lightCamera.projectionMatrix)
+      .multiply(lightCamera.matrixWorldInverse);
+    for (let i = 0; i < 2; i++) {
+      renderer.setRenderTarget(castTargets[i]);
+      renderer.clear();
+      renderer.render(legs[i].castScene, lightCamera);
+    }
+  }
+  let lastShadowKey = "";
+  const shadowDir = new THREE.Vector3();
+  const tmpClearColor = new THREE.Color();
+  function bakeShadow(force = false) {
+    const keyDir = lightUniforms.uKeyDir.value;
+    const dir = shadowDir.copy(keyDir);
+    if (dir.y < 0.45) {
+      const horizontal = Math.hypot(dir.x, dir.z) || 1;
+      const scale = Math.sqrt(0.7975) / horizontal;
+      dir.set(dir.x * scale, 0.45, dir.z * scale);
+    }
+    const key = Math.round(keyDir.x * 1000) + "," + Math.round(keyDir.y * 1000) + "," + Math.round(keyDir.z * 1000);
+    if (key === lastShadowKey && !force) {
+      return;
+    }
+    const prevClearColor = renderer.getClearColor(tmpClearColor);
+    const prevClearAlpha = renderer.getClearAlpha();
+    renderer.setClearColor(0, 1);
+    renderFloorShadow(floorShadowTarget, dir, 0, 1.7);
+    if (force || !lastShadowKey) {
+      renderFloorShadow(floorContactTarget, worldUp, 1, 3.4);
+    }
+    updateLegShadows();
+    lastShadowKey = key;
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(prevClearColor, prevClearAlpha);
+  }
+  const baseKeyDir = new THREE.Vector3(-0.55, 0.78, 0.42).normalize();
+  const baseRimDir = new THREE.Vector3(0.78, 0.22, -0.58).normalize();
+  const yawQuat = new THREE.Quaternion();
+  const tiltQuat = new THREE.Quaternion();
+  const tiltAxis = new THREE.Vector3();
+  function aimLights(yaw, tilt = 0) {
+    yawQuat.setFromAxisAngle(worldUp, yaw);
+    lightUniforms.uKeyDir.value.copy(baseKeyDir).applyQuaternion(yawQuat);
+    lightUniforms.uRimDir.value.copy(baseRimDir).applyQuaternion(yawQuat);
+    if (tilt < 0) {
+      tiltQuat.setFromAxisAngle(tiltAxis.set(-Math.cos(yaw), 0, Math.sin(yaw)), tilt * 0.8);
+      lightUniforms.uKeyDir.value.applyQuaternion(tiltQuat);
+      lightUniforms.uRimDir.value.applyQuaternion(tiltQuat);
+    }
+  }
+  const blitMaterial = new THREE.ShaderMaterial({
+    vertexShader: FULLSCREEN_VERTEX_SHADER,
+    fragmentShader: COMPOSITE_FRAGMENT_SHADER,
+    uniforms: {
+      uColorTex: {
+        value: null,
+      },
+      uDepthTex: {
+        value: null,
+      },
+      uResolution: {
+        value: viewport,
+      },
+    },
+    depthTest: true,
+    depthWrite: true,
+    depthFunc: THREE.AlwaysDepth,
+  });
+  const blitScene = new THREE.Scene();
+  const blitQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blitMaterial);
+  blitQuad.frustumCulled = false;
+  blitScene.add(blitQuad);
+  const tmpColor = new THREE.Color();
+  function setStocking(index, look, bowMatrix = null) {
+    const leg = legs[index];
+    const fabric = leg.fabric;
+    fabric.uDye.value.set(look.dye);
+    fabric.uDye2.value.set(look.dye2);
+    fabric.uSheenColor.value.set(look.sheen);
+    fabric.uStripe.value = look.stripe;
+    fabric.uShade.value.set(...look.shade);
+    fabric.uThrough.value = look.through;
+    fabric.uSheenAmount.value = look.sheenAmt;
+    leg.outlineUniforms.uOutlineColor.value.set(look.outline);
+    fabric.uDenier.value = look.denier;
+    fabric.uPattern.value = look.pattern;
+    fabric.uGloss.value = look.gloss;
+    fabric.uCuffY.value = look.cuffY;
+    fabric.uHasCuff.value = look.hasCuff;
+    fabric.uCuffStyle.value = look.cuff;
+    fabric.uBand.value = look.band;
+    fabric.uGarter.value = look.garter;
+    fabric.uPrint.value = look.print;
+    fabric.uMatWet.value.set(...look.mat);
+    fabric.uMatKnit.value.set(...look.mat2);
+    tmpColor.set(look.secretColor);
+    fabric.uSecret.value.set(tmpColor.r, tmpColor.g, tmpColor.b, look.secret);
+    if (look.wetDye) {
+      tmpColor.set(look.wetDye);
+      fabric.uWetDye.value.set(tmpColor.r, tmpColor.g, tmpColor.b, 0.85);
+    } else {
+      fabric.uWetDye.value.set(0, 0, 0, 0);
+    }
+    for (const part of leg.skinParts) {
+      part.visible = look.skinVisible;
+    }
+    fabric.uFadeStart.value = look.fade0;
+    fabric.uFadeEnd.value = look.fade1;
+    leg.bow.visible = !!look.bow && !!bowMatrix;
+    if (leg.bow.visible) {
+      leg.bowU.uBowMatrix.value.fromArray(bowMatrix);
+      leg.bowU.uBowColor.value.set(look.dye2);
+    }
+  }
+  const sceneMaterialCache = new Map([[0, [backdropMesh.material, floorMesh.material]]]);
+  let currentScene = SCENES.studio;
+  let currentBackdrop = BACKDROPS.lilac;
+  let mirrorFalloff = 0;
+  let mirrorEnabled = true;
+  const getSceneMaterials = (sceneId) => {
+    if (!sceneMaterialCache.has(sceneId)) {
+      sceneMaterialCache.set(sceneId, [makeBackdropMaterial(sceneId), makeFloorMaterial(sceneId)]);
+    }
+    return sceneMaterialCache.get(sceneId);
+  };
+  function setBackdrop(backdrop) {
+    currentBackdrop = typeof backdrop == "string" ? BACKDROPS[backdrop] || makeCustomBackdrop(backdrop) : backdrop;
+    if (currentScene.id === 0) {
+      backdropUniforms.uTopColor.value.set(currentBackdrop.top);
+      backdropUniforms.uBottomColor.value.set(currentBackdrop.bottom);
+      backdropUniforms.uGlowColor.value.set(currentBackdrop.glow);
+      floorUniforms.uFloorColor.value.set(currentBackdrop.floor);
+      floorUniforms.uShadowColor.value.set(currentBackdrop.shadow);
+    }
+  }
+  function setScene(sceneKey) {
+    const sceneDef = (currentScene = SCENES[sceneKey] || SCENES.studio);
+    const lightDef = sceneDef.light;
+    const floorDef = sceneDef.floor;
+    [backdropMesh.material, floorMesh.material] = getSceneMaterials(sceneDef.id);
+    lightUniforms.uKeyColor.value.set(lightDef.key);
+    lightUniforms.uRimColor.value.set(lightDef.rim);
+    lightUniforms.uFillTop.value.set(...lightDef.fillTop);
+    lightUniforms.uFillBottom.value.set(...lightDef.fillBottom);
+    lightUniforms.uRim2Color.value.set(lightDef.rim2);
+    lightUniforms.uRim2Dir.value.set(...lightDef.rim2Dir).normalize();
+    lightUniforms.uEnvLo.value.set(...lightDef.envLo);
+    lightUniforms.uEnvHi.value.set(...lightDef.envHi);
+    lightUniforms.uEnvAColor.value.set(...lightDef.envA);
+    lightUniforms.uEnvADir.value.set(...lightDef.envADir).normalize();
+    lightUniforms.uEnvBColor.value.set(...lightDef.envB);
+    lightUniforms.uEnvBDir.value.set(...lightDef.envBDir).normalize();
+    lightUniforms.uCaustic.value = lightDef.caustic;
+    floorUniforms.uShadowColor.value.set(floorDef.shadow);
+    tmpColor.set(floorDef.mark);
+    floorUniforms.uMarkColor.value.set(tmpColor.r, tmpColor.g, tmpColor.b, floorDef.markAmt);
+    floorUniforms.uMirrorStrength.value = mirrorEnabled ? floorDef.mirror : 0;
+    floorUniforms.uPuddleLight.value = floorDef.puddleLight === undefined ? 1 : floorDef.puddleLight;
+    mirrorFalloff = floorDef.mirrorFall || 1.6;
+    if (sceneDef.id === 0) {
+      setBackdrop(currentBackdrop);
+    }
+    return sceneDef;
+  }
+  function warmScene(sceneKey, camera) {
+    const sceneDef = SCENES[sceneKey];
+    if (!sceneDef || sceneMaterialCache.has(sceneDef.id) || !renderer.compileAsync) {
+      return Promise.resolve();
+    }
+    const [backdropMaterial, floorMaterial] = getSceneMaterials(sceneDef.id);
+    const warmupScene = new THREE.Scene();
+    const backdropProbe = new THREE.Mesh(backdropMesh.geometry, backdropMaterial);
+    const floorProbe = new THREE.Mesh(floorMesh.geometry, floorMaterial);
+    backdropProbe.frustumCulled = floorProbe.frustumCulled = false;
+    warmupScene.add(backdropProbe, floorProbe);
+    const prevTarget = renderer.getRenderTarget();
+    renderer.setRenderTarget(mirrorTarget);
+    const compilePromise = renderer.compileAsync(warmupScene, camera).catch(() => {});
+    renderer.setRenderTarget(prevTarget);
+    return compilePromise;
+  }
+  const flipY = (vec) => {
+    vec.y = -vec.y;
+  };
+  const mirroredDirUniforms = [
+    lightUniforms.uKeyDir,
+    lightUniforms.uRimDir,
+    lightUniforms.uRim2Dir,
+    lightUniforms.uEnvADir,
+    lightUniforms.uEnvBDir,
+  ];
+  let mirrorScale = 0.5;
+  function resizeMirror(width, height, scale = mirrorScale) {
+    mirrorScale = scale;
+    mirrorTarget.setSize(Math.max(4, Math.round(width * scale)), Math.max(4, Math.round(height * scale)));
+  }
+  function setMirror(enabled) {
+    mirrorEnabled = enabled;
+    floorUniforms.uMirrorStrength.value = enabled ? currentScene.floor.mirror : 0;
+  }
+  function renderMirror(camera) {
+    if (floorUniforms.uMirrorStrength.value <= 0 || camera.position.y < 0.03) {
+      return false;
+    }
+    for (const uniform of mirroredDirUniforms) {
+      flipY(uniform.value);
+    }
+    lightUniforms.uMirrorFlipY.value = -1;
+    lightUniforms.uMirrorFalloff.value = mirrorFalloff;
+    castShadowUniforms.uCastShadowMatrix.value.multiply(flipYMatrix);
+    const prevClearColor = renderer.getClearColor(tmpClearColor);
+    const prevClearAlpha = renderer.getClearAlpha();
+    renderer.setClearColor(0, 0);
+    renderer.setRenderTarget(mirrorTarget);
+    renderer.clear();
+    renderer.render(mirrorScene, camera);
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(prevClearColor, prevClearAlpha);
+    castShadowUniforms.uCastShadowMatrix.value.multiply(flipYMatrix);
+    lightUniforms.uMirrorFlipY.value = 1;
+    lightUniforms.uMirrorFalloff.value = 0;
+    for (const uniform of mirroredDirUniforms) {
+      flipY(uniform.value);
+    }
+    return true;
+  }
+  return {
+    scene: mainScene,
+    floor: floorMesh,
+    legs: legs,
+    uniforms: {
+      light: lightUniforms,
+      fabric: fabricUniforms,
+      floor: floorUniforms,
+      bg: backdropUniforms,
+    },
+    setScene: setScene,
+    setBackdrop: setBackdrop,
+    warmScene: warmScene,
+    renderMirror: renderMirror,
+    resizeMirror: resizeMirror,
+    setMirror: setMirror,
+    lineWidth: lineWidth,
+    blank: blankTexture,
+    get sceneNow() {
+      return currentScene;
+    },
+    get backdropNow() {
+      return currentBackdrop;
+    },
+    viewport: viewport,
+    ripples: ripples,
+    setStocking: setStocking,
+    setLegPose: setLegPose,
+    setLegOpacity: setLegOpacity,
+    setOrder: setOrder,
+    setCastPoints: setCastPoints,
+    aimLights: aimLights,
+    bakeShadow: bakeShadow,
+    shadowScene: shadowScene,
+    blit(colorTexture, depthTexture) {
+      blitMaterial.uniforms.uColorTex.value = colorTexture;
+      blitMaterial.uniforms.uDepthTex.value = depthTexture;
+      renderer.render(blitScene, quadCamera);
+    },
+  };
+}
