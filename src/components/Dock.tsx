@@ -33,7 +33,7 @@ export function Dock() {
       aria-label={t("dock.label")}
     >
       <div
-        className="relative flex min-w-0 flex-[2_1_0] rounded-[17px] bg-well p-[3px] wide:flex-none wide:flex-col short:col-span-full short:flex-row"
+        className="relative flex min-w-0 flex-[2_1_0] rounded-[17px] bg-well p-[3px] wide:flex-none wide:flex-col short:col-span-full short:flex-row narrow-en:max-[380px]:flex-[2.3_1_0]"
         role="radiogroup"
         aria-label={t("dock.touchMode")}
       >
