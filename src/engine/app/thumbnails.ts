@@ -10,7 +10,7 @@ import { holdPerf } from "./loop";
 import { applyStocking } from "./outfit";
 import { frontLeg } from "./scene";
 import { outfit, state } from "./state";
-import { PRESETS, withLegDefaults } from "../catalog/presets";
+import { PRESETS, withLegDefaults, type LegSpec } from "../catalog/presets";
 import { SCENE_ORDER } from "../stage/scenes";
 
 export const THUMB_SIZE = {
@@ -24,14 +24,24 @@ export const thumbCanvases = {
   scenes: {} as Record<string, HTMLCanvasElement>,
 };
 
-export const thumbJobs = [];
+type ThumbKind = "presets" | "scenes";
+
+/** One thumbnail to render: a preset outfit (legs) or a scene (scene). */
+export interface ThumbJob {
+  kind: ThumbKind;
+  canvas: HTMLCanvasElement;
+  legs?: readonly (Partial<LegSpec> | undefined)[];
+  scene?: string;
+}
+
+export const thumbJobs: ThumbJob[] = [];
 
 const thumbKeys = {
   presets: "",
   scenes: "",
 };
 
-function queueThumbs(kind) {
+function queueThumbs(kind: ThumbKind) {
   if (!app.uiBound || app.previewBackup) {
     return;
   }
@@ -76,7 +86,7 @@ export function refreshThumbs() {
   }
 }
 
-export function renderThumb(job) {
+export function renderThumb(job: ThumbJob) {
   holdPerf(0.8);
   const w = THUMB_SIZE.w;
   const h = THUMB_SIZE.h;
@@ -141,7 +151,7 @@ export function renderThumb(job) {
   app.renderer.setRenderTarget(app.thumbReadTarget);
   app.renderer.clear();
   app.stage.blit(app.thumbTarget.texture, app.thumbTarget.depthTexture);
-  app.renderer.readRenderTargetPixels(app.thumbReadTarget, 0, 0, w, h, app.thumbPixels);
+  app.renderer.readRenderTargetPixels(app.thumbReadTarget!, 0, 0, w, h, app.thumbPixels!);
   app.renderer.setRenderTarget(null);
   if (job.scene && job.scene !== saved.scene) {
     app.stage.setScene(saved.scene);
@@ -162,11 +172,11 @@ export function renderThumb(job) {
   fabricU.uWetMap.value = saved.wet;
   app.stage.aimLights(orbit.cur.yaw, orbit.cur.pitch);
   app.stage.bakeShadow(false);
-  const ctx = job.canvas.getContext("2d");
+  const ctx = job.canvas.getContext("2d")!;
   const img = ctx.createImageData(w, h);
   const rowBytes = w * 4;
   for (let y = 0; y < h; y++) {
-    img.data.set(app.thumbPixels.subarray((h - 1 - y) * rowBytes, (h - y) * rowBytes), y * rowBytes);
+    img.data.set(app.thumbPixels!.subarray((h - 1 - y) * rowBytes, (h - y) * rowBytes), y * rowBytes);
   }
   ctx.putImageData(img, 0, 0);
 }

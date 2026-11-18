@@ -5,7 +5,7 @@ import { ui, type TouchMode } from "../../state/ui";
 import { app } from "./runtime";
 import { state } from "./state";
 
-export function showHint(text, ms = 3200) {
+export function showHint(text: string, ms = 3200) {
   ui.set({ hint: { text, hidden: false } });
   clearTimeout(app.hintTimer);
   if (ms) {

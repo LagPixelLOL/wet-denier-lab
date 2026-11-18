@@ -9,7 +9,7 @@ export default defineConfig(({ command, mode }) => {
   console.log(`Development mode: ${isDev}`);
   return {
     base: "./",
-    plugins: [react(), tailwindcss(), isDev && consoleForwardPlugin()],
+    plugins: [react(), tailwindcss({ optimize: false }), isDev && consoleForwardPlugin()],
     server: { host: true, port: 12345, allowedHosts: true },
     build: {
       // three.js alone is about 740 kB minified.

@@ -14,7 +14,17 @@ import { publishScenes, publishWardrobe } from "./sheets";
 import { bucketSplash, dryOff, pick, splashAt } from "./splash";
 import { state } from "./state";
 
-export const pointers = new Map();
+interface PointerState {
+  x: number;
+  y: number;
+  x0: number;
+  y0: number;
+  t0: number;
+  orbit: boolean;
+  pan?: boolean;
+}
+
+export const pointers = new Map<number, PointerState>();
 
 function bindPointer() {
   app.canvas.addEventListener("pointerdown", (ev) => {
@@ -41,7 +51,7 @@ function bindPointer() {
       };
       return;
     }
-    const ptr = pointers.get(ev.pointerId);
+    const ptr = pointers.get(ev.pointerId)!;
     if (state.mode === "water" && ev.button === 0) {
       const hit = pick(ev.clientX, ev.clientY);
       if (hit) {
@@ -98,7 +108,7 @@ function bindPointer() {
       orbitBy(dx, dy);
     }
   });
-  const onPointerEnd = (ev) => {
+  const onPointerEnd = (ev: PointerEvent) => {
     const ptr = pointers.get(ev.pointerId);
     pointers.delete(ev.pointerId);
     if (app.pour && app.pour.id === ev.pointerId) {
@@ -155,7 +165,7 @@ export function bindUi() {
     (ev) => {
       const active = document.activeElement;
       if (ev.detail > 0 && active && active.tagName === "BUTTON") {
-        active.blur();
+        (active as HTMLElement).blur();
       }
     },
     true,
@@ -167,7 +177,7 @@ export function bindUi() {
       closeCopyBox();
       return;
     }
-    const tag = ev.target.tagName;
+    const tag = (ev.target as Element).tagName;
     if (
       ev.ctrlKey ||
       ev.metaKey ||

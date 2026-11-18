@@ -2,7 +2,7 @@
  * Picking and water actions: splash, pour, bucket and dry.
  */
 import * as THREE from "three";
-import { app } from "./runtime";
+import { app, type PickHit } from "./runtime";
 import { hideHint } from "./hud";
 import { state } from "./state";
 
@@ -18,7 +18,7 @@ export function maybeIntroSplash() {
 
 const raycaster = new THREE.Raycaster();
 
-export function pick(clientX, clientY) {
+export function pick(clientX: number, clientY: number): PickHit | null {
   const rect = app.canvas.getBoundingClientRect();
   raycaster.setFromCamera(
     new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1),
@@ -50,7 +50,7 @@ export function pick(clientX, clientY) {
   }
 }
 
-function pickToward(point) {
+function pickToward(point: THREE.Vector3): PickHit | null {
   const eye = app.camera.position;
   const dir = point.clone().sub(eye).normalize();
   const hit = app.surface.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, 10, app.rig.awayLeg);
@@ -68,17 +68,17 @@ function pickToward(point) {
   }
 }
 
-export function buzz(pattern) {
+export function buzz(pattern: VibratePattern) {
   if (navigator.userActivation?.hasBeenActive) {
     navigator.vibrate?.(pattern);
   }
 }
 
-function splashReach(point) {
+function splashReach(point: PickHit) {
   return Math.min(0.42, app.camera.position.distanceTo(new THREE.Vector3(point.x, point.y, point.z)) * 0.55);
 }
 
-export function splashAt(hit, counted = true) {
+export function splashAt(hit: PickHit, counted = true) {
   app.water.throwAt(hit, app.camera.position, {
     count: app.isMobile ? 26 : 32,
     reach: splashReach(hit),
@@ -90,7 +90,7 @@ export function splashAt(hit, counted = true) {
   }
 }
 
-export function pourAt(hit) {
+export function pourAt(hit: PickHit) {
   app.water.throwAt(hit, app.camera.position, {
     count: app.isMobile ? 6 : 8,
     spread: 0.007,

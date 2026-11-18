@@ -1,3 +1,62 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Variants for the state classes the engine sets on <body>. */
+@custom-variant ready (body.ready &);
+@custom-variant scene-out (body.ready.scene-out &);
+@custom-variant scene-in (body.ready.scene-in &);
+@custom-variant view-mode (body.view-mode &);
+@custom-variant about-open (body.about-open &);
+@custom-variant photo-open (body.photo-open &);
+@custom-variant mat-open (body.mat-open &);
+@custom-variant scene-open (body.scene-open &);
+@custom-variant dim (body.dim &);
+@custom-variant fine (body.fine &);
+@custom-variant wide (body.wide &);
+@custom-variant wide-view-mode (body.wide.view-mode &);
+@custom-variant wide-scene-open (body.wide.scene-open &);
+@custom-variant fine-wide (body.fine.wide &);
+@custom-variant short (body.wide.short &);
+@custom-variant short-view-mode (body.wide.short.view-mode &);
+@custom-variant roomy (body.roomy &);
+@custom-variant roomy-scene-open (body.roomy.scene-open &);
+@custom-variant roomy-mat-open (body.roomy.mat-open &);
+/* Matches elements carrying the HTML hidden attribute (needed where a utility sets display). */
+@custom-variant hidden-attr (&[hidden]);
+
+@theme static {
+  --font-ui: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-logo: "ZCOOL XiaoWei", "Songti SC", "STSong", "SimSun", serif;
+  --animate-spin: spin 0.9s linear infinite;
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}
+
+/* Palette and shadow. The engine updates --stage per scene, and body.dim brightens the glass tones. */
+@theme inline {
+  --color-stage: var(--stage);
+  --color-ink: var(--ink);
+  --color-ink-strong: var(--ink-strong);
+  --color-ink-soft: var(--ink-soft);
+  --color-glass: var(--glass);
+  --color-glass-strong: var(--glass-strong);
+  --color-paper: var(--paper);
+  --color-well: var(--well);
+  --color-chip: var(--chip);
+  --color-line: var(--line);
+  --color-hairline: var(--hairline);
+  --color-on-ink: var(--on-ink);
+  --color-accent: var(--accent);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-soft: var(--accent-soft);
+  --color-focus: var(--focus);
+  --shadow-panel: var(--shadow);
+}
+
 :root {
   --stage: #efe9f1;
   --ink: #3a3346;
@@ -16,8 +75,6 @@
   --accent-soft: rgba(93, 123, 255, 0.14);
   --focus: rgba(93, 123, 255, 0.55);
   --shadow: 0 10px 30px rgba(92, 70, 120, 0.16), 0 2px 6px rgba(92, 70, 120, 0.08);
-  --font-ui: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --font-logo: "ZCOOL XiaoWei", "Songti SC", "STSong", "SimSun", serif;
   --gutter-l: max(16px, env(safe-area-inset-left, 0px));
   --gutter-r: max(16px, env(safe-area-inset-right, 0px));
   --safe-b: env(safe-area-inset-bottom, 0px);

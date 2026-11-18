@@ -6,13 +6,13 @@ import { step } from "./loop";
 
 export function installDevHooks() {
   window.__capture = (shotName = "cap") =>
-    new Promise((resolve) => {
+    new Promise<unknown>((resolve) => {
       app.captureRequest = {
         name: shotName,
         done: resolve,
       };
     });
-  window.__advance = (seconds, fps = 60) => {
+  window.__advance = (seconds: number, fps = 60) => {
     for (let i = 0, n = Math.round(seconds * fps); i < n; i++) {
       step(performance.now(), 1 / fps);
     }

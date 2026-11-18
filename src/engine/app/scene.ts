@@ -10,7 +10,7 @@ import { holdPerf } from "./loop";
 import { state } from "./state";
 import { SCENES } from "../stage/scenes";
 
-function applyScene(id) {
+function applyScene(id: string) {
   holdPerf(1.5);
   const sceneDef = app.stage.setScene(id);
   state.scene = SCENES[id] ? id : "studio";
@@ -31,7 +31,7 @@ function applyScene(id) {
   publishScenes();
 }
 
-export function setScene(id, opts) {
+export function setScene(id: string, opts?: { instant?: boolean }) {
   if (!SCENES[id] || id === state.scene) {
     return;
   }
@@ -58,7 +58,7 @@ export function setScene(id, opts) {
   });
 }
 
-export function setBackdrop(id) {
+export function setBackdrop(id: string) {
   state.backdrop = id;
   app.stage.setBackdrop(id);
   updateStageTone();
@@ -72,7 +72,7 @@ function updateStageTone() {
   document.body.classList.toggle("dim", !!(isStudio ? app.stage.backdropNow.dark : sceneDef.dark));
 }
 
-export function setRain(on) {
+export function setRain(on: boolean) {
   state.rain = on;
   app.autoRain = false;
   app.water.setRain(on);
@@ -80,7 +80,7 @@ export function setRain(on) {
   ui.set({ rain: on });
 }
 
-export function setPose(pose, opts) {
+export function setPose(pose: string, opts?: { instant?: boolean }) {
   if (app.rig.setPose(pose, opts)) {
     app.water.shakeOff();
     syncFootprint();

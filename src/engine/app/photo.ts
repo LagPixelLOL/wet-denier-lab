@@ -23,7 +23,7 @@ export function closeCopyBox() {
   ui.set((s) => ({ copyBox: s.copyBox && { ...s.copyBox, open: false } }));
 }
 
-export function showPhoto(show) {
+export function showPhoto(show: boolean) {
   document.body.classList.toggle("photo-open", show);
   ui.set((s) => ({ photo: { ...s.photo, open: show } }));
 }
@@ -34,7 +34,7 @@ export function takePhoto() {
   const out = document.createElement("canvas");
   out.width = w;
   out.height = h;
-  const ctx = out.getContext("2d");
+  const ctx = out.getContext("2d")!;
   ctx.drawImage(app.canvas, 0, 0);
   const scale = Math.min(w, h) / 720;
   const margin = Math.round(scale * 26);

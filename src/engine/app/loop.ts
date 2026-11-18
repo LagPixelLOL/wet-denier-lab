@@ -35,7 +35,7 @@ export function resize() {
 
 const tmpProj = new THREE.Vector3();
 
-function stereoPan(x, y, z) {
+function stereoPan(x: number, y: number, z: number) {
   tmpProj.set(x, y, z).project(app.camera);
   if (Number.isFinite(tmpProj.x)) {
     return THREE.MathUtils.clamp(tmpProj.x * 0.75, -0.75, 0.75);
@@ -44,20 +44,30 @@ function stereoPan(x, y, z) {
   }
 }
 
-const perfMonitor = {
+interface PerfMonitor {
+  /** Seconds and frames counted in the current sample window. */
+  t: number;
+  frames: number;
+  /** Quality steps taken so far (mirror off, then lower resolution). */
+  steps: number;
+  /** Seconds left before sampling resumes. */
+  hold: number;
+}
+
+const perfMonitor: PerfMonitor = {
   t: 0,
   frames: 0,
   steps: 0,
   hold: 3,
 };
 
-export function holdPerf(seconds) {
+export function holdPerf(seconds: number) {
   perfMonitor.hold = Math.max(perfMonitor.hold, seconds);
   perfMonitor.t = 0;
   perfMonitor.frames = 0;
 }
 
-function checkPerf(dt) {
+function checkPerf(dt: number) {
   if (perfMonitor.steps >= 3 || document.hidden) {
     return;
   }
@@ -124,7 +134,7 @@ export function trackUserActivity() {
   );
 }
 
-export function frame(now) {
+export function frame(now: number) {
   requestAnimationFrame(frame);
   if (!app.isMobile || !((app.idle = isIdle()), now - app.lastFrameTime < (app.idle ? 30 : 10.5))) {
     app.lastFrameTime = now;
@@ -132,7 +142,7 @@ export function frame(now) {
   }
 }
 
-export function step(now, fixedDt) {
+export function step(now: number, fixedDt?: number) {
   const dt = fixedDt === undefined ? Math.min(0.05, (now - app.lastTime) / 1000) : fixedDt;
   app.lastTime = now;
   const simDt = dt * (state.slow ? 0.2 : 1);
@@ -154,7 +164,7 @@ export function step(now, fixedDt) {
     !app.previewBackup &&
     (!app.isMobile || app.oddFrame)
   ) {
-    renderThumb(thumbJobs.shift());
+    renderThumb(thumbJobs.shift()!);
   } else if (app.frameCount++ % 40 === 0) {
     refreshThumbs();
   }
@@ -248,7 +258,7 @@ export function step(now, fixedDt) {
     takePhoto();
   }
   if (app.captureRequest) {
-    const { name: shotName, done: done } = app.captureRequest;
+    const { name: shotName, done } = app.captureRequest;
     app.captureRequest = null;
     fetch("/__capture?name=" + shotName, {
       method: "POST",

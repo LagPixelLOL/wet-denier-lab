@@ -110,7 +110,7 @@ async function boot() {
 }
 
 export function startApp() {
-  app.canvas = $("#view");
+  app.canvas = $<HTMLCanvasElement>("#view")!;
   app.isMobile = matchMedia("(pointer: coarse)").matches || Math.min(screen.width, screen.height) < 600;
   app.reducedMotionQuery = matchMedia("(prefers-reduced-motion: reduce)");
   app.renderer = new THREE.WebGLRenderer({
@@ -135,7 +135,7 @@ export function startApp() {
   app.lastTime = performance.now();
   trackUserActivity();
   if (!IS_PROD) installDevHooks();
-  boot().catch((err) => {
+  boot().catch((err: Error) => {
     console.error(err);
     ui.set({ bootError: err.message });
   });

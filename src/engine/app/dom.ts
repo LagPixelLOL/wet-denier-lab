@@ -2,4 +2,4 @@
  * DOM helpers.
  */
 
-export const $ = (sel) => document.querySelector(sel);
+export const $ = <E extends Element = HTMLElement>(sel: string): E | null => document.querySelector<E>(sel);

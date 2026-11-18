@@ -2,7 +2,7 @@
  * Orbit camera with a view offset for open panels.
  */
 import * as THREE from "three";
-import { app } from "./runtime";
+import { app, type PickHit } from "./runtime";
 import { layout } from "./layout";
 
 export const homeView = {
@@ -36,7 +36,7 @@ export function resetView() {
   orbit.target.copy(homeView.target);
 }
 
-export function updateCamera(dt) {
+export function updateCamera(dt: number) {
   const k = 1 - Math.exp(-dt * 9);
   const cur = orbit.cur;
   cur.yaw += (orbit.yaw - cur.yaw) * k;
@@ -77,12 +77,12 @@ const MIN_PITCH = -1.3;
 
 const MAX_PITCH = 1.15;
 
-export function orbitBy(dx, dy) {
+export function orbitBy(dx: number, dy: number) {
   orbit.yaw -= dx * 0.0085;
   orbit.pitch = THREE.MathUtils.clamp(orbit.pitch + dy * 0.005, MIN_PITCH, MAX_PITCH);
 }
 
-export function panBy(dx, dy) {
+export function panBy(dx: number, dy: number) {
   const unitsPerPx =
     (orbit.dist * 2 * Math.tan(THREE.MathUtils.degToRad(app.camera.fov / 2))) / app.canvas.clientHeight;
   const right = new THREE.Vector3().setFromMatrixColumn(app.camera.matrixWorld, 0);
@@ -98,7 +98,7 @@ export function clampTarget() {
   target.z = THREE.MathUtils.clamp(target.z, -0.2, 0.35);
 }
 
-export function zoomBy(factor, toward) {
+export function zoomBy(factor: number, toward?: PickHit | null) {
   orbit.dist = THREE.MathUtils.clamp(orbit.dist * factor, MIN_DIST, MAX_DIST);
   if (toward && factor < 1) {
     orbit.target.lerp(new THREE.Vector3(toward.x, toward.y, toward.z), 0.18);

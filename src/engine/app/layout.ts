@@ -6,6 +6,9 @@ import { app } from "./runtime";
 import { $ } from "./dom";
 import { refreshThumbs } from "./thumbnails";
 
+/** Panels toggled by setPanel; "photo" is the photo dialog, opened separately. */
+export type PanelId = "mat" | "scene" | "about";
+
 export const layout = {
   wide: false,
   roomy: false,
@@ -13,7 +16,7 @@ export const layout = {
   insetR: 0,
 };
 
-export function setPanel(panel) {
+export function setPanel(panel: PanelId | null) {
   const cls = document.body.classList;
   if (layout.roomy) {
     if (panel === "mat" || panel === "scene") {
@@ -28,9 +31,9 @@ export function setPanel(panel) {
   syncPanels();
 }
 
-export const isPanelOpen = (panel) => document.body.classList.contains(panel + "-open");
+export const isPanelOpen = (panel: PanelId | "photo") => document.body.classList.contains(panel + "-open");
 
-export const togglePanel = (panel) => setPanel(layout.roomy || !isPanelOpen(panel) ? panel : null);
+export const togglePanel = (panel: PanelId) => setPanel(layout.roomy || !isPanelOpen(panel) ? panel : null);
 
 function syncPanels() {
   const cls = document.body.classList;
@@ -67,11 +70,11 @@ function updateInsets() {
   let insetL = 0;
   let insetR = 0;
   if (layout.wide) {
-    const dock = $(".dock");
+    const dock = $(".dock")!;
     const sheet = cls.contains("mat-open") ? $("#materials") : cls.contains("scene-open") ? $("#scenes") : null;
     insetL = dock.offsetLeft + dock.offsetWidth + 10;
     if (sheet) {
-      insetR = innerWidth - (layout.roomy ? $(".side") : sheet).offsetLeft + 10;
+      insetR = innerWidth - (layout.roomy ? $(".side")! : sheet).offsetLeft + 10;
     }
   }
   layout.insetL = insetL;
