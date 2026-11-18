@@ -141,9 +141,14 @@ the page keeps its own small base layer in `src/styles/app.css`. That file also 
   families and the loading spinner animation.
 
 Everything else is utility classes in the components. Class names must appear literally in the source for
-Tailwind to find them, so conditional styles pick between complete class strings. CSS optimization is turned
-off (`optimize: false` for Tailwind, `cssMinify: false` for Vite), because the optimizer rewrites colors such as
-`rgba(..., 0.55)` into 8-digit hex with a slightly different alpha.
+Tailwind to find them, so conditional styles pick between complete class strings.
+
+Production CSS is optimized by Tailwind (nesting flattened, syntax lowered for the supported browsers) and then
+minified by Vite, both with Lightning CSS. Tailwind's pass rewrites colors such as `rgba(..., 0.55)` into 8-digit
+hex, which rounds the alpha to 1/255. The Vite pass therefore includes the `HexAlphaColors` feature
+(`css.lightningcss` in `vite.config.ts`), which prints every color with an alpha as `rgba()` using the shortest
+alpha that maps to the same byte. Alphas with up to two decimals come out exactly as written; hex sources such as
+`#ffffff38` come out as the equivalent `rgba(255,255,255,.22)`.
 
 ## Testing
 
