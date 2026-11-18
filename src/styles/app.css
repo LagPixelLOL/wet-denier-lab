@@ -16,6 +16,7 @@
 @custom-variant wide (body.wide &);
 @custom-variant wide-view-mode (body.wide.view-mode &);
 @custom-variant wide-scene-open (body.wide.scene-open &);
+@custom-variant wide-mat-open (body.wide.mat-open &);
 @custom-variant fine-wide (body.fine.wide &);
 @custom-variant short (body.wide.short &);
 @custom-variant short-view-mode (body.wide.short.view-mode &);
@@ -480,154 +481,27 @@ body.about-open .about {
   letter-spacing: 0.14em;
   color: var(--ink-soft);
 }
-.sheet {
-  position: fixed;
-  left: 50%;
-  bottom: calc(98px + var(--safe-b));
-  transform: translate(-50%, 12px);
-  width: min(430px, calc(100vw - var(--gutter-l) - var(--gutter-r)));
-  padding: 12px 14px;
-  border-radius: 20px;
-  background: var(--glass-strong);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  display: grid;
-  gap: 8px;
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity 0.25s ease,
-    transform 0.25s ease,
-    visibility 0s 0.25s;
-}
-.tabs {
-  display: flex;
-  justify-content: space-between;
-  gap: 0;
-  margin: -2px -4px 0;
-  padding: 0 2px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  overscroll-behavior: contain;
-}
-.tabs::-webkit-scrollbar {
-  display: none;
-}
-.tabs button {
-  flex: 0 0 auto;
-  padding: 7px 8px 8px;
-  border-radius: 12px;
-  font-size: 13px;
-  letter-spacing: 0.04em;
-  color: var(--ink-soft);
-  position: relative;
-  transition: color 0.2s;
-}
-.tabs button[aria-selected="true"] {
-  color: var(--ink-strong);
-  font-weight: 600;
-}
-.tabs button[aria-selected="true"]:after {
-  content: "";
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 2px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-}
-.panes {
-  min-height: 118px;
-  max-height: min(34vh, 250px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 2px 0;
-}
-.pane {
-  display: grid;
-  gap: 9px;
-  align-content: start;
-}
-.pane[hidden] {
-  display: none;
-}
-.pane-hint {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ink-soft);
-  text-wrap: pretty;
-}
-.chips.idle button:not(.on) {
-  opacity: 0.45;
-}
-.chips.swatches {
-  gap: 9px;
-}
-.chips .swatch.custom {
-  position: relative;
-  display: inline-block;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  cursor: pointer;
-  background: var(--c, conic-gradient(#ff8fa8, #ffd38a, #9be0a8, #8fc4ff, #c9a3ff, #ff8fa8));
-  border: 2px solid var(--on-ink);
-  box-shadow: 0 0 0 1px var(--hairline);
-}
-.chips .swatch.custom.on {
-  box-shadow: 0 0 0 2px var(--ink);
-}
-.chips .swatch.custom input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-  border: 0;
-  padding: 0;
-}
-.sheet-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--hairline);
-}
-.seg {
-  display: flex;
-  padding: 2px;
-  border-radius: 999px;
-  background: var(--well);
-}
-.seg button {
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  white-space: nowrap;
-  color: var(--ink-soft);
-  transition:
-    background 0.2s,
-    color 0.2s;
-}
-.seg button.on {
-  background: var(--glass-strong);
-  color: var(--ink-strong);
-  font-weight: 600;
-  box-shadow: 0 1px 4px #5c467829;
-}
-.sheet-foot.no-target .seg {
-  visibility: hidden;
-}
-.foot-actions {
-  display: flex;
-  gap: 7px;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .pill {
   display: inline-flex;
   align-items: center;
@@ -656,76 +530,19 @@ body.about-open .about {
   border-color: transparent;
   box-shadow: 0 6px 16px var(--focus);
 }
-body.mat-open #materials,
-body.scene-open #scenes {
-  opacity: 1;
-  visibility: visible;
-  transform: translate(-50%);
-  transition:
-    opacity 0.25s ease,
-    transform 0.25s ease;
-}
-.side {
-  display: contents;
-}
-.row[hidden],
-.pane-hint.keys {
-  display: none;
-}
-.cards {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-  padding: 3px;
-  margin: -3px;
-}
-.cards::-webkit-scrollbar {
-  display: none;
-}
-.card {
-  flex: 0 0 auto;
-  display: grid;
-  gap: 5px;
-  justify-items: center;
-  padding: 0;
-  font-size: 11.5px;
-  color: var(--ink-soft);
-  white-space: nowrap;
-}
-.card canvas {
-  display: block;
-  width: 78px;
-  aspect-ratio: 3 / 4;
-  border-radius: 12px;
-  background: var(--well);
-  box-shadow: 0 0 0 1px var(--hairline);
-  transition:
-    box-shadow 0.2s,
-    transform 0.12s;
-}
-.card:active canvas {
-  transform: scale(0.96);
-}
-.card.on {
-  color: var(--ink-strong);
-  font-weight: 600;
-}
-.card.on canvas {
-  box-shadow: 0 0 0 2px var(--accent);
-}
-.scenes {
-  gap: 10px;
-}
-.scenes .cards {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  overflow: visible;
-}
-.scenes .card canvas {
-  width: 100%;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
 .copybox {
   position: fixed;
   z-index: 30;
@@ -758,52 +575,13 @@ body.scene-open #scenes {
 .copybox .pill {
   justify-self: end;
 }
-.row {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-}
-.label {
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  color: var(--ink-soft);
-}
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.chips button {
-  padding: 6px 11px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  background: var(--chip);
-  border: 1px solid var(--hairline);
-  transition:
-    background 0.2s,
-    color 0.2s,
-    border-color 0.2s;
-}
-.chips button.on {
-  background: var(--ink);
-  color: var(--on-ink);
-  border-color: var(--ink);
-}
-.chips .swatch {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--c);
-  border: 2px solid var(--on-ink);
-  box-shadow: 0 0 0 1px var(--hairline);
-}
-.chips .swatch.on {
-  background: var(--c);
-  border-color: var(--on-ink);
-  box-shadow: 0 0 0 2px var(--ink);
-}
+
+
+
+
+
+
+
 .photo {
   position: fixed;
   inset: 0;
@@ -927,28 +705,10 @@ body.wide.view-mode .modes .thumb {
 body.wide .sep {
   margin: 3px 9px;
 }
-body.wide .sheet {
-  left: auto;
-  right: var(--gutter-r);
-  bottom: auto;
-  top: calc(68px + var(--safe-t));
-  width: min(336px, 46vw);
-  max-height: calc(100vh - 80px - var(--safe-t));
-  max-height: calc(100dvh - 80px - var(--safe-t));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  transform: translate(14px);
-}
-body.wide.mat-open #materials,
-body.wide.scene-open #scenes {
-  transform: none;
-}
-body.wide .panes {
-  max-height: none;
-}
-body.wide .seg button {
-  padding: 5px 9px;
-}
+
+
+
+
 body.wide .sheet-foot .pill {
   padding: 7px 11px;
 }
@@ -1013,17 +773,9 @@ body.wide.short .brand,
 body.wide.short .corner {
   top: calc(10px + var(--safe-t));
 }
-body.wide.short .sheet {
-  top: calc(60px + var(--safe-t));
-  max-height: calc(100vh - 68px - var(--safe-t));
-  max-height: calc(100dvh - 68px - var(--safe-t));
-}
-body.wide.short .card canvas {
-  width: 66px;
-}
-body.wide.short .scenes .card canvas {
-  width: 100%;
-}
+
+
+
 body.roomy .brand {
   left: calc(20px + var(--gutter-l));
   top: 30px;
@@ -1043,52 +795,13 @@ body.roomy .about {
 body.roomy .dock {
   left: calc(14px + var(--gutter-l));
 }
-body.roomy .side {
-  position: fixed;
-  z-index: 4;
-  right: calc(14px + var(--gutter-r));
-  top: 84px;
-  bottom: 22px;
-  width: 344px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  pointer-events: none;
-}
-body.roomy .side .sheet {
-  position: static;
-  width: auto;
-  max-height: none;
-  overflow: visible;
-  transform: none;
-  opacity: 1;
-  visibility: visible;
-  transition: none;
-  pointer-events: auto;
-  display: none;
-}
-body.roomy.scene-open #scenes {
-  display: grid;
-  flex: 0 0 auto;
-}
-body.roomy.mat-open #materials {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  flex: 0 1 auto;
-  min-height: 0;
-}
-body.roomy .panes {
-  min-height: 0;
-  overflow-y: auto;
-}
-body.roomy #materials .cards {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  overflow: visible;
-}
-body.roomy #materials .card canvas {
-  width: 100%;
-}
+
+
+
+
+
+
+
 body.fine.wide .tool[data-key]:after {
   content: attr(data-key);
   position: absolute;
@@ -1127,15 +840,12 @@ body.dim .sub,
 body.dim .loading {
   color: #fffc;
 }
-body.fine .pane-hint.keys {
-  display: block;
-}
+
 @media (prefers-reduced-motion: reduce) {
   #view,
   body.ready.scene-out #view,
   body.ready.scene-in #view,
   .hint,
-  .sheet,
   .zoombar,
   .loading,
   .photo {

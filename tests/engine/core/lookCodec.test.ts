@@ -1,0 +1,152 @@
+import { describe, expect, it } from "vitest";
+import { PRESETS, withLegDefaults } from "../../../src/engine/catalog/presets";
+import type { LegSpec } from "../../../src/engine/catalog/presets";
+import { POSE_ORDER } from "../../../src/engine/rig/poses";
+import { lookUrl, unpackLook } from "../../../src/engine/share/lookCodec";
+import type { Look } from "../../../src/engine/share/lookCodec";
+import { BACKDROPS, SCENES } from "../../../src/engine/stage/scenes";
+
+const hashOf = (url: string): string => url.slice(url.indexOf("#"));
+
+const roundTrip = (look: Look) => unpackLook(hashOf(lookUrl(look)));
+
+const DEFAULT_LEGS: [LegSpec, LegSpec] = [withLegDefaults(), withLegDefaults()];
+
+describe("lookUrl", () => {
+  it("writes a versioned, tilde-separated look hash", () => {
+    const url = lookUrl({
+      pose: "step",
+      scene: "bath",
+      backdrop: "lilac",
+      legs: [
+        withLegDefaults(),
+        withLegDefaults({ color: "#12AB56", wetColor: "sakura", garter: true, secret: "stars" }),
+      ],
+    });
+    expect(url.slice(0, url.indexOf("#"))).toMatch(/^https:\/\/[^#]+\/$/);
+    expect(hashOf(url)).toMatchInlineSnapshot(
+      `"#look=1~step~bath~lilac~thigh.lace.0.sheer.40.none.ink.none.-~thigh.lace.1.sheer.40.none.x12ab56.stars.sakura"`,
+    );
+  });
+
+  it("packs custom backdrop and wet colors as x + lowercase hex", () => {
+    const url = lookUrl({
+      pose: "single",
+      scene: "pool",
+      backdrop: "#ABCDEF",
+      legs: [withLegDefaults({ wetColor: "#00FF00" }), withLegDefaults()],
+    });
+    expect(hashOf(url)).toBe(
+      "#look=1~single~pool~xabcdef~thigh.lace.0.sheer.40.none.ink.none.x00ff00~thigh.lace.0.sheer.40.none.ink.none.-",
+    );
+  });
+});
+
+describe("unpackLook round trips", () => {
+  it("restores the default look exactly", () => {
+    expect(roundTrip({ pose: "step", scene: "studio", backdrop: "lilac", legs: DEFAULT_LEGS })).toEqual({
+      pose: "step",
+      scene: "studio",
+      backdrop: "lilac",
+      legs: DEFAULT_LEGS,
+    });
+  });
+
+  it("restores every preset", () => {
+    for (const preset of PRESETS) {
+      const legs = (preset.legs ?? [preset.both!, preset.both!]).map(withLegDefaults);
+      expect(roundTrip({ pose: "together", scene: "street", backdrop: "mint", legs })?.legs).toEqual(legs);
+    }
+  });
+
+  it("restores every pose, scene and backdrop", () => {
+    for (const pose of POSE_ORDER) {
+      expect(roundTrip({ pose, scene: "studio", backdrop: "sky", legs: DEFAULT_LEGS })?.pose).toBe(pose);
+    }
+    for (const scene of Object.keys(SCENES)) {
+      expect(roundTrip({ pose: "step", scene, backdrop: "sky", legs: DEFAULT_LEGS })?.scene).toBe(scene);
+    }
+    for (const backdrop of Object.keys(BACKDROPS)) {
+      expect(roundTrip({ pose: "step", scene: "studio", backdrop, legs: DEFAULT_LEGS })?.backdrop).toBe(backdrop);
+    }
+  });
+
+  it("restores custom colors in lowercase", () => {
+    const legs = [
+      withLegDefaults({ color: "#A1B2C3", wetColor: "#FFFFFF" }),
+      withLegDefaults({ color: "#000000", wetColor: "taro" }),
+    ];
+    const back = roundTrip({ pose: "step", scene: "bath", backdrop: "#FfEeDd", legs });
+    expect(back?.backdrop).toBe("#ffeedd");
+    expect(back?.legs.map((leg) => [leg.color, leg.wetColor])).toEqual([
+      ["#a1b2c3", "#ffffff"],
+      ["#000000", "taro"],
+    ]);
+  });
+
+  it("accepts percent-encoded payloads and the look key after other hash parameters", () => {
+    const hash = hashOf(lookUrl({ pose: "point", scene: "bath", backdrop: "dusk", legs: DEFAULT_LEGS }));
+    const encoded = "#look=" + hash.slice("#look=".length).replaceAll("~", "%7E").replaceAll(".", "%2E");
+    expect(unpackLook(encoded)?.pose).toBe("point");
+    expect(unpackLook("#tab=2&look=1~tiptoe~pool~cream&x=1")).toMatchObject({
+      pose: "tiptoe",
+      scene: "pool",
+      backdrop: "cream",
+    });
+    expect(unpackLook("look=1~crossed")?.pose).toBe("crossed");
+  });
+});
+
+describe("unpackLook validation", () => {
+  it.each([null, undefined, "", "#", "#nolook", "#xlook=1~step", "#look=2~step~bath~lilac", "#look="])(
+    "returns null for %j",
+    (hash) => {
+      expect(unpackLook(hash)).toBeNull();
+    },
+  );
+
+  it("fills a bare version with default legs and no scene keys", () => {
+    expect(unpackLook("#look=1")).toEqual({ legs: DEFAULT_LEGS });
+  });
+
+  it("copies the left leg when the right one is missing", () => {
+    const back = unpackLook("#look=1~step~bath~lilac~knee.rib.1.cotton.70.hoops.navy.paws.mist");
+    const leg = withLegDefaults({
+      length: "knee",
+      cuff: "rib",
+      garter: true,
+      material: "cotton",
+      denier: 70,
+      pattern: "hoops",
+      color: "navy",
+      secret: "paws",
+      wetColor: "mist",
+    });
+    expect(back?.legs).toEqual([leg, leg]);
+  });
+
+  it("drops unknown pose, scene and backdrop keys", () => {
+    expect(unpackLook("#look=1~moonwalk~mars~xzzzzzz")).toEqual({ legs: DEFAULT_LEGS });
+    expect(unpackLook("#look=1~step~bath~ink")?.backdrop).toBeUndefined();
+  });
+
+  it("replaces every invalid leg field with its default", () => {
+    const back = unpackLook("#look=1~step~bath~lilac~shin.frill.yes.silk.41.plaid.x12345.ghost.xnothex~");
+    expect(back?.legs[0]).toEqual(withLegDefaults());
+    expect(back?.legs[1]).toEqual(withLegDefaults());
+  });
+
+  it("ignores palette names that are not stocking colors and missing trailing fields", () => {
+    const back = unpackLook("#look=1~step~bath~lilac~over.plain.0.gloss.15.dots.lilac.none.lilac~over.plain");
+    expect(back?.legs[0]).toEqual(
+      withLegDefaults({ length: "over", cuff: "plain", material: "gloss", denier: 15, pattern: "dots" }),
+    );
+    expect(back?.legs[1]).toEqual(withLegDefaults({ length: "over", cuff: "plain" }));
+  });
+
+  it("keeps the raw payload when percent decoding fails", () => {
+    const back = unpackLook("#look=1~step~bath~lilac~thigh.lace.0.sheer.40.none.%E0%A4%A");
+    expect(back?.pose).toBe("step");
+    expect(back?.legs[0].color).toBe("ink");
+  });
+});

@@ -20,6 +20,7 @@ import { POSES, POSE_ORDER } from "../../engine/rig/poses";
 import { useStore } from "../../state/useStore";
 import { ui, type WardrobeTab } from "../../state/ui";
 import { CardGrid, ChipGroup, CustomColorSwatch, LabeledRow, type ChipOption } from "./primitives";
+import { hideScrollbar, paneHintClass, wardrobeSheetClass } from "./styles";
 
 const TABS: [WardrobeTab, string][] = [
   ["pose", "姿势"],
@@ -103,12 +104,13 @@ export function WardrobeSheet() {
     pose: (
       <>
         <ChipGroup group="pose" options={POSE_OPTIONS} selected={spec ? pose : undefined} onPick={actions.pose} />
-        <p className="pane-hint keys">键盘数字键 1 到 7 也能换姿势。</p>
+        <p className={`${paneHintClass} hidden fine:block`}>键盘数字键 1 到 7 也能换姿势。</p>
       </>
     ),
     preset: (
       <CardGrid
         group="preset"
+        layout="row"
         items={PRESET_ITEMS}
         onPick={pickPreset}
         canvasRef={registerCanvas}
@@ -151,7 +153,7 @@ export function WardrobeSheet() {
         <LabeledRow label="厚度">
           {chips("denier", DENIER_CHIPS, spec ? String(spec.denier) : undefined, !!material && material.minDenier > 0)}
         </LabeledRow>
-        <p className="pane-hint">
+        <p className={paneHintClass}>
           {material &&
             material.label + "：" + material.hint + (material.minDenier ? "。这种料子不透，厚度不起作用。" : "。")}
         </p>
@@ -164,30 +166,53 @@ export function WardrobeSheet() {
         <LabeledRow label="变色">
           {chips("wetColor", WET_COLOR_OPTIONS, spec ? spec.wetColor || "" : undefined)}
         </LabeledRow>
-        <p className="pane-hint">平时看不出来，泼上水才显出来。选好以后往腿上泼水试试。</p>
+        <p className={paneHintClass}>平时看不出来，泼上水才显出来。选好以后往腿上泼水试试。</p>
       </>
     ),
   };
   const currentTarget = spec ? String(solo ? -1 : target) : undefined;
 
   return (
-    <section id="materials" className="sheet" aria-label="衣橱">
-      <div className="tabs" role="tablist" aria-label="衣橱分类" ref={tabBar}>
+    <section id="materials" className={wardrobeSheetClass} aria-label="衣橱">
+      <div
+        className={`-mx-1 -mt-0.5 mb-0 flex justify-between gap-0 overflow-x-auto overscroll-contain px-0.5 ${hideScrollbar}`}
+        role="tablist"
+        aria-label="衣橱分类"
+        ref={tabBar}
+      >
         {TABS.map(([id, label]) => (
-          <button key={id} role="tab" data-tab={id} aria-selected={id === tab} onClick={() => actions.showTab(id)}>
+          <button
+            key={id}
+            className={`relative flex-none rounded-xl px-2 pt-[7px] pb-2 text-[13px] tracking-[0.04em] [transition:color_0.2s] ${id === tab ? "font-semibold text-ink-strong after:absolute after:right-2 after:bottom-0.5 after:left-2 after:h-0.5 after:rounded-[2px] after:bg-accent after:content-['']" : "text-ink-soft"}`}
+            role="tab"
+            data-tab={id}
+            aria-selected={id === tab}
+            onClick={() => actions.showTab(id)}
+          >
             {label}
           </button>
         ))}
       </div>
-      <div className="panes">
+      <div className="max-h-[min(34vh,250px)] min-h-[118px] overflow-y-auto overscroll-contain py-0.5 wide:max-h-none roomy:min-h-0 roomy:overflow-y-auto">
         {TABS.map(([id]) => (
-          <div key={id} className="pane" data-pane={id} role="tabpanel" hidden={id !== tab}>
+          <div
+            key={id}
+            className="grid gap-[9px] [align-content:start] hidden-attr:hidden"
+            data-pane={id}
+            role="tabpanel"
+            hidden={id !== tab}
+          >
             {panes[id]}
           </div>
         ))}
       </div>
-      <div className={tab === "pose" || solo ? "sheet-foot no-target" : "sheet-foot"}>
-        <div className="seg" data-key="target" role="radiogroup" aria-label="穿在哪条腿上">
+      <div className="sheet-foot flex items-center justify-between gap-2.5 border-t border-t-hairline pt-2">
+        <div
+          className={`flex rounded-[999px] bg-well p-0.5 ${tab === "pose" || solo ? "invisible" : ""}`}
+          data-key="target"
+          role="radiogroup"
+          aria-label="穿在哪条腿上"
+        >
           {TARGET_OPTIONS.map(([value, label]) => {
             const on = value === currentTarget;
             return (
@@ -195,7 +220,7 @@ export function WardrobeSheet() {
                 key={value}
                 data-v={value}
                 role="radio"
-                className={on ? "on" : undefined}
+                className={`rounded-[999px] px-3 py-[5px] text-[12.5px] whitespace-nowrap [transition:background_0.2s,color_0.2s] wide:px-[9px] ${on ? "bg-glass-strong font-semibold text-ink-strong shadow-[0_1px_4px_#5c467829]" : "text-ink-soft"}`}
                 aria-checked={spec ? on : undefined}
                 onClick={() => actions.target(Number(value))}
               >
@@ -204,7 +229,7 @@ export function WardrobeSheet() {
             );
           })}
         </div>
-        <div className="foot-actions">
+        <div className="flex gap-[7px]">
           <button id="randomBtn" className="pill" onClick={actions.random}>
             随机一双
           </button>
