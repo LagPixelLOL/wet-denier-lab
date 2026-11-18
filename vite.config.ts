@@ -14,6 +14,7 @@ export default defineConfig(({ command, mode }) => {
     build: {
       // three.js alone is about 740 kB minified.
       chunkSizeWarningLimit: 800,
+      cssMinify: false,
       rolldownOptions: {
         output: {
           codeSplitting: {

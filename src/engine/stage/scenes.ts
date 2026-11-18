@@ -1,10 +1,65 @@
 /**
  * Scenes (studio, bath, street, pool) and studio backdrops.
  */
+import type { Vec3 } from "../rig/joints";
 
-export const SCENE_ORDER = ["studio", "bath", "street", "pool"];
+export type SceneId = "studio" | "bath" | "street" | "pool";
 
-export const SCENES = {
+/** Light rig and environment colors of a scene (colors as hex strings or linear rgb). */
+export interface SceneLight {
+  key: string;
+  rim: string;
+  fillTop: Vec3;
+  fillBottom: Vec3;
+  rim2: string;
+  rim2Dir: Vec3;
+  envLo: Vec3;
+  envHi: Vec3;
+  envA: Vec3;
+  envADir: Vec3;
+  envB: Vec3;
+  envBDir: Vec3;
+  caustic: number;
+}
+
+export interface SceneFloor {
+  shadow: string;
+  mark: string;
+  markAmt: number;
+  mirror: number;
+  /** Mirror falloff (default 1.6). */
+  mirrorFall?: number;
+  /** Puddle lighting (default 1). */
+  puddleLight?: number;
+}
+
+export interface SceneWater {
+  envLo: Vec3;
+  envHi: Vec3;
+  /** Rain streak rgb + alpha. */
+  rain: [number, number, number, number];
+}
+
+export interface SceneDef {
+  label: string;
+  /** Value of the SCENE shader define. */
+  id: number;
+  rainLabel: string;
+  rainOn?: boolean;
+  dark?: boolean;
+  light: SceneLight;
+  floor: SceneFloor;
+  water: SceneWater;
+  /** Page background color behind the canvas. */
+  fade: string;
+}
+
+/** Known keys map to defs; any other string yields undefined. */
+export type SceneTable = { readonly [K in SceneId]: SceneDef } & { readonly [key: string]: SceneDef | undefined };
+
+export const SCENE_ORDER: SceneId[] = ["studio", "bath", "street", "pool"];
+
+export const SCENES: SceneTable = {
   studio: {
     label: "影棚",
     id: 0,
@@ -143,9 +198,27 @@ export const SCENES = {
   },
 };
 
-export const BACKDROP_ORDER = ["lilac", "sakura", "mint", "cream", "sky", "dusk"];
+export type BackdropId = "lilac" | "sakura" | "mint" | "cream" | "sky" | "dusk";
 
-export const BACKDROPS = {
+/** Studio backdrop and floor colors (hex strings). */
+export interface BackdropDef {
+  label: string;
+  top: string;
+  bottom: string;
+  glow: string;
+  floor: string;
+  shadow: string;
+  dark?: boolean;
+}
+
+/** Known keys map to defs; any other string yields undefined. */
+export type BackdropTable = { readonly [K in BackdropId]: BackdropDef } & {
+  readonly [key: string]: BackdropDef | undefined;
+};
+
+export const BACKDROP_ORDER: BackdropId[] = ["lilac", "sakura", "mint", "cream", "sky", "dusk"];
+
+export const BACKDROPS: BackdropTable = {
   lilac: {
     label: "浅紫",
     top: "#f6f2f6",
@@ -197,11 +270,12 @@ export const BACKDROPS = {
   },
 };
 
-export function makeCustomBackdrop(hex) {
+/** Builds a backdrop from a single hex color (3 or 6 digits, "#" optional). */
+export function makeCustomBackdrop(hex: string): BackdropDef {
   const digits = String(hex).replace("#", "");
   const value = parseInt(digits.length === 3 ? digits.replace(/./g, "$&$&") : digits, 16);
   const rgb = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
-  const mixTo = (target, t) =>
+  const mixTo = (target: number, t: number): string =>
     "#" +
     rgb
       .map((c) =>

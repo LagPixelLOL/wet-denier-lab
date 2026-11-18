@@ -5,8 +5,14 @@
 import * as THREE from "three";
 import { DEFAULT_LEG_SPEC } from "../catalog/presets";
 import { resolveLegLook } from "../catalog/resolveLegLook";
+import type { LegLook } from "../catalog/resolveLegLook";
+import type { LegModel } from "../model/legModel";
+import type { Vec3 } from "../rig/joints";
+import type { LegRigTarget } from "../rig/LegRig";
+import type { LegPose } from "../rig/skinning";
 import { createBowGeometry } from "./bow";
 import { BACKDROPS, SCENES, makeCustomBackdrop } from "./scenes";
+import type { BackdropDef, SceneDef } from "./scenes";
 import { BACKDROP_FRAGMENT_SHADER, BACKDROP_VERTEX_SHADER } from "./shaders/backdrop";
 import { BOW_FRAGMENT_SHADER, BOW_VERTEX_SHADER } from "./shaders/bow";
 import {
@@ -26,15 +32,214 @@ import {
 } from "./shaders/post";
 import { createDecalAtlas, createKnitTexture, createLogoTexture } from "./textures";
 
-const toColor = (hex) => new THREE.Color(hex);
+type U<T> = THREE.IUniform<T>;
 
-export function createStage(renderer, model) {
+/** Shared by the backdrop and floor materials. */
+export type BackdropUniforms = {
+  uTopColor: U<THREE.Color>;
+  uBottomColor: U<THREE.Color>;
+  uGlowColor: U<THREE.Color>;
+  uResolution: U<THREE.Vector2>;
+  uBackdropTime: U<number>;
+  uPixelAngle: U<number>;
+  uFocusDist: U<number>;
+  uRain: U<number>;
+  uFloorFade: U<number>;
+};
+
+/** Scene lighting shared by the leg and bow materials. */
+export type LightUniforms = {
+  uKeyDir: U<THREE.Vector3>;
+  uKeyColor: U<THREE.Color>;
+  uRimDir: U<THREE.Vector3>;
+  uRimColor: U<THREE.Color>;
+  uFillTop: U<THREE.Vector3>;
+  uFillBottom: U<THREE.Vector3>;
+  uRim2Dir: U<THREE.Vector3>;
+  uRim2Color: U<THREE.Color>;
+  uEnvLo: U<THREE.Vector3>;
+  uEnvHi: U<THREE.Vector3>;
+  uEnvAColor: U<THREE.Vector3>;
+  uEnvADir: U<THREE.Vector3>;
+  uEnvBColor: U<THREE.Vector3>;
+  uEnvBDir: U<THREE.Vector3>;
+  uCaustic: U<number>;
+  uMirrorFlipY: U<number>;
+  uMirrorFalloff: U<number>;
+};
+
+/** Skin colors, knit/decal textures and the wet map, shared by both legs. */
+export type FabricUniforms = {
+  uSkinLit: U<THREE.Color>;
+  uSkinShade: U<THREE.Color>;
+  uSkinScatter: U<THREE.Color>;
+  uKnitTex: U<THREE.Texture>;
+  uKnitMean: U<number>;
+  uDecalAtlas: U<THREE.Texture>;
+  uWetMap: U<THREE.Texture>;
+  uTime: U<number>;
+  uHighlightFalloff: U<number>;
+};
+
+export type FloorUniforms = BackdropUniforms & {
+  uFloorShadow: U<THREE.Texture>;
+  uContactShadow: U<THREE.Texture>;
+  uPuddleTex: U<THREE.Texture>;
+  uShadowRect: U<THREE.Vector4>;
+  uPuddleRect: U<THREE.Vector4>;
+  uLogoTex: U<THREE.Texture>;
+  uLogoRect: U<THREE.Vector4>;
+  uFloorColor: U<THREE.Color>;
+  uShadowColor: U<THREE.Color>;
+  uSpotCenter: U<THREE.Vector2>;
+  uRipples: U<THREE.Vector4[]>;
+  uTime: U<number>;
+  uMirror: U<THREE.Texture>;
+  uMirrorStrength: U<number>;
+  uPuddleLight: U<number>;
+  uMarkColor: U<THREE.Vector4>;
+};
+
+/** Joint rotations consumed by LEG_SKINNING_GLSL. */
+export type RigUniforms = {
+  uToeRot: U<THREE.Matrix3>;
+  uAnkleRot: U<THREE.Matrix3>;
+  uKneeRot: U<THREE.Matrix3>;
+  uRigOn: U<number>;
+};
+
+export type CastShadowUniforms = {
+  uCastShadowMatrix: U<THREE.Matrix4>;
+  uCastShadowTexel: U<number>;
+};
+
+/** Per-leg stocking look (see LegLook). */
+export type StockingUniforms = CastShadowUniforms & {
+  uDye: U<THREE.Color>;
+  uDye2: U<THREE.Color>;
+  uSheenColor: U<THREE.Color>;
+  uStripe: U<number>;
+  uShade: U<THREE.Vector3>;
+  uThrough: U<number>;
+  uSheenAmount: U<number>;
+  uDenier: U<number>;
+  uPattern: U<number>;
+  uGloss: U<number>;
+  uCuffY: U<number>;
+  uHasCuff: U<number>;
+  uCuffBulge: U<number>;
+  uCuffStyle: U<number>;
+  uBand: U<number>;
+  uGarter: U<number>;
+  uPrint: U<number>;
+  /** 1 for leg 0, -1 for leg 1. */
+  uMirror: U<number>;
+  uMatWet: U<THREE.Vector4>;
+  uMatKnit: U<THREE.Vector4>;
+  uSecret: U<THREE.Vector4>;
+  uWetDye: U<THREE.Vector4>;
+  uFadeStart: U<number>;
+  uFadeEnd: U<number>;
+  uOpacity: U<number>;
+  uWetMapSlot: U<THREE.Vector2>;
+  uCastShadowMap: U<THREE.DepthTexture | null>;
+  uCastShadowStrength: U<number>;
+};
+
+export type OutlineUniforms = RigUniforms & {
+  uResolution: U<THREE.Vector2>;
+  uLineWidth: U<number>;
+  uOutlineColor: U<THREE.Color>;
+  uSkinOutlineColor: U<THREE.Color>;
+  uCuffY: U<number>;
+  uHasCuff: U<number>;
+  uFadeStart: U<number>;
+  uFadeEnd: U<number>;
+  uOpacity: U<number>;
+};
+
+export type BowUniforms = LightUniforms &
+  RigUniforms & {
+    uBowMatrix: U<THREE.Matrix4>;
+    uBowColor: U<THREE.Color>;
+    uBowShade: U<THREE.Vector3>;
+    uFadeStart: U<number>;
+    uFadeEnd: U<number>;
+    uOpacity: U<number>;
+  };
+
+export type StageMesh = THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+
+/** Meshes and uniforms of one leg. */
+export interface StageLeg {
+  index: number;
+  group: THREE.Group;
+  /** Mirrored copy rendered into the floor reflection. */
+  mirror: THREE.Group;
+  rig: RigUniforms;
+  fabric: StockingUniforms;
+  outlineUniforms: OutlineUniforms;
+  /** Color passes of the stocking and the skin. */
+  stocking: StageMesh;
+  skin: StageMesh;
+  /** Everything hidden when the skin is covered. */
+  skinParts: StageMesh[];
+  shadow: StageMesh;
+  caster: StageMesh;
+  castScene: THREE.Scene;
+  bow: StageMesh;
+  bowU: BowUniforms;
+  /** Same object as group.matrix. */
+  matrix: THREE.Matrix4;
+}
+
+/** The stage API returned by createStage. */
+export interface Stage extends LegRigTarget {
+  scene: THREE.Scene;
+  floor: THREE.Mesh<THREE.CircleGeometry, THREE.ShaderMaterial>;
+  legs: StageLeg[];
+  uniforms: {
+    light: LightUniforms;
+    fabric: FabricUniforms;
+    floor: FloorUniforms;
+    bg: BackdropUniforms;
+  };
+  /** Switches scene (unknown keys fall back to studio) and returns its def. */
+  setScene(sceneKey: string): SceneDef;
+  /** Backdrop key, custom hex color or def. */
+  setBackdrop(backdrop: string | BackdropDef): void;
+  /** Precompiles a scene's materials; resolves immediately if already cached or unknown. */
+  warmScene(sceneKey: string, camera: THREE.Camera): Promise<unknown>;
+  /** Renders the floor reflection; false when skipped. */
+  renderMirror(camera: THREE.Camera): boolean;
+  resizeMirror(width: number, height: number, scale?: number): void;
+  setMirror(enabled: boolean): void;
+  lineWidth: U<number>;
+  blank: THREE.DataTexture;
+  readonly sceneNow: SceneDef;
+  readonly backdropNow: BackdropDef;
+  viewport: THREE.Vector2;
+  ripples: THREE.Vector4[];
+  setStocking(index: number, look: LegLook, bowMatrix?: ArrayLike<number> | null): void;
+  setLegPose(index: number, pose: LegPose, matrix: ArrayLike<number>): void;
+  setLegOpacity(index: number, opacity: number): void;
+  setOrder(frontIndex: number): void;
+  setCastPoints(points: Iterable<Vec3>): void;
+  aimLights(yaw: number, tilt?: number): void;
+  bakeShadow(force?: boolean): void;
+  shadowScene: THREE.Scene;
+  blit(colorTexture: THREE.Texture, depthTexture: THREE.Texture | null): void;
+}
+
+const toColor = (hex: THREE.ColorRepresentation): THREE.Color => new THREE.Color(hex);
+
+export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Stage {
   const mainScene = new THREE.Scene();
   const viewport = new THREE.Vector2(1, 1);
   const knitTexture = createKnitTexture(renderer);
   const blankTexture = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
   blankTexture.needsUpdate = true;
-  const backdropUniforms = {
+  const backdropUniforms: BackdropUniforms = {
     uTopColor: {
       value: toColor("#f6f2f6"),
     },
@@ -63,7 +268,7 @@ export function createStage(renderer, model) {
       value: 0,
     },
   };
-  const lightUniforms = {
+  const lightUniforms: LightUniforms = {
     uKeyDir: {
       value: new THREE.Vector3(-0.5, 0.75, 0.45).normalize(),
     },
@@ -116,7 +321,7 @@ export function createStage(renderer, model) {
       value: 0,
     },
   };
-  const fabricUniforms = {
+  const fabricUniforms: FabricUniforms = {
     uSkinLit: {
       value: toColor("#ffebe3"),
     },
@@ -145,7 +350,7 @@ export function createStage(renderer, model) {
       value: 0.7,
     },
   };
-  const makeBackdropMaterial = (sceneId) =>
+  const makeBackdropMaterial = (sceneId: number): THREE.ShaderMaterial =>
     new THREE.ShaderMaterial({
       vertexShader: BACKDROP_VERTEX_SHADER,
       fragmentShader: BACKDROP_FRAGMENT_SHADER,
@@ -175,7 +380,7 @@ export function createStage(renderer, model) {
     },
     () => new THREE.Vector4(0, 0, -10, 0),
   );
-  const floorUniforms = {
+  const floorUniforms: FloorUniforms = {
     ...backdropUniforms,
     uFloorShadow: {
       value: floorShadowTarget.texture,
@@ -227,7 +432,7 @@ export function createStage(renderer, model) {
       value: new THREE.Vector4(0, 0, 0, 0.5),
     },
   };
-  const makeFloorMaterial = (sceneId) =>
+  const makeFloorMaterial = (sceneId: number): THREE.ShaderMaterial =>
     new THREE.ShaderMaterial({
       vertexShader: FLOOR_VERTEX_SHADER,
       fragmentShader: FLOOR_FRAGMENT_SHADER,
@@ -250,7 +455,7 @@ export function createStage(renderer, model) {
     },
   };
   const shadowMapSize = matchMedia("(pointer: coarse)").matches ? 640 : 1024;
-  const castShadowUniforms = {
+  const castShadowUniforms: CastShadowUniforms = {
     uCastShadowMatrix: {
       value: new THREE.Matrix4(),
     },
@@ -267,10 +472,10 @@ export function createStage(renderer, model) {
       depthTexture: depthTexture,
     });
   });
-  const skinOutlineColor = {
+  const skinOutlineColor: U<THREE.Color> = {
     value: toColor("#a06a66"),
   };
-  const lineWidth = {
+  const lineWidth: U<number> = {
     value: 1.6,
   };
   const mirrorScene = new THREE.Scene();
@@ -283,8 +488,8 @@ export function createStage(renderer, model) {
     transparent: true,
   };
   const bowGeometry = createBowGeometry();
-  function createLeg(index) {
-    const rigUniforms = {
+  function createLeg(index: number): StageLeg {
+    const rigUniforms: RigUniforms = {
       uToeRot: {
         value: new THREE.Matrix3(),
       },
@@ -299,7 +504,7 @@ export function createStage(renderer, model) {
       },
     };
     const defaultLook = resolveLegLook(DEFAULT_LEG_SPEC);
-    const stockingUniforms = {
+    const stockingUniforms: StockingUniforms = {
       uDye: {
         value: toColor(defaultLook.dye),
       },
@@ -395,14 +600,18 @@ export function createStage(renderer, model) {
     const legGroup = new THREE.Group();
     legGroup.matrixAutoUpdate = false;
     mainScene.add(legGroup);
-    const addMesh = (geometry, material, renderOrder) => {
+    const addMesh = (
+      geometry: THREE.BufferGeometry,
+      material: THREE.ShaderMaterial,
+      renderOrder: number,
+    ): StageMesh => {
       const mesh = new THREE.Mesh(geometry, material);
       mesh.frustumCulled = false;
       mesh.renderOrder = renderOrder;
       legGroup.add(mesh);
       return mesh;
     };
-    const addSurfacePasses = (isSkin) => {
+    const addSurfacePasses = (isSkin: number): [StageMesh, StageMesh] => {
       const uniforms = {
         ...surfaceUniforms,
         uIsSkin: {
@@ -446,7 +655,7 @@ export function createStage(renderer, model) {
       );
       return [depthMesh, colorMesh];
     };
-    const outlineUniforms = {
+    const outlineUniforms: OutlineUniforms = {
       uResolution: backdropUniforms.uResolution,
       uLineWidth: lineWidth,
       uOutlineColor: {
@@ -460,7 +669,7 @@ export function createStage(renderer, model) {
       uOpacity: stockingUniforms.uOpacity,
       ...rigUniforms,
     };
-    const addOutline = (isSkin) =>
+    const addOutline = (isSkin: number): StageMesh =>
       addMesh(
         isSkin ? model.skin : model.stocking,
         new THREE.ShaderMaterial({
@@ -484,7 +693,7 @@ export function createStage(renderer, model) {
     const mirrorGroup = new THREE.Group();
     mirrorGroup.matrixAutoUpdate = false;
     mirrorScene.add(mirrorGroup);
-    const addMirrorMesh = (geometry, source, renderOrder) => {
+    const addMirrorMesh = (geometry: THREE.BufferGeometry, source: StageMesh, renderOrder: number): StageMesh => {
       const mesh = new THREE.Mesh(geometry, source.material);
       mesh.frustumCulled = false;
       mesh.renderOrder = renderOrder;
@@ -494,7 +703,7 @@ export function createStage(renderer, model) {
     addMirrorMesh(model.stockingLow, stockingPasses[0], 0);
     addMirrorMesh(model.stockingLow, stockingPasses[1], 1);
     skinParts.push(addMirrorMesh(model.skin, skinPasses[0], 0), addMirrorMesh(model.skin, skinPasses[1], 1));
-    const bowUniforms = {
+    const bowUniforms: BowUniforms = {
       ...lightUniforms,
       ...rigUniforms,
       uBowMatrix: {
@@ -579,7 +788,7 @@ export function createStage(renderer, model) {
     };
   }
   const legs = [createLeg(0), createLeg(1)];
-  function setLegPose(index, rig, matrix) {
+  function setLegPose(index: number, rig: LegPose, matrix: ArrayLike<number>): void {
     const leg = legs[index];
     leg.rig.uToeRot.value.set(...rig.T);
     leg.rig.uAnkleRot.value.set(...rig.A);
@@ -594,12 +803,12 @@ export function createStage(renderer, model) {
     leg.caster.matrix.fromArray(matrix);
     leg.caster.matrixWorldNeedsUpdate = true;
   }
-  function setLegOpacity(index, opacity) {
+  function setLegOpacity(index: number, opacity: number): void {
     const leg = legs[index];
     leg.fabric.uOpacity.value = opacity;
     leg.group.visible = leg.shadow.visible = leg.mirror.visible = opacity > 0.003;
   }
-  function setOrder(frontIndex) {
+  function setOrder(frontIndex: number): void {
     for (let i = 0; i < 2; i++) {
       legs[i].group.renderOrder = legs[i].mirror.renderOrder = frontIndex === i ? 20 : 10;
     }
@@ -636,7 +845,12 @@ export function createStage(renderer, model) {
   blurQuad.frustumCulled = false;
   blurScene.add(blurQuad);
   const worldUp = new THREE.Vector3(0, 1, 0);
-  function renderFloorShadow(target, lightDir, contactMode, blurRadius) {
+  function renderFloorShadow(
+    target: THREE.WebGLRenderTarget,
+    lightDir: THREE.Vector3,
+    contactMode: number,
+    blurRadius: number,
+  ): void {
     shadowProjUniforms.uProjDir.value.copy(lightDir);
     shadowProjUniforms.uContactMode.value = contactMode;
     renderer.setRenderTarget(target);
@@ -653,16 +867,16 @@ export function createStage(renderer, model) {
     renderer.clear();
     renderer.render(blurScene, quadCamera);
   }
-  const castPoints = [];
+  const castPoints: Vec3[] = [];
   const tmpVec = new THREE.Vector3();
   const biasMatrix = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
-  function setCastPoints(points) {
+  function setCastPoints(points: Iterable<Vec3>): void {
     castPoints.length = 0;
     for (const point of points) {
       castPoints.push(point);
     }
   }
-  function updateLegShadows() {
+  function updateLegShadows(): void {
     const bothVisible = legs[0].fabric.uOpacity.value > 0.003 && legs[1].fabric.uOpacity.value > 0.003;
     legs[0].fabric.uCastShadowStrength.value = bothVisible ? legs[1].fabric.uOpacity.value : 0;
     legs[1].fabric.uCastShadowStrength.value = bothVisible ? legs[0].fabric.uOpacity.value : 0;
@@ -709,7 +923,7 @@ export function createStage(renderer, model) {
   let lastShadowKey = "";
   const shadowDir = new THREE.Vector3();
   const tmpClearColor = new THREE.Color();
-  function bakeShadow(force = false) {
+  function bakeShadow(force = false): void {
     const keyDir = lightUniforms.uKeyDir.value;
     const dir = shadowDir.copy(keyDir);
     if (dir.y < 0.45) {
@@ -738,7 +952,7 @@ export function createStage(renderer, model) {
   const yawQuat = new THREE.Quaternion();
   const tiltQuat = new THREE.Quaternion();
   const tiltAxis = new THREE.Vector3();
-  function aimLights(yaw, tilt = 0) {
+  function aimLights(yaw: number, tilt = 0): void {
     yawQuat.setFromAxisAngle(worldUp, yaw);
     lightUniforms.uKeyDir.value.copy(baseKeyDir).applyQuaternion(yawQuat);
     lightUniforms.uRimDir.value.copy(baseRimDir).applyQuaternion(yawQuat);
@@ -771,7 +985,7 @@ export function createStage(renderer, model) {
   blitQuad.frustumCulled = false;
   blitScene.add(blitQuad);
   const tmpColor = new THREE.Color();
-  function setStocking(index, look, bowMatrix = null) {
+  function setStocking(index: number, look: LegLook, bowMatrix: ArrayLike<number> | null = null): void {
     const leg = legs[index];
     const fabric = leg.fabric;
     fabric.uDye.value.set(look.dye);
@@ -808,22 +1022,24 @@ export function createStage(renderer, model) {
     fabric.uFadeEnd.value = look.fade1;
     leg.bow.visible = !!look.bow && !!bowMatrix;
     if (leg.bow.visible) {
-      leg.bowU.uBowMatrix.value.fromArray(bowMatrix);
+      leg.bowU.uBowMatrix.value.fromArray(bowMatrix!);
       leg.bowU.uBowColor.value.set(look.dye2);
     }
   }
-  const sceneMaterialCache = new Map([[0, [backdropMesh.material, floorMesh.material]]]);
-  let currentScene = SCENES.studio;
-  let currentBackdrop = BACKDROPS.lilac;
+  const sceneMaterialCache = new Map<number, [THREE.ShaderMaterial, THREE.ShaderMaterial]>([
+    [0, [backdropMesh.material, floorMesh.material]],
+  ]);
+  let currentScene: SceneDef = SCENES.studio;
+  let currentBackdrop: BackdropDef = BACKDROPS.lilac;
   let mirrorFalloff = 0;
   let mirrorEnabled = true;
-  const getSceneMaterials = (sceneId) => {
+  const getSceneMaterials = (sceneId: number): [THREE.ShaderMaterial, THREE.ShaderMaterial] => {
     if (!sceneMaterialCache.has(sceneId)) {
       sceneMaterialCache.set(sceneId, [makeBackdropMaterial(sceneId), makeFloorMaterial(sceneId)]);
     }
-    return sceneMaterialCache.get(sceneId);
+    return sceneMaterialCache.get(sceneId)!;
   };
-  function setBackdrop(backdrop) {
+  function setBackdrop(backdrop: string | BackdropDef): void {
     currentBackdrop = typeof backdrop == "string" ? BACKDROPS[backdrop] || makeCustomBackdrop(backdrop) : backdrop;
     if (currentScene.id === 0) {
       backdropUniforms.uTopColor.value.set(currentBackdrop.top);
@@ -833,7 +1049,7 @@ export function createStage(renderer, model) {
       floorUniforms.uShadowColor.value.set(currentBackdrop.shadow);
     }
   }
-  function setScene(sceneKey) {
+  function setScene(sceneKey: string): SceneDef {
     const sceneDef = (currentScene = SCENES[sceneKey] || SCENES.studio);
     const lightDef = sceneDef.light;
     const floorDef = sceneDef.floor;
@@ -862,7 +1078,7 @@ export function createStage(renderer, model) {
     }
     return sceneDef;
   }
-  function warmScene(sceneKey, camera) {
+  function warmScene(sceneKey: string, camera: THREE.Camera): Promise<unknown> {
     const sceneDef = SCENES[sceneKey];
     if (!sceneDef || sceneMaterialCache.has(sceneDef.id) || !renderer.compileAsync) {
       return Promise.resolve();
@@ -879,7 +1095,7 @@ export function createStage(renderer, model) {
     renderer.setRenderTarget(prevTarget);
     return compilePromise;
   }
-  const flipY = (vec) => {
+  const flipY = (vec: THREE.Vector3): void => {
     vec.y = -vec.y;
   };
   const mirroredDirUniforms = [
@@ -890,15 +1106,15 @@ export function createStage(renderer, model) {
     lightUniforms.uEnvBDir,
   ];
   let mirrorScale = 0.5;
-  function resizeMirror(width, height, scale = mirrorScale) {
+  function resizeMirror(width: number, height: number, scale = mirrorScale): void {
     mirrorScale = scale;
     mirrorTarget.setSize(Math.max(4, Math.round(width * scale)), Math.max(4, Math.round(height * scale)));
   }
-  function setMirror(enabled) {
+  function setMirror(enabled: boolean): void {
     mirrorEnabled = enabled;
     floorUniforms.uMirrorStrength.value = enabled ? currentScene.floor.mirror : 0;
   }
-  function renderMirror(camera) {
+  function renderMirror(camera: THREE.Camera): boolean {
     if (floorUniforms.uMirrorStrength.value <= 0 || camera.position.y < 0.03) {
       return false;
     }
@@ -958,7 +1174,7 @@ export function createStage(renderer, model) {
     aimLights: aimLights,
     bakeShadow: bakeShadow,
     shadowScene: shadowScene,
-    blit(colorTexture, depthTexture) {
+    blit(colorTexture: THREE.Texture, depthTexture: THREE.Texture | null): void {
       blitMaterial.uniforms.uColorTex.value = colorTexture;
       blitMaterial.uniforms.uDepthTex.value = depthTexture;
       renderer.render(blitScene, quadCamera);

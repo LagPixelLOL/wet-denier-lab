@@ -4,7 +4,7 @@
 import { LEG_SKINNING_GLSL } from "../../rig/joints";
 import { CAUSTICS_GLSL } from "./backdrop";
 
-export const fadeHeight = (x, y, z) => y - (x - 0.066) * 0.3346 + (z - 0.04) * 0.0157;
+export const fadeHeight = (x: number, y: number, z: number): number => y - (x - 0.066) * 0.3346 + (z - 0.04) * 0.0157;
 
 export const FADE_HEIGHT_GLSL = "position.y - 0.3346 * (position.x - 0.066) + 0.0157 * (position.z - 0.04)";
 

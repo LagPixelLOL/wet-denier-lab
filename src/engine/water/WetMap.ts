@@ -11,16 +11,73 @@ import {
   WET_STAMP_VERTEX_SHADER,
   WET_UPDATE_FRAGMENT_SHADER,
 } from "./shaders/wet";
+import type { MaterialWater } from "../catalog/garments";
+import type { SurfaceGrid, UvRect } from "../surface/SurfaceGrid";
+
+/** The per-leg stage data WetMap reads: skinning uniforms and the leg group matrix. */
+export interface WetMapLeg {
+  rig: Record<string, THREE.IUniform>;
+  matrix: THREE.Matrix4;
+}
+
+/** Pixel scissor box in the atlas: x, y, width, height. */
+export type WetBox = [number, number, number, number];
+
+/** Instanced stamp attribute names. */
+export type WetStampAttr = "aRect" | "aA" | "aB" | "aAmt";
+
+type WetFilter = typeof THREE.NearestFilter | typeof THREE.LinearFilter;
 
 export class WetMap {
-  constructor(renderer, geometry, surface, size, legs) {
+  declare renderer: THREE.WebGLRenderer;
+  declare surface: SurfaceGrid;
+  declare size: number;
+  declare legCount: number;
+  declare width: number;
+  declare height: number;
+  /** Baked texel world positions. */
+  declare posRT: THREE.WebGLRenderTarget;
+  /** Baked downhill flow, half resolution. */
+  declare flowRT: THREE.WebGLRenderTarget;
+  /** Current wetness (read). */
+  declare a: THREE.WebGLRenderTarget;
+  /** Next wetness (write). */
+  declare b: THREE.WebGLRenderTarget;
+  declare cam: THREE.OrthographicCamera;
+  declare bakeShared: { uBakeMode: THREE.IUniform<number>; uBakeSize: THREE.IUniform<number> };
+  declare bakeScene: THREE.Scene;
+  declare bakeMeshes: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>[];
+  declare updateMat: THREE.ShaderMaterial;
+  declare quadScene: THREE.Scene;
+  declare maxStamps: number;
+  declare attr: Record<string, THREE.InstancedBufferAttribute>;
+  declare stampGeo: THREE.InstancedBufferGeometry;
+  declare stampMat: THREE.ShaderMaterial;
+  declare stampScene: THREE.Scene;
+  /** Stamps queued for the next update. */
+  declare count: number;
+  /** Per-leg soak multiplier. */
+  declare take: number[];
+  /** Upper bound on remaining wetness; the update is skipped once it reaches zero. */
+  declare wetBound: number;
+  declare boxes: WetBox[];
+  declare _rects: UvRect[];
+  declare padU: number;
+  declare padV: number;
+  constructor(
+    renderer: THREE.WebGLRenderer,
+    geometry: THREE.BufferGeometry,
+    surface: SurfaceGrid,
+    size: number,
+    legs: readonly WetMapLeg[],
+  ) {
     this.renderer = renderer;
     this.surface = surface;
     this.size = size;
     const legCount = (this.legCount = legs.length);
     const width = (this.width = size * legCount);
     const height = (this.height = size);
-    const makeTarget = (filter, w = width, h = height) =>
+    const makeTarget = (filter: WetFilter, w = width, h = height) =>
       new THREE.WebGLRenderTarget(w, h, {
         type: THREE.HalfFloatType,
         format: THREE.RGBAFormat,
@@ -149,7 +206,7 @@ export class WetMap {
     this.count = 0;
     this.take = [1, 1];
     this.wetBound = 0;
-    this.boxes = legs.map((leg, legIndex) => {
+    this.boxes = legs.map((_leg, legIndex): WetBox => {
       let minU = 1;
       let minV = 1;
       let maxU = 0;
@@ -186,14 +243,14 @@ export class WetMap {
     renderer.setClearColor(prevClearColor, prevClearAlpha);
     this.bake();
   }
-  get texture() {
+  get texture(): THREE.Texture {
     return this.a.texture;
   }
-  setLegWater(legIndex, water) {
+  setLegWater(legIndex: number, water: MaterialWater): void {
     this.updateMat.uniforms.uLegWater.value[legIndex].set(water.soak, water.wick, water.shed || 0, 0);
     this.take[legIndex] = water.take;
   }
-  bake(withFlow = true) {
+  bake(withFlow = true): void {
     const renderer = this.renderer;
     for (const mesh of this.bakeMeshes) {
       mesh.matrix.copy(mesh.userData.source);
@@ -217,7 +274,19 @@ export class WetMap {
     renderer.setRenderTarget(null);
     renderer.setClearColor(prevClearColor, prevClearAlpha);
   }
-  stamp(x, y, z, radius, soak, film, fresh = 0, roughness = 1, x2 = x, y2 = y, z2 = z) {
+  stamp(
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+    soak: number,
+    film: number,
+    fresh = 0,
+    roughness = 1,
+    x2 = x,
+    y2 = y,
+    z2 = z,
+  ): void {
     this.wetBound = Math.min(3.4, this.wetBound + soak * 1.5 + film + 0.2);
     const cx = (x + x2) / 2;
     const cy = (y + y2) / 2;
@@ -239,7 +308,7 @@ export class WetMap {
       this.attr.aAmt.array.set([soak * this.take[rect[0] >= 0.5 ? 1 : 0], film, fresh, seed], offset);
     }
   }
-  update(dt) {
+  update(dt: number): void {
     const renderer = this.renderer;
     if (this.wetBound <= 0 && this.count === 0) {
       return;
@@ -269,7 +338,7 @@ export class WetMap {
     renderer.setRenderTarget(null);
     [this.a, this.b] = [this.b, this.a];
   }
-  clear() {
+  clear(): void {
     this.wetBound = 0;
     const renderer = this.renderer;
     const prevClearColor = renderer.getClearColor(new THREE.Color());

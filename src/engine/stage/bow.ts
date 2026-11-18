@@ -2,8 +2,23 @@
  * The ribbon bow mesh and where it sits on the cuff.
  */
 import * as THREE from "three";
+import type { CollisionMesh } from "../model/legModel";
+import type { Vec3 } from "../rig/joints";
 
-function addPatch(mesh, segU, segV, surfaceFn, closedSeam = false) {
+interface PatchMesh {
+  pos: number[];
+  idx: number[];
+  /** [first vertex, row stride, rows] of patches whose first and last columns coincide. */
+  seams: [number, number, number][];
+}
+
+function addPatch(
+  mesh: PatchMesh,
+  segU: number,
+  segV: number,
+  surfaceFn: (u: number, v: number) => Vec3,
+  closedSeam = false,
+): void {
   const base = mesh.pos.length / 3;
   for (let row = 0; row <= segV; row++) {
     for (let col = 0; col <= segU; col++) {
@@ -25,8 +40,8 @@ function addPatch(mesh, segU, segV, surfaceFn, closedSeam = false) {
   }
 }
 
-export function createBowGeometry() {
-  const mesh = {
+export function createBowGeometry(): THREE.BufferGeometry {
+  const mesh: PatchMesh = {
     pos: [],
     idx: [],
     seams: [],
@@ -35,7 +50,7 @@ export function createBowGeometry() {
   const loopHeight = 0.017;
   const loopThickness = 0.0042;
   for (const side of [1, -1]) {
-    const loopEdge = (t) => [
+    const loopEdge = (t: number): [number, number] => [
       side * loopWidth * Math.sin(Math.PI * t),
       loopHeight * 0.5 * Math.sin(Math.PI * 2 * t) * (0.75 + Math.sin(Math.PI * t) * 0.25),
     ];
@@ -96,7 +111,12 @@ export function createBowGeometry() {
   return geometry;
 }
 
-export function computeBowMatrix(collision, cuffY, out = new Float64Array(16)) {
+/** Column-major matrix placing the bow on the outer side of the cuff at `cuffY`. */
+export function computeBowMatrix(
+  collision: Pick<CollisionMesh, "pos" | "nrm">,
+  cuffY: number,
+  out: Float64Array = new Float64Array(16),
+): Float64Array {
   const pos = collision.pos;
   const nrm = collision.nrm;
   const vertexCount = pos.length / 3;

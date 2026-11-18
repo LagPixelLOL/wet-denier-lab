@@ -11,6 +11,141 @@ import {
   GLINT_FRAGMENT_SHADER,
   GLINT_VERTEX_SHADER,
 } from "./shaders/drops";
+import type { MaterialWater } from "../catalog/garments";
+import type { SurfaceGrid, SurfaceHit } from "../surface/SurfaceGrid";
+import type { WetMap } from "./WetMap";
+
+/** A thrown drop flying on a fixed ballistic arc toward a known surface target. */
+export interface ThrownDrop {
+  kind: 0;
+  /** Age in seconds; negative while waiting to launch. */
+  t: number;
+  /** Flight time to the target. */
+  T: number;
+  r: number;
+  sx: number;
+  sy: number;
+  sz: number;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  tx: number;
+  ty: number;
+  tz: number;
+  nx: number;
+  ny: number;
+  nz: number;
+  leg: number;
+}
+
+/** A freely integrated drop: 1 = spray, 2 = drip, 3 = rain. */
+export interface FreeDrop {
+  kind: 1 | 2 | 3;
+  t: number;
+  r: number;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+}
+
+export type Drop = ThrownDrop | FreeDrop;
+
+/** A water bead clinging to the fabric. */
+export interface Bead {
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  ny: number;
+  nz: number;
+  leg: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  r: number;
+  age: number;
+  /** Last position a trail stamp was laid from. */
+  lx: number;
+  ly: number;
+  lz: number;
+  wob: number;
+  soakT: number;
+  /** Glint strength, assigned in sync for glint candidates. */
+  glow?: number;
+}
+
+/** Floor ripple: x, z, start time, strength. */
+export type Ripple = THREE.Vector4;
+
+export interface WaterCaps {
+  /** [single leg, two legs]. */
+  drops: [number, number];
+  beads: [number, number];
+  glints: number;
+  keep: number;
+}
+
+/** Rain spawn area over the floor footprint. */
+export interface RainArea {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  rate: number;
+}
+
+export type RainStyle = "rain" | "shower";
+
+export type BeadWater = Pick<MaterialWater, "bead" | "slip">;
+
+/** Per-frame accumulators read (and reset) by the app loop. */
+export interface WaterEvents {
+  impacts: number;
+  energy: number;
+  floor: number;
+  /** Energy-weighted impact position sums. */
+  ex: number;
+  ey: number;
+  ez: number;
+  /** Last floor hit position. */
+  fx: number;
+  fz: number;
+}
+
+/** Scene-dependent droplet shading. */
+export interface WaterLook {
+  envLo: readonly [number, number, number];
+  envHi: readonly [number, number, number];
+  rain: readonly [number, number, number, number];
+}
+
+export interface WaterSimOptions {
+  surface: SurfaceGrid;
+  wetmap: WetMap;
+  mobile: boolean;
+}
+
+/** Surface point a throw aims at. */
+export type ThrowTarget = Pick<SurfaceHit, "x" | "y" | "z" | "nx" | "ny" | "nz">;
+
+export interface ThrowOptions {
+  count?: number;
+  spread?: number;
+  size?: number;
+  flight?: number;
+  lift?: number;
+  reach?: number;
+  delay?: number;
+  wait?: number;
+}
+
+type DropMesh = THREE.InstancedMesh<THREE.IcosahedronGeometry, THREE.ShaderMaterial>;
 
 const GRAVITY = 9.81;
 
@@ -20,12 +155,53 @@ const PUDDLE_RES = 96;
 
 const PUDDLE_SIZE = 0.8;
 
-function gaussianRandom() {
+function gaussianRandom(): number {
   return Math.sqrt(Math.log(Math.random() + 1e-9) * -2) * Math.cos(Math.random() * 6.2831853);
 }
 
 export class WaterSim {
-  constructor({ surface: surface, wetmap: wetmap, mobile: mobile }) {
+  declare surface: SurfaceGrid;
+  declare wetmap: WetMap;
+  declare mobile: boolean;
+  declare drops: Drop[];
+  declare beads: Bead[];
+  declare caps: WaterCaps;
+  declare maxDrops: number;
+  declare maxBeads: number;
+  declare time: number;
+  declare rain: boolean;
+  declare rainAcc: number;
+  declare rainStyle: RainStyle;
+  declare rainOver: RainArea;
+  declare legWater: BeadWater[];
+  declare events: WaterEvents;
+  declare material: THREE.ShaderMaterial;
+  declare beadMesh: DropMesh;
+  declare dropMesh: DropMesh;
+  declare keyWorld: THREE.Vector3;
+  declare decalMat: THREE.ShaderMaterial;
+  declare decalMesh: THREE.InstancedMesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
+  declare maxGlints: number;
+  declare keepGlints: number;
+  declare glintPos: THREE.InstancedBufferAttribute;
+  declare glintPhase: THREE.InstancedBufferAttribute;
+  declare glintGeo: THREE.InstancedBufferGeometry;
+  declare glintMat: THREE.ShaderMaterial;
+  declare glintMesh: THREE.Mesh<THREE.InstancedBufferGeometry, THREE.ShaderMaterial>;
+  declare scene: THREE.Scene;
+  /** Floor puddle water levels, PUDDLE_RES x PUDDLE_RES. */
+  declare puddle: Float32Array;
+  declare puddleBytes: Uint8Array;
+  declare puddleTex: THREE.DataTexture;
+  declare puddleCenter: [number, number];
+  declare puddleRect: THREE.Vector4;
+  declare ripples: Ripple[];
+  declare rippleIdx: number;
+  declare puddleTimer: number;
+  /** Whether any bead moved noticeably last update (unset before the first update). */
+  declare sliding?: boolean;
+  declare _pudWasWet?: boolean;
+  constructor({ surface, wetmap, mobile }: WaterSimOptions) {
     this.surface = surface;
     this.wetmap = wetmap;
     this.mobile = mobile;
@@ -101,7 +277,7 @@ export class WaterSim {
         },
       },
     });
-    const makeDropMesh = (detail, capacity) => {
+    const makeDropMesh = (detail: number, capacity: number): DropMesh => {
       const geo = new THREE.IcosahedronGeometry(1, detail);
       const mesh = new THREE.InstancedMesh(geo, this.material, capacity);
       for (const attrName of ["aR", "aKind"]) {
@@ -202,23 +378,32 @@ export class WaterSim {
     this.puddleTimer = 0;
   }
   throwAt(
-    hit,
-    fromPos,
-    { count = 30, spread = 0.016, size = 1, flight = 0.17, lift = 0.1, reach = 0.42, delay = 0.045, wait = 0 } = {},
-  ) {
+    hit: ThrowTarget,
+    fromPos: THREE.Vector3Like,
+    {
+      count = 30,
+      spread = 0.016,
+      size = 1,
+      flight = 0.17,
+      lift = 0.1,
+      reach = 0.42,
+      delay = 0.045,
+      wait = 0,
+    }: ThrowOptions = {},
+  ): void {
     const normal = [hit.nx, hit.ny, hit.nz];
     let toSource = [fromPos.x - hit.x, fromPos.y - hit.y, fromPos.z - hit.z];
     const sourceDist = Math.hypot(...toSource);
     toSource = toSource.map((c) => c / sourceDist);
     const hitPos = [hit.x, hit.y, hit.z];
-    const launchPoint = (normalBlend, dist, rise) =>
+    const launchPoint = (normalBlend: number, dist: number, rise: number): number[] =>
       [0, 1, 2].map(
         (axis) =>
           hitPos[axis] +
           (toSource[axis] * (1 - normalBlend) + normal[axis] * normalBlend) * dist +
           (axis === 1 ? rise : 0),
       );
-    const blockedAt = (point) => {
+    const blockedAt = (point: number[]): number => {
       const dist = Math.hypot(point[0] - hitPos[0], point[1] - hitPos[1], point[2] - hitPos[2]);
       const rayHit = this.surface.raycast(
         hitPos[0] + normal[0] * 0.004,
@@ -290,28 +475,28 @@ export class WaterSim {
       });
     }
   }
-  setRain(enabled) {
+  setRain(enabled: boolean): void {
     this.rain = enabled;
   }
-  setLegCount(legCount) {
+  setLegCount(legCount: number): void {
     const tier = legCount > 1 ? 1 : 0;
     this.maxDrops = this.caps.drops[tier];
     this.maxBeads = this.caps.beads[tier];
   }
-  setRainStyle(style) {
+  setRainStyle(style: RainStyle): void {
     this.rainStyle = style;
   }
-  setLook(look) {
+  setLook(look: WaterLook): void {
     const uniforms = this.material.uniforms;
     uniforms.uEnvLo.value.set(...look.envLo);
     uniforms.uEnvHi.value.set(...look.envHi);
     uniforms.uRainTint.value.set(...look.rain);
   }
-  setLegWater(legIndex, water) {
+  setLegWater(legIndex: number, water: BeadWater): void {
     this.legWater[legIndex].bead = water.bead;
     this.legWater[legIndex].slip = water.slip;
   }
-  setFootprint(x, z, width, depth) {
+  setFootprint(x: number, z: number, width: number, depth: number): void {
     const area = this.rainOver;
     area.x = x;
     area.z = z;
@@ -319,7 +504,7 @@ export class WaterSim {
     area.d = depth;
     area.rate = Math.sqrt((width * depth) / 0.09);
   }
-  shakeOff() {
+  shakeOff(): void {
     for (const bead of this.beads) {
       if (bead.r > 0.0008) {
         this._drip(bead);
@@ -327,13 +512,26 @@ export class WaterSim {
     }
     this.beads.length = 0;
   }
-  dryAll() {
+  dryAll(): void {
     this.drops.length = 0;
     this.beads.length = 0;
     this.puddle.fill(0);
     this.wetmap.clear();
   }
-  _impact(x, y, z, nx, ny, nz, vx, vy, vz, radius, isSplash, leg = 0) {
+  _impact(
+    x: number,
+    y: number,
+    z: number,
+    nx: number,
+    ny: number,
+    nz: number,
+    vx: number,
+    vy: number,
+    vz: number,
+    radius: number,
+    isSplash: boolean,
+    leg = 0,
+  ): void {
     const speed = Math.hypot(vx, vy, vz);
     const normalSpeed = vx * nx + vy * ny + vz * nz;
     const events = this.events;
@@ -405,9 +603,9 @@ export class WaterSim {
       }
     }
   }
-  _addBead(x, y, z, nx, ny, nz, r, leg = 0) {
+  _addBead(x: number, y: number, z: number, nx: number, ny: number, nz: number, r: number, leg = 0): void {
     if (this.beads.length >= this.maxBeads) {
-      let nearest = null;
+      let nearest: Bead | null = null;
       let bestDist = 0.02;
       for (const bead of this.beads) {
         const d = Math.hypot(bead.x - x, bead.y - y, bead.z - z);
@@ -441,7 +639,7 @@ export class WaterSim {
       soakT: Math.random(),
     });
   }
-  _floorHit(x, z, r, speed) {
+  _floorHit(x: number, z: number, r: number, speed: number): void {
     this.events.floor++;
     this.events.fx = x;
     this.events.fz = z;
@@ -485,7 +683,7 @@ export class WaterSim {
       }
     }
   }
-  update(dt) {
+  update(dt: number): void {
     this.time += dt;
     const surface = this.surface;
     const wetmap = this.wetmap;
@@ -568,7 +766,7 @@ export class WaterSim {
     this._updateBeads(dt);
     this._updatePuddle(dt);
   }
-  _updateBeads(dt) {
+  _updateBeads(dt: number): void {
     const surface = this.surface;
     const wetmap = this.wetmap;
     const beads = this.beads;
@@ -697,7 +895,7 @@ export class WaterSim {
       }
     }
   }
-  _drip(bead) {
+  _drip(bead: Bead): void {
     if (!(this.drops.length >= this.maxDrops)) {
       this.drops.push({
         kind: 2,
@@ -712,7 +910,7 @@ export class WaterSim {
       });
     }
   }
-  _spawnRain(dt) {
+  _spawnRain(dt: number): void {
     const area = this.rainOver;
     const shower = this.rainStyle === "shower";
     for (
@@ -754,7 +952,7 @@ export class WaterSim {
       });
     }
   }
-  _updatePuddle(dt) {
+  _updatePuddle(dt: number): void {
     this.puddleTimer += dt;
     if (this.puddleTimer < 1 / 20) {
       return;
@@ -786,7 +984,12 @@ export class WaterSim {
     }
     this._pudWasWet = anyWet;
   }
-  sync(camera, sceneTexture, resolution, lightDir) {
+  sync(
+    camera: THREE.Camera,
+    sceneTexture: THREE.Texture | null,
+    resolution: THREE.Vector2,
+    lightDir: THREE.Vector3,
+  ): void {
     const uniforms = this.material.uniforms;
     uniforms.uSceneTex.value = sceneTexture;
     uniforms.uResolution.value.copy(resolution);
@@ -880,8 +1083,8 @@ export class WaterSim {
       (b) => b.r > 0.0012 && b.age > 0.15 && b.nx * light.x + b.ny * light.y + b.nz * light.z > -0.15,
     );
     candidates.sort((a, b) => b.r - a.r);
-    const keptPerLeg = [0, 0];
-    const glintsPerLeg = [0, 0];
+    const keptPerLeg: number[] = [0, 0];
+    const glintsPerLeg: number[] = [0, 0];
     for (const bead of candidates) {
       const fade = bead.age < 1.2 ? 1 : Math.max(0, 1 - (bead.age - 1.2) / 3);
       const leg = bead.leg || 0;
@@ -891,7 +1094,7 @@ export class WaterSim {
       }
       bead.glow = Math.max(fade, keep);
     }
-    const glinting = candidates.filter((b) => b.glow > 0.02).sort((a, b) => b.glow * b.r - a.glow * a.r);
+    const glinting = candidates.filter((b) => b.glow! > 0.02).sort((a, b) => b.glow! * b.r - a.glow! * a.r);
     const glintPosArr = this.glintPos.array;
     const glintPhaseArr = this.glintPhase.array;
     let glintCount = 0;
@@ -918,7 +1121,7 @@ export class WaterSim {
       glintPosArr[glintCount * 4 + 2] = pz + (hz / hLen) * bead.r * 0.55;
       glintPosArr[glintCount * 4 + 3] = bead.r;
       glintPhaseArr[glintCount * 2] = (bead.wob % 6.2831) / 6.2831;
-      glintPhaseArr[glintCount * 2 + 1] = bead.glow;
+      glintPhaseArr[glintCount * 2 + 1] = bead.glow!;
       glintCount++;
     }
     this.glintGeo.instanceCount = glintCount;
@@ -937,7 +1140,8 @@ export class WaterSim {
       let vy = drop.vy;
       const vz = drop.vz;
       if (drop.kind === 0) {
-        vy = drop.vy - glintPosArr * drop.t;
+        // NOTE: multiplies by the glint array (NaN at runtime) where GRAVITY looks intended; kept as is.
+        vy = drop.vy - (glintPosArr as unknown as number) * drop.t;
       }
       const speed = Math.hypot(vx, vy, vz) || 1;
       fwd.set(vx / speed, vy / speed, vz / speed);

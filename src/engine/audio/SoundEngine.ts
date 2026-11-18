@@ -5,10 +5,27 @@
 const IS_IOS =
   /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
-function createSilentWavUrl() {
+/** Ambience loops, one per scene that has one. */
+export type AmbienceBed = "street" | "pool" | "bath";
+
+/** Options for a filtered noise burst. */
+export interface BurstOptions {
+  /** Source buffer; defaults to white noise. */
+  buf?: AudioBuffer;
+  type?: BiquadFilterType;
+  freq: number;
+  q?: number;
+  gain: number;
+  attack?: number;
+  decay: number;
+  /** Extra lowpass cutoff in Hz; 0 disables it. */
+  lp?: number;
+}
+
+function createSilentWavUrl(): string {
   const buffer = new ArrayBuffer(4044);
   const view = new DataView(buffer);
-  const writeAscii = (offset, str) => {
+  const writeAscii = (offset: number, str: string): void => {
     for (let i = 0; i < str.length; i++) {
       view.setUint8(offset + i, str.charCodeAt(i));
     }
@@ -34,9 +51,29 @@ function createSilentWavUrl() {
   );
 }
 
-const randRange = (min, max) => min + Math.random() * (max - min);
+const randRange = (min: number, max: number): number => min + Math.random() * (max - min);
 
 export class SoundEngine {
+  declare ctx: AudioContext | null;
+  declare enabled: boolean;
+  declare lastSplash: number;
+  declare lastEnergy: number;
+  declare lastDrip: number;
+  declare silentEl: HTMLAudioElement | null;
+  declare scene: string;
+  declare raining: boolean;
+  declare beds: Record<AmbienceBed, GainNode> | null;
+  declare dripTimer: ReturnType<typeof setTimeout> | number;
+  declare seed: number;
+  /** Graph nodes below are created together with the context. */
+  declare master: GainNode;
+  declare noise: AudioBuffer;
+  declare dust: AudioBuffer;
+  declare verb: ConvolverNode | null;
+  /** Reverb send; unset if the reverb could not be built. */
+  declare verbIn?: GainNode;
+  declare rainGain: GainNode;
+  declare bedSwell: Record<"street" | "pool", GainNode>;
   constructor() {
     this.ctx = null;
     this.enabled = true;
@@ -50,10 +87,10 @@ export class SoundEngine {
     this.dripTimer = 0;
     this.seed = 12345;
   }
-  get running() {
+  get running(): boolean {
     return !!this.ctx && this.ctx.state === "running";
   }
-  _session(active) {
+  _session(active: boolean): void {
     try {
       if (navigator.audioSession) {
         navigator.audioSession.type = active ? "playback" : "auto";
@@ -76,7 +113,7 @@ export class SoundEngine {
       } catch {}
     }
   }
-  unlock() {
+  unlock(): void {
     if (this.enabled) {
       this._session(true);
     }
@@ -93,12 +130,12 @@ export class SoundEngine {
       } catch {}
     }
   }
-  _create(existingCtx) {
+  _create(existingCtx?: AudioContext): void {
     const AudioCtor = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtor && !existingCtx) {
       return;
     }
-    const ctx = (this.ctx = existingCtx || new AudioCtor());
+    const ctx = (this.ctx = existingCtx || new AudioCtor!());
     const sampleRate = ctx.sampleRate;
     this.master = ctx.createGain();
     this.master.gain.value = this.enabled ? 0.9 : 0;
@@ -177,7 +214,7 @@ export class SoundEngine {
     }
     hissSrc.start();
     patterSrc.start();
-    const makeBed = (buf, filterType, freq, q, rate = 1) => {
+    const makeBed = (buf: AudioBuffer, filterType: BiquadFilterType, freq: number, q: number, rate = 1): GainNode => {
       const src = ctx.createBufferSource();
       src.buffer = buf;
       src.loop = true;
@@ -192,7 +229,7 @@ export class SoundEngine {
       src.start();
       return gain;
     };
-    const addLfo = (target, freq, depth) => {
+    const addLfo = (target: GainNode, freq: number, depth: number): void => {
       const osc = ctx.createOscillator();
       const lfoGain = ctx.createGain();
       osc.frequency.value = freq;
@@ -209,7 +246,7 @@ export class SoundEngine {
       street: ctx.createGain(),
       pool: ctx.createGain(),
     };
-    for (const key of ["street", "pool"]) {
+    for (const key of ["street", "pool"] as const) {
       this.beds[key].disconnect();
       this.beds[key].connect(this.bedSwell[key]).connect(this.master);
       this.bedSwell[key].gain.value = 0.6;
@@ -218,20 +255,20 @@ export class SoundEngine {
     addLfo(this.bedSwell.pool, 0.23, 0.4);
     this.setScene(this.scene);
   }
-  setScene(sceneName) {
+  setScene(sceneName: string): void {
     this.scene = sceneName;
     clearTimeout(this.dripTimer);
     if (!this.ctx) {
       return;
     }
     const now = this.ctx.currentTime;
-    const bedLevels = {
+    const bedLevels: Record<AmbienceBed, number> = {
       street: 0.05,
       pool: 0.035,
       bath: 0.012,
     };
-    for (const key of Object.keys(this.beds)) {
-      this.beds[key].gain.setTargetAtTime(key === sceneName ? bedLevels[key] : 0, now, 0.6);
+    for (const key of Object.keys(this.beds!) as AmbienceBed[]) {
+      this.beds![key].gain.setTargetAtTime(key === sceneName ? bedLevels[key] : 0, now, 0.6);
     }
     if (this.verbIn) {
       this.verbIn.gain.setTargetAtTime(sceneName === "bath" ? 0.5 : sceneName === "street" ? 0.12 : 0.2, now, 0.3);
@@ -241,16 +278,16 @@ export class SoundEngine {
       this._tapDrip();
     }
   }
-  _rand() {
+  _rand(): number {
     this.seed = (Math.imul(this.seed, 1664525) + 1013904223) | 0;
     return (this.seed >>> 8) / 16777216;
   }
-  _tapDrip() {
+  _tapDrip(): void {
     this.dripTimer = setTimeout(
       () => {
         if (this.scene === "bath") {
           if (this.running && this.enabled && !document.hidden) {
-            const t = this.ctx.currentTime + 0.01;
+            const t = this.ctx!.currentTime + 0.01;
             const voice = this._voice(-0.35, 1.6);
             const freq = 700 + this._rand() * 500;
             this._bloop(voice, t, freq, 0.045, 0.07);
@@ -264,14 +301,14 @@ export class SoundEngine {
       2600 + this._rand() * 4200,
     );
   }
-  setEnabled(enabled) {
+  setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     this._session(enabled);
     if (this.master) {
-      this.master.gain.setTargetAtTime(enabled ? 0.9 : 0, this.ctx.currentTime, 0.05);
+      this.master.gain.setTargetAtTime(enabled ? 0.9 : 0, this.ctx!.currentTime, 0.05);
     }
   }
-  setRain(raining) {
+  setRain(raining: boolean): void {
     this.raining = raining;
     if (this.ctx) {
       this.rainGain.gain.setTargetAtTime(
@@ -281,10 +318,10 @@ export class SoundEngine {
       );
     }
   }
-  _voice(pan, reverbSend = 1) {
-    const ctx = this.ctx;
+  _voice(pan: number, reverbSend = 1): GainNode {
+    const ctx = this.ctx!;
     const input = ctx.createGain();
-    let output = input;
+    let output: AudioNode = input;
     if (ctx.createStereoPanner) {
       const panner = ctx.createStereoPanner();
       panner.pan.value = Math.max(-0.8, Math.min(0.8, pan));
@@ -303,17 +340,17 @@ export class SoundEngine {
     }
     return input;
   }
-  _env(gainNode, t, peak, attack, decay) {
+  _env(gainNode: GainNode, t: number, peak: number, attack: number, decay: number): void {
     gainNode.gain.setValueAtTime(0.0001, t);
     gainNode.gain.exponentialRampToValueAtTime(peak, t + attack);
     gainNode.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
   }
   _burst(
-    dest,
-    t,
-    { buf: buf, type = "bandpass", freq: freq, q = 0.7, gain: gain, attack = 0.002, decay: decay, lp = 0 },
-  ) {
-    const ctx = this.ctx;
+    dest: AudioNode,
+    t: number,
+    { buf, type = "bandpass", freq, q = 0.7, gain, attack = 0.002, decay, lp = 0 }: BurstOptions,
+  ): void {
+    const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = buf || this.noise;
     const filter = ctx.createBiquadFilter();
@@ -332,8 +369,8 @@ export class SoundEngine {
     chain.connect(amp).connect(dest);
     src.start(t, Math.random() * 1.5, attack + decay + 0.05);
   }
-  _bloop(dest, t, freq, peak, dur) {
-    const ctx = this.ctx;
+  _bloop(dest: AudioNode, t: number, freq: number, peak: number, dur: number): void {
+    const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     const amp = ctx.createGain();
     osc.type = "sine";
@@ -344,8 +381,8 @@ export class SoundEngine {
     osc.start(t);
     osc.stop(t + dur + 0.03);
   }
-  _thump(dest, t, peak) {
-    const ctx = this.ctx;
+  _thump(dest: AudioNode, t: number, peak: number): void {
+    const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     const amp = ctx.createGain();
     osc.type = "sine";
@@ -356,7 +393,7 @@ export class SoundEngine {
     osc.start(t);
     osc.stop(t + 0.14);
   }
-  splash(energy, pan = 0) {
+  splash(energy: number, pan = 0): void {
     if (!this.ctx || !this.enabled) {
       return;
     }
@@ -420,7 +457,7 @@ export class SoundEngine {
       });
     }
   }
-  drip(size = 0.5, pan = 0) {
+  drip(size = 0.5, pan = 0): void {
     if (!this.ctx || !this.enabled) {
       return;
     }

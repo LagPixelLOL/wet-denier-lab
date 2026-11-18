@@ -3,14 +3,14 @@
  */
 import * as THREE from "three";
 
-export function createKnitTexture(renderer) {
+export function createKnitTexture(renderer: THREE.WebGLRenderer): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 64;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, 64, 64);
   ctx.lineCap = "round";
-  const drawLine = (x0, y0, x1, y1, width, color) => {
+  const drawLine = (x0: number, y0: number, x1: number, y1: number, width: number, color: string) => {
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
     ctx.beginPath();
@@ -23,7 +23,7 @@ export function createKnitTexture(renderer) {
       [19.2, "#7a7a7a"],
       [12.8, "#d6d6d6"],
       [4.48, "#ffffff"],
-    ]) {
+    ] satisfies [number, string][]) {
       drawLine(5.12, offsetY + 1.28, 30.08, offsetY + 58.88, lineWidth, color);
       drawLine(58.88, offsetY + 1.28, 33.92, offsetY + 58.88, lineWidth, color);
     }
@@ -43,27 +43,27 @@ export function createKnitTexture(renderer) {
   return texture;
 }
 
-export function createDecalAtlas(renderer) {
+export function createDecalAtlas(renderer: THREE.WebGLRenderer): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 512;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, 512, 512);
   ctx.fillStyle = "#fff";
-  const drawCell = (col, row, draw) => {
+  const drawCell = (col: number, row: number, draw: (r: number) => void) => {
     ctx.save();
     ctx.translate(col * 256 + 128, (1 - row) * 256 + 128);
     draw(128);
     ctx.restore();
   };
-  drawCell(0, 0, (r) => {
+  drawCell(0, 0, (r: number) => {
     ctx.beginPath();
     ctx.moveTo(0, r * 0.78);
     ctx.bezierCurveTo(-r * 1.25, -r * 0.05, -r * 0.62, -r * 0.95, 0, -r * 0.32);
     ctx.bezierCurveTo(r * 0.62, -r * 0.95, r * 1.25, -r * 0.05, 0, r * 0.78);
     ctx.fill();
   });
-  drawCell(1, 0, (r) => {
+  drawCell(1, 0, (r: number) => {
     ctx.beginPath();
     for (let i = 0; i < 10; i++) {
       const angle = -Math.PI / 2 + (i * Math.PI) / 5;
@@ -73,7 +73,7 @@ export function createDecalAtlas(renderer) {
     ctx.closePath();
     ctx.fill();
   });
-  drawCell(0, 1, (r) => {
+  drawCell(0, 1, (r: number) => {
     ctx.beginPath();
     ctx.ellipse(0, r * 0.3, r * 0.5, r * 0.4, 0, 0, 7);
     ctx.fill();
@@ -88,7 +88,7 @@ export function createDecalAtlas(renderer) {
       ctx.fill();
     }
   });
-  drawCell(1, 1, (r) => {
+  drawCell(1, 1, (r: number) => {
     ctx.font = "700 " + Math.round(r * 0.82) + 'px "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -102,11 +102,11 @@ export function createDecalAtlas(renderer) {
   return texture;
 }
 
-export function createLogoTexture(renderer) {
+export function createLogoTexture(renderer: THREE.WebGLRenderer): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 1024;
   canvas.height = 128;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d")!;
   ctx.fillStyle = "#fff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
