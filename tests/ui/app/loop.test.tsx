@@ -225,8 +225,66 @@ describe("away leg", () => {
     h.frames(60, 20);
   }
 
-  it("fades out the leg that blocks a close-up of the other one and skips it when picking", () => {
+  /** Moves the eased camera straight to its goal, then steps one frame. */
+  function snapCamera() {
+    orbit.cur.yaw = orbit.yaw;
+    orbit.cur.pitch = orbit.pitch;
+    orbit.cur.dist = orbit.dist;
+    orbit.cur.target.copy(orbit.target);
+    h.frame(20);
+  }
+
+  /** Puts the camera on `leg`'s axis at knee height (inside it), looking across at the other leg. */
+  function cameraInside(leg: number) {
+    const far = new THREE.Vector3(...app.rig.point(1 - leg, 0, 0.3, 0));
+    const near = new THREE.Vector3(...app.rig.point(leg, 0, 0.3, 0));
+    orbit.target.copy(far);
+    orbit.yaw = Math.atan2(near.x - far.x, near.z - far.z);
+    orbit.pitch = Math.asin((near.y - far.y) / near.distanceTo(far));
+    orbit.dist = near.distanceTo(far);
+    snapCamera();
+  }
+
+  /** Distance from the camera to the nearest leg surface, negative inside, Infinity past 0.3. */
+  function surfaceGap() {
+    const eye = app.camera.position;
+    const hit = app.surface.closest(eye.x, eye.y, eye.z, 0.3);
+    return hit ? hit.side * Math.hypot(eye.x - hit.x, eye.y - hit.y, eye.z - hit.z) : Infinity;
+  }
+
+  it("leaves a leg that only blocks the view of the other one alone", () => {
     lookThroughOtherLeg(1);
+    expect(surfaceGap()).toBeGreaterThan(0.3);
+    expect(app.rig.away).toEqual([0, 0]);
+    expect(app.rig.awayNow).toEqual([0, 0]);
+  });
+
+  it("checks the surface only near a leg axis, and leaves thin parts alone from farther out", () => {
+    const closest = vi.spyOn(app.surface, "closest");
+    // Beside the ankle, outside both legs: near enough to the axis to check, but no surface within reach.
+    const ankle = new THREE.Vector3(...app.rig.point(1, 0, 0.1, 0));
+    const other = new THREE.Vector3(...app.rig.point(0, 0, 0.1, 0));
+    orbit.target.copy(ankle);
+    orbit.yaw = Math.atan2(ankle.x - other.x, ankle.z - other.z);
+    orbit.pitch = 0;
+    orbit.dist = 0.2;
+    snapCamera();
+    const eye = app.camera.position;
+    expect(app.rig.distanceToLeg(1, eye.x, eye.y, eye.z)).toBeLessThan(0.21);
+    expect(closest).toHaveBeenLastCalledWith(eye.x, eye.y, eye.z, 0.14);
+    expect(closest.mock.results.at(-1)?.value).toBeNull();
+    expect(app.rig.away).toEqual([0, 0]);
+    // Far from both axes, the surface is not queried at all.
+    closest.mockClear();
+    lookThroughOtherLeg(1);
+    expect(closest).not.toHaveBeenCalled();
+    closest.mockRestore();
+  });
+
+  it("fades the leg the camera is inside and skips it when picking", () => {
+    cameraInside(0);
+    h.frames(30, 20);
+    expect(surfaceGap()).toBeLessThan(0);
     expect(app.rig.away).toEqual([1, 0]);
     expect(app.rig.awayNow).toEqual([1, 0]);
     expect(app.rig.awayLeg).toBe(0);
@@ -239,8 +297,49 @@ describe("away leg", () => {
       const p = new THREE.Vector3(hit.x, hit.y, hit.z);
       expect(app.rig.distanceToLeg(1, p.x, p.y, p.z)).toBeLessThan(app.rig.distanceToLeg(0, p.x, p.y, p.z));
     }
-    lookThroughOtherLeg(0);
+    cameraInside(1);
     expect(app.rig.away).toEqual([0, 1]);
+  });
+
+  it("fades within 5 cm of the surface and shows the leg again only past 7 cm", () => {
+    /** Backs the camera out along its view ray until it is at least `gap` from the surface. */
+    const at = (gap: number) => {
+      while (surfaceGap() < gap) {
+        orbit.dist += 0.0025;
+        snapCamera();
+      }
+      return surfaceGap();
+    };
+    const move = (delta: number) => {
+      orbit.dist += delta;
+      snapCamera();
+    };
+    cameraInside(0);
+    expect(app.rig.away).toEqual([1, 0]);
+    expect(at(0.06)).toBeLessThan(0.065);
+    // Still faded between the two thresholds while coming out...
+    expect(app.rig.away).toEqual([1, 0]);
+    at(0.075);
+    expect(app.rig.away).toEqual([0, 0]);
+    // ...but not faded there when coming in from outside.
+    move(-0.015);
+    expect(surfaceGap()).toBeGreaterThan(0.05);
+    expect(surfaceGap()).toBeLessThan(0.07);
+    expect(app.rig.away).toEqual([0, 0]);
+    move(-0.02);
+    expect(surfaceGap()).toBeLessThan(0.05);
+    expect(app.rig.away).toEqual([1, 0]);
+  });
+
+  it("fades a leg the camera enters in any pose, the crossed pose included", () => {
+    for (const pose of ["crossed", "pair", "step"]) {
+      actions.pose(pose);
+      h.frames(90, 20);
+      cameraInside(1);
+      expect(app.rig.away).toEqual([0, 1]);
+      lookThroughOtherLeg(1);
+      expect(app.rig.away).toEqual([0, 0]);
+    }
   });
 
   it("brings both legs back when the camera pulls away", () => {

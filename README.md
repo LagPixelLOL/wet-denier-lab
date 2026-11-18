@@ -59,6 +59,8 @@ from the site root.
   `V` toggle mode, `C` scenes, `W` wardrobe, arrow keys orbit, `+`/`-` zoom, `0`/`Home` reset view,
   `Esc` close panels.
 - The camera only moves when you move it; it does not orbit on its own when idle.
+- A leg turns see-through while the camera is inside it or within 5 cm of its surface, so close-ups never
+  clip into it. It shows again once the camera is more than 7 cm away.
 - The copy-link button copies a link to the page the app is running on, of the form
   `#look=1~<pose>~<scene>~<backdrop>~<leg0>~<leg1>~<view>`. The view is the camera as
   `yaw,pitch,dist,targetX,targetY,targetZ`. It is optional, so older links without it still load and keep the

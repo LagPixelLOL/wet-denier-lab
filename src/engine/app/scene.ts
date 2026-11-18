@@ -105,33 +105,36 @@ export function syncFootprint() {
   homeView.dist = homeDist;
 }
 
-const tmpDir = new THREE.Vector3();
+/** A leg fades once the camera is inside it or this close to its surface (the near plane clips at 0.02). */
+const CLIP_FADE_IN = 0.05;
+
+/** ...and shows again once the camera is this far out, so it does not flicker at the edge. */
+const CLIP_FADE_OUT = 0.07;
+
+/** Widest leg radius (thigh top); a camera farther than this plus CLIP_FADE_OUT from both axes is clear of both. */
+const MAX_LEG_RADIUS = 0.14;
+
+/** The shown leg the camera is inside or about to clip into, or -1. */
+function clippedLeg(): number {
+  const eye = app.camera.position;
+  const reach = MAX_LEG_RADIUS + CLIP_FADE_OUT;
+  if (app.rig.visibleLegs.every((i) => app.rig.distanceToLeg(i, eye.x, eye.y, eye.z) > reach)) {
+    return -1;
+  }
+  const hit = app.surface.closest(eye.x, eye.y, eye.z, MAX_LEG_RADIUS);
+  if (!hit) {
+    return -1;
+  }
+  const gap = Math.hypot(eye.x - hit.x, eye.y - hit.y, eye.z - hit.z);
+  return hit.side < 0 || gap < (app.rig.away[hit.leg] ? CLIP_FADE_OUT : CLIP_FADE_IN) ? hit.leg : -1;
+}
 
 export function updateAwayLeg() {
   let away = -1;
   if (app.targetFlash.leg >= 0 && performance.now() < app.targetFlash.until && !app.rig.solo) {
     away = 1 - app.targetFlash.leg;
-  } else if (!app.rig.solo && orbit.cur.dist < 1.3) {
-    const focus = orbit.cur.target;
-    const d0 = app.rig.distanceToLeg(0, focus.x, focus.y, focus.z);
-    const d1 = app.rig.distanceToLeg(1, focus.x, focus.y, focus.z);
-    const near = d0 < d1 ? 0 : 1;
-    if (Math.min(d0, d1) < 0.075 && Math.abs(d0 - d1) > 0.03) {
-      const eye = app.camera.position;
-      let blocked = 0;
-      for (const dy of [-0.05, 0, 0.05]) {
-        tmpDir.set(focus.x, focus.y + dy, focus.z).sub(eye);
-        const dist = tmpDir.length();
-        tmpDir.divideScalar(dist);
-        const hit = app.surface.raycast(eye.x, eye.y, eye.z, tmpDir.x, tmpDir.y, tmpDir.z, dist);
-        if (hit && hit.leg !== near && hit.t < dist - 0.02) {
-          blocked++;
-        }
-      }
-      if (blocked >= (app.rig.away[1 - near] ? 1 : 2)) {
-        away = 1 - near;
-      }
-    }
+  } else {
+    away = clippedLeg();
   }
   app.rig.setAway(0, away === 0 ? 1 : 0);
   app.rig.setAway(1, away === 1 ? 1 : 0);
