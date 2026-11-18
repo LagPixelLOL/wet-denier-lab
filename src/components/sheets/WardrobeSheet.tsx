@@ -194,7 +194,7 @@ export function WardrobeSheet() {
           </button>
         ))}
       </div>
-      <div className="max-h-[min(34vh,250px)] min-h-[118px] overflow-y-auto overscroll-contain py-0.5 wide:max-h-none roomy:min-h-0 roomy:overflow-y-auto">
+      <div className="max-h-[min(34vh,250px)] min-h-[118px] overflow-y-auto overscroll-contain py-0.5 wide:max-h-none roomy:-mx-[3px] roomy:min-h-0 roomy:overflow-y-auto roomy:px-[3px]">
         {TABS.map(([id]) => (
           <div
             key={id}

@@ -79,7 +79,9 @@ interface CardGridProps {
   onLeave?: () => void;
 }
 
-const cardsRow = `flex gap-2 overflow-x-auto overscroll-contain ${hideScrollbar} -m-[3px] p-[3px] roomy:grid roomy:grid-cols-4 roomy:overflow-visible`;
+// In the roomy layout the row is a plain grid inside the wardrobe's scroll area, which keeps the 3px of room for the
+// selection ring instead (a ring margin here would stick out of the scroll area and make it scroll both ways).
+const cardsRow = `flex gap-2 overflow-x-auto overscroll-contain ${hideScrollbar} -m-[3px] p-[3px] roomy:m-0 roomy:grid roomy:grid-cols-4 roomy:overflow-visible roomy:p-0`;
 const cardsGrid = `grid grid-cols-4 gap-2 overflow-visible overscroll-contain ${hideScrollbar} -m-[3px] p-[3px]`;
 const canvasBase =
   "block aspect-[3/4] rounded-xl bg-well [transition:box-shadow_0.2s,transform_0.12s] group-active:[transform:scale(0.96)]";

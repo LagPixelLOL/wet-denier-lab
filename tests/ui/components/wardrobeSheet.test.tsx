@@ -113,6 +113,16 @@ describe("WardrobeSheet preset pane", () => {
     expect(actions.preset).toHaveBeenCalledExactlyOnceWith(3);
   });
 
+  it("keeps the cards' 3px press room inside the pane's scroll area in the roomy layout", () => {
+    // The row's own ring margin would stick 3px out of the scroll area and make it scroll both ways; the pane
+    // provides the room instead, so nothing overflows (and a scrollbar cannot come and go on press).
+    render(<WardrobeSheet />);
+    const row = document.querySelector('[data-key="preset"]')!;
+    const pane = row.closest('[role="tabpanel"]')!.parentElement!;
+    expect(row).toHaveClass("-m-[3px]", "p-[3px]", "roomy:m-0", "roomy:p-0");
+    expect(pane).toHaveClass("roomy:-mx-[3px]", "roomy:px-[3px]", "py-0.5");
+  });
+
   it("registers every card canvas as a preset thumbnail at the thumbnail size", () => {
     render(<WardrobeSheet />);
     const canvases = chips("preset").map((card) => card.querySelector("canvas")!);
