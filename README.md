@@ -170,6 +170,24 @@ Tests run in Node without a browser or GPU and take a few seconds. Vitest has tw
 - The app controller is booted in jsdom with these fakes, and driven through the React UI, keyboard and pointer
   events.
 
+### Render check
+
+`npm run render:check` builds the app, serves `dist/` with `vite preview`, opens it in headless Chromium
+(Playwright) and saves `render-check/render.png` plus a `render.json` report. The report has the WebGL renderer
+string of the app's own context, Chromium's GPU feature status, the frame rate, `nvidia-smi` samples (when
+available), pixel statistics and any console errors. The check fails if the app does not boot, the screenshot is
+blank, or WebGL ran on a software renderer (SwiftShader, llvmpipe, ...).
+
+```sh
+npx playwright install --with-deps chromium   # once per machine
+npm run render:check -- --size 1920x1080 --hash '#look=1~...'
+```
+
+Options: `--url` (render an existing page instead), `--no-build`, `--hash`, `--size WxH`, `--dpr`,
+`--settle <ms>`, `--angle vulkan|gl-egl|swiftshader` (default `vulkan`), `--out <file.png>` and
+`--allow-software`. It needs a machine with a GPU. Without one, it fails unless you pass `--allow-software`, and
+software rendering is slow (about 9 s to boot and 2-3 fps).
+
 ## Credits
 
 - Leg mesh: [MakeHuman](http://www.makehumancommunity.org) (CC0)
