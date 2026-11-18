@@ -62,12 +62,20 @@ export function ChipGroup({ group, options, selected, onPick, swatches, idle, di
   );
 }
 
-export function LabeledRow({ label, hidden, children }: { label: string; hidden?: boolean; children: ReactNode }) {
+interface LabeledRowProps {
+  label: string;
+  hidden?: boolean;
+  /** Sizes the label column to the label instead of lining it up with the other rows of a pane. */
+  fit?: boolean;
+  children: ReactNode;
+}
+
+export function LabeledRow({ label, hidden, fit, children }: LabeledRowProps) {
+  const columns = fit
+    ? "grid-cols-[minmax(38px,auto)_minmax(0,1fr)]"
+    : "grid-cols-[38px_minmax(0,1fr)] en:grid-cols-[62px_minmax(0,1fr)]";
   return (
-    <div
-      className="grid grid-cols-[38px_minmax(0,1fr)] items-center gap-2 en:grid-cols-[62px_minmax(0,1fr)] hidden-attr:hidden"
-      hidden={hidden}
-    >
+    <div className={`grid ${columns} items-center gap-2 hidden-attr:hidden`} hidden={hidden}>
       <span className="text-[12px] tracking-[0.06em] text-ink-soft">{label}</span>
       {children}
     </div>

@@ -34,7 +34,7 @@ export function SceneSheet() {
         onPick={actions.scene}
         canvasRef={registerCanvas}
       />
-      <LabeledRow label={t("scenes.backdrop")} hidden={scene !== "studio"}>
+      <LabeledRow fit label={t("scenes.backdrop")} hidden={scene !== "studio"}>
         <ChipGroup group="backdrop" options={backdropOptions} selected={backdrop} onPick={actions.backdrop} swatches>
           <CustomColorSwatch label={t("scenes.customBackdrop")} custom={customBackdrop} onInput={actions.backdrop} />
         </ChipGroup>

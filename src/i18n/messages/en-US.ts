@@ -58,7 +58,7 @@ export const enUS: Messages = {
   "copy.ok": "OK",
 
   "scenes.label": "Scenes",
-  "scenes.backdrop": "Backdrop",
+  "scenes.backdrop": "Color",
   "scenes.customBackdrop": "Custom backdrop",
   "scene.studio": "Studio",
   "scene.bath": "Bathroom",

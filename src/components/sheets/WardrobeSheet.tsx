@@ -211,7 +211,7 @@ export function WardrobeSheet() {
         {TABS.map(([id, label]) => (
           <button
             key={id}
-            className={`relative flex-none rounded-xl px-2 pt-[7px] pb-2 text-[13px] tracking-[0.04em] [transition:color_0.2s] ${id === tab ? "font-semibold text-ink-strong after:absolute after:right-2 after:bottom-0.5 after:left-2 after:h-0.5 after:rounded-[2px] after:bg-accent after:content-['']" : "text-ink-soft"}`}
+            className={`relative flex-none rounded-xl px-2 pt-[7px] pb-2 text-[13px] tracking-[0.04em] [transition:color_0.2s] en:px-1 en:text-[12.5px] en:tracking-normal ${id === tab ? "font-semibold text-ink-strong after:absolute after:right-2 after:bottom-0.5 after:left-2 after:h-0.5 after:rounded-[2px] after:bg-accent after:content-[''] en:after:right-1 en:after:left-1" : "text-ink-soft"}`}
             role="tab"
             data-tab={id}
             aria-selected={id === tab}
