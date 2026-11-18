@@ -41,11 +41,15 @@ const thumbKeys = {
   scenes: "",
 };
 
+/** The outfit the user picked: while a preset is previewed on hover, `outfit.legs` holds the preview instead. */
+const pickedLegs = () => app.previewBackup ?? outfit.legs;
+
 function queueThumbs(kind: ThumbKind) {
-  if (!app.uiBound || app.previewBackup) {
+  if (!app.uiBound) {
     return;
   }
-  const key = kind === "presets" ? app.rig.name : [app.rig.name, state.backdrop, JSON.stringify(outfit.legs)].join("|");
+  const key =
+    kind === "presets" ? app.rig.name : [app.rig.name, state.backdrop, JSON.stringify(pickedLegs())].join("|");
   if (thumbKeys[kind] !== key) {
     thumbKeys[kind] = key;
     for (let i = thumbJobs.length - 1; i >= 0; i--) {
@@ -116,9 +120,11 @@ export function renderThumb(job: ThumbJob) {
   if (job.scene && job.scene !== saved.scene) {
     app.stage.setScene(job.scene);
   }
-  if (job.legs) {
+  // Preset cards wear their preset; scene cards wear the picked outfit, even while another one is previewed.
+  const dressed = job.legs ? job.legs.map((spec) => withLegDefaults(spec)) : app.previewBackup;
+  if (dressed) {
     for (let i = 0; i < 2; i++) {
-      applyStocking(i, withLegDefaults(job.legs[i]));
+      applyStocking(i, dressed[i]);
     }
   }
   const yaw = 0.62;
@@ -163,7 +169,7 @@ export function renderThumb(job: ThumbJob) {
   } else {
     floorU.uMirrorStrength.value = savedFloorFade;
   }
-  if (job.legs) {
+  if (dressed) {
     for (let i = 0; i < 2; i++) {
       applyStocking(i, outfit.legs[i]);
     }

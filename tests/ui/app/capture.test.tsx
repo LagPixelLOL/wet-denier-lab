@@ -1,11 +1,13 @@
+import * as THREE from "three";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { actions } from "../../../src/engine/app/actions";
 import { setPanel } from "../../../src/engine/app/layout";
 import { app } from "../../../src/engine/app/runtime";
-import { state } from "../../../src/engine/app/state";
+import { outfit, state } from "../../../src/engine/app/state";
 import { thumbCanvases, thumbJobs } from "../../../src/engine/app/thumbnails";
 import { PRESETS } from "../../../src/engine/catalog/presets";
 import { SCENE_ORDER } from "../../../src/engine/stage/scenes";
+import { resolveLegLook } from "../../../src/engine/catalog/resolveLegLook";
 import { ui } from "../../../src/state/ui";
 import { AppContext2D, bootApp, contextOf, type Harness } from "../../helpers/appHarness";
 import type { CanvasOp } from "../../helpers/fakeCanvas";
@@ -258,17 +260,45 @@ describe("thumbnails", () => {
     settle();
   });
 
-  it("does not queue or render while a preset is previewed", () => {
+  it("keeps rendering during a hover preview, with scene cards in the picked outfit", async () => {
+    actions.wearChip("color", "ivory");
+    const pickedDye = new THREE.Color(resolveLegLook(outfit.legs[0]).dye).getHex();
     actions.previewPreset(4);
+    const previewDye = app.stage.legs[0].fabric.uDye.value.getHex();
+    expect(previewDye).not.toBe(pickedDye);
+    // Preset cards for a new pose queue and render while the preview is showing.
     actions.pose("step");
-    setPanel("mat");
-    expect(thumbJobs).toHaveLength(0);
-    settle();
-    actions.previewPreset(null);
     setPanel("mat");
     expect(thumbJobs).toHaveLength(PRESETS.length);
     settle();
+    expect(thumbJobs).toHaveLength(0);
+    // Scene cards too, wearing the picked outfit rather than the previewed one.
+    const dyes: number[] = [];
+    const render = h.renderer.render;
+    const spy = vi.spyOn(h.renderer, "render").mockImplementation((scene, cam) => {
+      if (cam === app.thumbCamera) {
+        dyes.push(app.stage.legs[0].fabric.uDye.value.getHex());
+      }
+      render.call(h.renderer, scene, cam);
+    });
+    setPanel("scene");
+    await h.settle();
+    expect(thumbJobs).toHaveLength(SCENE_ORDER.length);
+    h.frames(SCENE_ORDER.length);
+    expect(thumbJobs).toHaveLength(0);
+    expect(dyes).toEqual(SCENE_ORDER.map(() => pickedDye));
+    // The preview is back on the legs afterwards.
+    expect(app.stage.legs[0].fabric.uDye.value.getHex()).toBe(previewDye);
+    spy.mockRestore();
+    // Ending the preview restores the picked outfit, whose scene cards are already up to date.
+    actions.previewPreset(null);
+    h.frames(40);
+    await h.settle();
+    expect(thumbJobs).toHaveLength(0);
+    expect(app.stage.legs[0].fabric.uDye.value.getHex()).toBe(pickedDye);
     setPanel(null);
+    // A fresh outfit for the scene tests below.
+    actions.wearChip("color", "ink");
   });
 
   it("renders each scene thumbnail in its scene and switches back", async () => {

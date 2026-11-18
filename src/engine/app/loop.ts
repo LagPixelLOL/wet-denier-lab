@@ -136,7 +136,7 @@ export function step(now: number, fixedDt?: number) {
     app.wetmap.bake(poseState === "settled");
   }
   app.oddFrame = !app.oddFrame;
-  if (thumbJobs.length && !poseState && !app.rig.moving && !app.previewBackup && (!app.isMobile || app.oddFrame)) {
+  if (thumbJobs.length && !poseState && !app.rig.moving && (!app.isMobile || app.oddFrame)) {
     renderThumb(thumbJobs.shift()!);
   } else if (app.frameCount++ % 40 === 0) {
     refreshThumbs();
