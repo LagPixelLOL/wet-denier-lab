@@ -88,7 +88,7 @@ export function WardrobeSheet() {
       return;
     }
     shownTab.current = tab;
-    tabBar.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    tabBar.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [tab]);
 
   const material = spec ? MATERIALS[spec.material] : null;
