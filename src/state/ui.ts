@@ -1,23 +1,17 @@
 /**
  * View state for the React UI. The engine writes it; components render it and call engine actions.
  */
+import type { LegSpec } from "../engine/catalog/presets";
 import { createStore } from "./createStore";
 
 export type TouchMode = "water" | "view";
 export type WardrobeTab = "pose" | "preset" | "style" | "color" | "material" | "pattern" | "fun";
 
 /** The subset of a leg spec the wardrobe sheet displays. */
-export interface WardrobeSpec {
-  length: string;
-  cuff: string;
-  garter: boolean;
-  color: string;
-  material: string;
-  denier: number;
-  pattern: string;
-  secret: string;
-  wetColor: string | null;
-}
+export type WardrobeSpec = Pick<
+  LegSpec,
+  "length" | "cuff" | "garter" | "color" | "material" | "denier" | "pattern" | "secret" | "wetColor"
+>;
 
 export interface UiState {
   mode: TouchMode;

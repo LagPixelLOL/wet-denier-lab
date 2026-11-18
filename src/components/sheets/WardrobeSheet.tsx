@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { actions } from "../../engine/app/actions";
 import { thumbCanvases } from "../../engine/app/thumbnails";
-import { COLORS, COLOR_ORDER } from "../../engine/catalog/colors";
+import { COLORS, COLOR_ORDER, type ColorDef } from "../../engine/catalog/colors";
 import {
   CUFF_STYLES,
   CUFF_STYLE_ORDER,
@@ -30,6 +30,8 @@ const TABS: [WardrobeTab, string][] = [
   ["pattern", "花纹"],
   ["fun", "彩蛋"],
 ];
+
+const isPaletteColor = (color: string) => !!(COLORS as Partial<Record<string, ColorDef>>)[color];
 
 const options = (pairs: [string, string][]): ChipOption[] => pairs.map(([value, label]) => ({ value, label }));
 
@@ -119,7 +121,12 @@ export function WardrobeSheet() {
         <LabeledRow label="长度">{chips("length", LENGTH_OPTIONS, spec?.length)}</LabeledRow>
         <LabeledRow label="袜口">{chips("cuff", CUFF_OPTIONS, spec?.cuff, spec?.length === "tights")}</LabeledRow>
         <LabeledRow label="吊带">
-          {chips("garter", GARTER_OPTIONS, spec && (spec.garter ? "1" : "0"), !!spec && spec.length !== "thigh")}
+          {chips(
+            "garter",
+            GARTER_OPTIONS,
+            spec ? (spec.garter ? "1" : "0") : undefined,
+            !!spec && spec.length !== "thigh",
+          )}
         </LabeledRow>
       </>
     ),
@@ -133,7 +140,7 @@ export function WardrobeSheet() {
       >
         <CustomColorSwatch
           label="自选颜色"
-          custom={spec && !COLORS[spec.color] ? spec.color : null}
+          custom={spec && !isPaletteColor(spec.color) ? spec.color : null}
           onInput={actions.wearColor}
         />
       </ChipGroup>
@@ -142,7 +149,7 @@ export function WardrobeSheet() {
       <>
         <LabeledRow label="材质">{chips("material", MATERIAL_OPTIONS, spec?.material)}</LabeledRow>
         <LabeledRow label="厚度">
-          {chips("denier", DENIER_CHIPS, spec && String(spec.denier), !!material && material.minDenier > 0)}
+          {chips("denier", DENIER_CHIPS, spec ? String(spec.denier) : undefined, !!material && material.minDenier > 0)}
         </LabeledRow>
         <p className="pane-hint">
           {material &&

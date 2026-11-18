@@ -20,8 +20,8 @@ export const THUMB_SIZE = {
 
 /** Thumbnail canvases rendered by the sheets, registered through ref callbacks. */
 export const thumbCanvases = {
-  presets: [],
-  scenes: {},
+  presets: [] as HTMLCanvasElement[],
+  scenes: {} as Record<string, HTMLCanvasElement>,
 };
 
 export const thumbJobs = [];
