@@ -47,5 +47,8 @@
     "vite-console-forward-plugin": {
       "vite": "$vite"
     }
+  },
+  "engines": {
+    "node": ">=26"
   }
 }
