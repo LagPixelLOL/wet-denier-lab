@@ -13,7 +13,7 @@ export function Viewport() {
   return (
     <canvas
       id="view"
-      className="fixed inset-0 block h-dvh w-screen touch-none opacity-0 transition-opacity duration-900 ease-[ease] ready:opacity-100 scene-out:opacity-0 motion-safe:scene-out:duration-200 motion-safe:scene-in:duration-400 motion-reduce:[transition:none]"
+      className="fixed inset-0 block h-dvh w-screen touch-none opacity-0 transition-opacity duration-900 ease-[ease] motion-reduce:[transition:none] ready:opacity-100 scene-out:opacity-0 motion-safe:scene-out:duration-200 motion-safe:scene-in:duration-400"
       aria-label="三维丝袜泼水"
     />
   );

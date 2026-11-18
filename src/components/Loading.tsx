@@ -6,7 +6,7 @@ export function Loading() {
   return (
     <div
       id="loading"
-      className="pointer-events-none fixed inset-0 grid place-content-center justify-items-center gap-3.5 px-6 text-center text-[13px] text-ink-soft transition-opacity duration-600 ease-[ease] ready:opacity-0 dim:text-[#fffc] motion-reduce:[transition:none]"
+      className="pointer-events-none fixed inset-0 grid place-content-center justify-items-center gap-3.5 px-6 text-center text-[13px] text-ink-soft transition-opacity duration-600 ease-[ease] motion-reduce:[transition:none] ready:opacity-0 dim:text-[#fffc]"
     >
       {error === null ? (
         <>

@@ -54,7 +54,13 @@ export function WaterIcon() {
   return (
     <svg viewBox="0 0 24 24">
       <path d="M12 3.5c3 4.1 5 6.9 5 9.6a5 5 0 0 1-10 0c0-2.7 2-5.5 5-9.6z" fill="currentColor" />
-      <path className="glint" d="M10 14.2a2.2 2.2 0 0 0 2 2" fill="none" strokeWidth="1.4" strokeLinecap="round" />
+      <path
+        className="stroke-on-ink opacity-90"
+        d="M10 14.2a2.2 2.2 0 0 0 2 2"
+        fill="none"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
