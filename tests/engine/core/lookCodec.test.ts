@@ -98,6 +98,15 @@ describe("unpackLook round trips", () => {
 });
 
 describe("unpackLook validation", () => {
+  it("ignores names every object has, like constructor or toString", () => {
+    const names = ["constructor", "toString", "__proto__", "hasOwnProperty"];
+    for (const name of names) {
+      const leg = [name, name, "0", name, "40", name, name, name, name].join(".");
+      const look = unpackLook(`#look=1~${name}~${name}~${name}~${leg}~${leg}`);
+      expect(look).toEqual({ legs: [withLegDefaults({}), withLegDefaults({})] });
+    }
+  });
+
   it.each([null, undefined, "", "#", "#nolook", "#xlook=1~step", "#look=2~step~bath~lilac", "#look="])(
     "returns null for %j",
     (hash) => {

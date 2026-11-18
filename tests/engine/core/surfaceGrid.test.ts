@@ -183,9 +183,10 @@ describe("SurfaceGrid on a hand-made mesh", () => {
     expect(grid.raycast(-0.01, 0.05, 1, 0, 0, -1)).toBeNull();
   });
 
-  it("may report a hit slightly beyond maxT (the march overshoots by up to a cell)", () => {
+  it("never reports a hit beyond maxT, even though the march overshoots by up to a cell", () => {
     const grid = new SurfaceGrid(twoSquares());
-    expect(grid.raycast(0.05, 0.05, 1, 0, 0, -1, 0.945)?.t).toBeCloseTo(0.95, 6);
+    expect(grid.raycast(0.05, 0.05, 1, 0, 0, -1, 0.95)?.t).toBeCloseTo(0.95, 6);
+    expect(grid.raycast(0.05, 0.05, 1, 0, 0, -1, 0.945)).toBeNull();
     expect(grid.raycast(0.05, 0.05, 1, 0, 0, -1, 0.9)).toBeNull();
   });
 
@@ -364,11 +365,8 @@ describe("SurfaceGrid on the real collision mesh", () => {
       if (expected !== null && expected <= 0.5) {
         expect(hit?.t).toBeCloseTo(expected, 9);
         hits.push(hit!.t);
-      } else if (expected === null || expected > 0.5 + g.cell * 1.5) {
+      } else {
         expect(hit).toBeNull();
-      } else if (hit) {
-        // Just past maxT the grid may still report the hit (see the overshoot test above).
-        expect(hit.t).toBeCloseTo(expected, 9);
       }
     }
     expect(hits.length).toBeGreaterThan(20);

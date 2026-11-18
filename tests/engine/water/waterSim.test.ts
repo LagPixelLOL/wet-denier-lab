@@ -769,7 +769,7 @@ describe("sync", () => {
     expect(water.beads.map((b) => b.glow)).toEqual([0, 0, 0.3, 0.3, 0.3, 0]);
   });
 
-  it("skips drops waiting to launch; airborne thrown drops get NaN matrices (known bug, see below)", () => {
+  it("skips drops waiting to launch and stretches airborne thrown drops along their current velocity", () => {
     const world = waterWorld();
     const { water } = world;
     water.throwAt(surfacePoint(world), EYE, { count: 2, delay: 0, wait: 0.1 });
@@ -778,8 +778,15 @@ describe("sync", () => {
     water.update(0.15);
     water.sync(camera(), null, new THREE.Vector2(1, 1), light);
     expect(water.dropMesh.count).toBe(2);
-    // sync() computes the in-flight velocity as `vy - glintPosArray * t` (NaN) instead of `vy - GRAVITY * t`,
-    // so the stretched-drop matrix of every thrown drop in flight is NaN and the drop is not drawn.
-    expect(water.dropMesh.instanceMatrix.array.subarray(0, 32).some(Number.isNaN)).toBe(true);
+    const matrices = water.dropMesh.instanceMatrix.array;
+    expect(matrices.subarray(0, 32).every(Number.isFinite)).toBe(true);
+    const thrown = water.drops.filter((drop) => drop.kind === 0 && drop.t >= 0);
+    expect(thrown).toHaveLength(2);
+    thrown.forEach((drop, i) => {
+      // Column 0 of the instance matrix is the stretch axis: the velocity of the ballistic arc at time t.
+      const velocity = new THREE.Vector3(drop.vx, drop.vy - 9.81 * drop.t, drop.vz).normalize();
+      const axis = new THREE.Vector3().fromArray(matrices, i * 16).normalize();
+      expect(axis.distanceTo(velocity)).toBeLessThan(1e-5);
+    });
   });
 });

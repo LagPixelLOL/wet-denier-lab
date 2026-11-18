@@ -163,6 +163,12 @@ export class FakeConvolverNode extends FakeAudioNode {
   constructor(context: FakeAudioContext) {
     super(context, "convolver");
   }
+  override connect<T extends FakeAudioNode | FakeAudioParam>(destination: T): T {
+    if (FakeAudioContext.options.convolverConnectFails) {
+      throw new Error("InvalidAccessError");
+    }
+    return super.connect(destination);
+  }
 }
 
 export interface FakeAudioOptions {
@@ -172,6 +178,8 @@ export interface FakeAudioOptions {
   noPanner?: boolean;
   /** Make createConvolver throw (reverb unavailable). */
   convolverFails?: boolean;
+  /** Make connecting the convolver throw (the reverb fails after its send was created). */
+  convolverConnectFails?: boolean;
   /** Make resume() reject (autoplay blocked). */
   resumeFails?: boolean;
   /** Make createBufferSource throw after the graph is built (exercises the unlock try/catch). */

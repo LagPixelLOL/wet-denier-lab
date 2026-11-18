@@ -716,3 +716,42 @@ describe("resizeMirror and blit", () => {
     expect(quad.material.uniforms.uDepthTex.value).toBeNull();
   });
 });
+
+describe("cast shadow maps", () => {
+  it("are cleared once at creation, so the shadow samplers always see valid depth textures", () => {
+    const { stage, setupCalls } = buildStage();
+    expect(describeCalls(setupCalls, namesFor(stage))).toEqual([
+      "bind castRT0",
+      "clear castRT0",
+      "bind castRT1",
+      "clear castRT1",
+      "bind screen",
+    ]);
+  });
+});
+
+describe("warmScene while a compile is in flight", () => {
+  it("returns the pending compile instead of resolving early", async () => {
+    const { stage, renderer } = buildStage();
+    let finish = () => {};
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const compile = renderer.compileAsync!;
+    renderer.compileAsync = (scene, cam) => compile(scene, cam).then((compiled) => gate.then(() => compiled));
+    const first = stage.warmScene("street", camera());
+    const second = stage.warmScene("street", camera());
+    expect(second).toBe(first);
+    expect(renderer.ops("compileAsync")).toHaveLength(1);
+    let settled = false;
+    void second.then(() => (settled = true));
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish();
+    await first;
+    expect(settled).toBe(true);
+    // Once compiled, warming again is immediate and does not compile.
+    await stage.warmScene("street", camera());
+    expect(renderer.ops("compileAsync")).toHaveLength(1);
+  });
+});

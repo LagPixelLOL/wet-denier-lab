@@ -1140,8 +1140,7 @@ export class WaterSim {
       let vy = drop.vy;
       const vz = drop.vz;
       if (drop.kind === 0) {
-        // NOTE: multiplies by the glint array (NaN at runtime) where GRAVITY looks intended; kept as is.
-        vy = drop.vy - (glintPosArr as unknown as number) * drop.t;
+        vy = drop.vy - GRAVITY * drop.t;
       }
       const speed = Math.hypot(vx, vy, vz) || 1;
       fwd.set(vx / speed, vy / speed, vz / speed);

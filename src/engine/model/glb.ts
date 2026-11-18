@@ -62,10 +62,16 @@ export function parseModelGlb(buffer: ArrayBuffer): ModelData {
     const offset = binStart + (bufferView.byteOffset || 0) + (accessor.byteOffset || 0);
     return new Type(buffer, offset, accessor.count * COMPONENTS[accessor.type]);
   };
-  const meshByName = (name: string) => gltf.meshes.find((mesh) => mesh.name === name);
-  const stockingMesh = meshByName("stocking")!;
+  const meshByName = (name: string) => {
+    const mesh = gltf.meshes.find((candidate) => candidate.name === name);
+    if (!mesh) {
+      throw new Error(`model has no "${name}" mesh`);
+    }
+    return mesh;
+  };
+  const stockingMesh = meshByName("stocking");
   const stockingPrim = stockingMesh.primitives[0];
-  const skinPrim = meshByName("skinTop")!.primitives[0];
+  const skinPrim = meshByName("skinTop").primitives[0];
   const wrap = stockingMesh.extras?.wrapOffsets;
   return {
     stocking: {

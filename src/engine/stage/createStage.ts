@@ -472,6 +472,16 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       depthTexture: depthTexture,
     });
   });
+  // Each leg samples the other leg's map through a shadow sampler, even while only one leg is shown and the maps
+  // are not rendered. Clear them once so they are always valid depth textures.
+  {
+    const prevTarget = renderer.getRenderTarget();
+    for (const target of castTargets) {
+      renderer.setRenderTarget(target);
+      renderer.clear();
+    }
+    renderer.setRenderTarget(prevTarget);
+  }
   const skinOutlineColor: U<THREE.Color> = {
     value: toColor("#a06a66"),
   };
@@ -1078,8 +1088,14 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     }
     return sceneDef;
   }
+  /** Compiles still in flight, so a second warm-up of the same scene waits for the first. */
+  const warming = new Map<number, Promise<unknown>>();
   function warmScene(sceneKey: string, camera: THREE.Camera): Promise<unknown> {
     const sceneDef = SCENES[sceneKey];
+    const pending = sceneDef && warming.get(sceneDef.id);
+    if (pending) {
+      return pending;
+    }
     if (!sceneDef || sceneMaterialCache.has(sceneDef.id) || !renderer.compileAsync) {
       return Promise.resolve();
     }
@@ -1091,7 +1107,12 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     warmupScene.add(backdropProbe, floorProbe);
     const prevTarget = renderer.getRenderTarget();
     renderer.setRenderTarget(mirrorTarget);
-    const compilePromise = renderer.compileAsync(warmupScene, camera).catch(() => {});
+    const sceneId = sceneDef.id;
+    const compilePromise = renderer
+      .compileAsync(warmupScene, camera)
+      .catch(() => {})
+      .finally(() => warming.delete(sceneId));
+    warming.set(sceneId, compilePromise);
     renderer.setRenderTarget(prevTarget);
     return compilePromise;
   }

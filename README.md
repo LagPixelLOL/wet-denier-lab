@@ -155,13 +155,6 @@ Tests run in Node without a browser or GPU and take a few seconds. Vitest has tw
 - The app controller is booted in jsdom with these fakes, and driven through the React UI, keyboard and pointer
   events.
 
-## Known issues
-
-- Thrown drops are not drawn while in flight: `WaterSim.sync()` computes their vertical velocity from the glint
-  position array instead of gravity, which gives NaN. Their physics is unaffected. A test pins the current
-  behavior.
-- Some outfits in the studio make WebGL report "Mismatch between texture format and sampler type" warnings.
-
 ## Credits
 
 - Leg mesh: [MakeHuman](http://www.makehumancommunity.org) (CC0)

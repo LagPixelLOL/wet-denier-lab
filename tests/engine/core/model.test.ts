@@ -111,6 +111,15 @@ describe("parseModelGlb", () => {
     expect(() => parseModelGlb(buildGlb([], [], { magic: 0 }))).toThrow("not a glTF 2.0 binary");
   });
 
+  it("names the mesh that is missing", () => {
+    expect(() => parseModelGlb(buildGlb([], [{ name: "skinTop", primitives: [] }]))).toThrow(
+      'model has no "stocking" mesh',
+    );
+    expect(() => parseModelGlb(buildGlb([], [{ name: "stocking", primitives: [{ attributes: {} }] }]))).toThrow(
+      'model has no "skinTop" mesh',
+    );
+  });
+
   it("reads accessors with and without buffer view and accessor offsets", () => {
     const source = tinyModelData();
     const data = parseModelGlb(tinyGlb());
@@ -274,10 +283,8 @@ describe("applyAnatomyBumps", () => {
     // The welded duplicate follows its canonical vertex exactly.
     expect([...pos.slice(9, 12)]).toEqual([...pos.slice(0, 3)]);
     expect(skinFx[6]).toBe(skinFx[0]);
-    // The duplicate's bony factor is sampled at the canonical position after that vertex was already
-    // displaced, so it differs slightly from the canonical vertex's own value.
-    expect(skinFx[7]).not.toBe(skinFx[1]);
-    expect(skinFx[7]).toBeCloseTo(skinFx[1], 1);
+    // Both factors come from the canonical vertex before it moved, so seam duplicates match exactly.
+    expect(skinFx[7]).toBe(skinFx[1]);
   });
 
   it("does nothing to surfaces facing away from a bump or far from every blob", () => {
@@ -294,7 +301,7 @@ describe("applyAnatomyBumps", () => {
     expect([digestRounded(pos, 7), digestRounded(skinFx, 6)]).toMatchInlineSnapshot(`
       [
         "1f248618",
-        "deb46d74",
+        "cd7cfe43",
       ]
     `);
   });
@@ -485,7 +492,7 @@ describe("buildLegModel on the shipped model", () => {
           "legTangent": "0174e9fb",
           "normal": "d819d4dc",
           "position": "ee3c4102",
-          "skinFx": "bf1ecd66",
+          "skinFx": "cb922ef2",
           "stretch": "d320a494",
           "uv": "736679e6",
         },

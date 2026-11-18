@@ -31,6 +31,9 @@ export interface SharedLook {
 /** Truthiness lookup by arbitrary string key. */
 type Lookup = Readonly<Record<string, unknown>>;
 
+/** Own-key lookup, so names like "constructor" or "toString" from a link are not mistaken for entries. */
+const has = (table: Lookup, key: string | undefined): key is string => key !== undefined && Object.hasOwn(table, key);
+
 const SITE_URL = "https://newtonquan-yusi.pages.dev/";
 
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
@@ -40,7 +43,7 @@ const PACKED_HEX_RE = /^x[0-9a-f]{6}$/i;
 const packColor = (color: string): string => (HEX_COLOR_RE.test(color) ? "x" + color.slice(1).toLowerCase() : color);
 
 const unpackColor = (token: string, palette: Lookup): string | null =>
-  PACKED_HEX_RE.test(token) ? "#" + token.slice(1).toLowerCase() : palette[token] ? token : null;
+  PACKED_HEX_RE.test(token) ? "#" + token.slice(1).toLowerCase() : has(palette, token) ? token : null;
 
 const packLegSpec = (spec: LegSpec): string =>
   [
@@ -58,26 +61,26 @@ const packLegSpec = (spec: LegSpec): string =>
 function unpackLegSpec(packed: string | undefined): LegSpec {
   const [length, cuff, garter, material, denier, pattern, color, secret, wetColor] = String(packed || "").split(".");
   const spec: Partial<LegSpec> = {};
-  if ((STOCKING_LENGTHS as Lookup)[length]) {
+  if (has(STOCKING_LENGTHS, length)) {
     spec.length = length as StockingLengthKey;
   }
-  if ((CUFF_STYLES as Lookup)[cuff]) {
+  if (has(CUFF_STYLES, cuff)) {
     spec.cuff = cuff as CuffStyleKey;
   }
   spec.garter = garter === "1";
-  if ((MATERIALS as Lookup)[material]) {
+  if (has(MATERIALS, material)) {
     spec.material = material as MaterialKey;
   }
   if (DENIER_OPTIONS.includes(Number(denier))) {
     spec.denier = Number(denier);
   }
-  if ((PATTERNS as Lookup)[pattern]) {
+  if (has(PATTERNS, pattern)) {
     spec.pattern = pattern as PatternKey;
   }
   if (unpackColor(color || "", COLORS)) {
     spec.color = unpackColor(color, COLORS)!;
   }
-  if ((SECRET_DECALS as Lookup)[secret]) {
+  if (has(SECRET_DECALS, secret)) {
     spec.secret = secret as SecretDecalKey;
   }
   spec.wetColor = wetColor && wetColor !== "-" ? unpackColor(wetColor, COLORS) : null;
@@ -110,10 +113,10 @@ export function unpackLook(hash: string | null | undefined): SharedLook | null {
   const look: SharedLook = {
     legs: [unpackLegSpec(leftLeg), unpackLegSpec(rightLeg === undefined ? leftLeg : rightLeg)],
   };
-  if ((POSES as Lookup)[pose]) {
+  if (has(POSES, pose)) {
     look.pose = pose;
   }
-  if ((SCENES as Lookup)[scene]) {
+  if (has(SCENES, scene)) {
     look.scene = scene;
   }
   if (unpackColor(backdrop || "", BACKDROPS)) {

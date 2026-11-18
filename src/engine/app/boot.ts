@@ -135,8 +135,8 @@ export function startApp() {
   app.lastTime = performance.now();
   trackUserActivity();
   if (!IS_PROD) installDevHooks();
-  boot().catch((err: Error) => {
+  boot().catch((err: unknown) => {
     console.error(err);
-    ui.set({ bootError: err.message });
+    ui.set({ bootError: err instanceof Error ? err.message : String(err) });
   });
 }

@@ -247,36 +247,26 @@ export function applyAnatomyBumps(
   const normals = computeWeldedNormals(positions, indices, weld);
   const vertexCount = positions.length / 3;
   const offsets = new Float32Array(vertexCount);
+  const bony = new Float32Array(vertexCount);
   const skinFx = new Float32Array(vertexCount * 2);
+  // Both fields are sampled on the canonical (welded) vertex before any vertex moves, so seam duplicates agree.
   for (let i = 0; i < vertexCount; i++) {
     if (weld[i] === i) {
-      offsets[i] = sumGaussianBlobs(
-        ANATOMY_BUMPS,
-        positions[i * 3],
-        positions[i * 3 + 1],
-        positions[i * 3 + 2],
-        normals[i * 3],
-        normals[i * 3 + 1],
-        normals[i * 3 + 2],
-      );
+      const x = positions[i * 3];
+      const y = positions[i * 3 + 1];
+      const z = positions[i * 3 + 2];
+      const nx = normals[i * 3];
+      const ny = normals[i * 3 + 1];
+      const nz = normals[i * 3 + 2];
+      offsets[i] = sumGaussianBlobs(ANATOMY_BUMPS, x, y, z, nx, ny, nz);
+      bony[i] = Math.min(1, sumGaussianBlobs(BONY_REGIONS, x, y, z, nx, ny, nz));
     }
   }
   for (let i = 0; i < vertexCount; i++) {
     const w = weld[i];
     const offset = offsets[w];
     skinFx[i * 2] = Math.max(-1, Math.min(1, -offset / 0.0022));
-    skinFx[i * 2 + 1] = Math.min(
-      1,
-      sumGaussianBlobs(
-        BONY_REGIONS,
-        positions[w * 3],
-        positions[w * 3 + 1],
-        positions[w * 3 + 2],
-        normals[w * 3],
-        normals[w * 3 + 1],
-        normals[w * 3 + 2],
-      ),
-    );
+    skinFx[i * 2 + 1] = bony[w];
     if (offset) {
       positions[i * 3] += normals[i * 3] * offset;
       positions[i * 3 + 1] += normals[i * 3 + 1] * offset;

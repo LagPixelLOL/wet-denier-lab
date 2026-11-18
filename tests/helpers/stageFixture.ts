@@ -4,7 +4,7 @@ import type { Stage } from "../../src/engine/stage/createStage";
 import { installFakeDocument } from "./fakeCanvas";
 import type { FakeContext2D } from "./fakeCanvas";
 import { FakeRenderer } from "./fakeRenderer";
-import type { FakeRendererOptions } from "./fakeRenderer";
+import type { FakeRendererOptions, RendererCall } from "./fakeRenderer";
 import { legModel } from "./model";
 
 export interface StageFixture {
@@ -12,6 +12,8 @@ export interface StageFixture {
   stage: Stage;
   /** 2D contexts of the procedural textures (knit, decal atlas, logo). */
   contexts: FakeContext2D[];
+  /** Renderer calls made by createStage itself; `renderer.calls` starts empty after construction. */
+  setupCalls: RendererCall[];
 }
 
 /**
@@ -23,7 +25,8 @@ export function buildStage(options: FakeRendererOptions & { coarsePointer?: bool
   const { contexts } = installFakeDocument({ coarsePointer: options.coarsePointer });
   try {
     const stage = createStage(renderer.asRenderer, legModel());
-    return { renderer, stage, contexts };
+    const setupCalls = renderer.calls.splice(0);
+    return { renderer, stage, contexts, setupCalls };
   } finally {
     vi.unstubAllGlobals();
   }

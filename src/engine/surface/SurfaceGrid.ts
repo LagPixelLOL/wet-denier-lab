@@ -517,7 +517,7 @@ export class SurfaceGrid {
             continue;
           }
           const tHit = (e2x * qx + e2y * qy + e2z * qz) * invDet;
-          if (tHit > 0.00001 && tHit < bestT) {
+          if (tHit > 0.00001 && tHit <= maxT && tHit < bestT) {
             bestT = tHit;
             bestTri = tri;
             bestU = u;

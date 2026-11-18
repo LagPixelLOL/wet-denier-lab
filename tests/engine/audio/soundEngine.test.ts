@@ -173,6 +173,13 @@ describe("the audio graph", () => {
     sound.setScene("bath");
   });
 
+  it("drops the reverb send when wiring the reverb fails halfway", () => {
+    const { sound } = unlocked({ convolverConnectFails: true });
+    expect(sound.verb).toBeNull();
+    expect(sound.verbIn).toBeUndefined();
+    expect(fake(sound.rainGain, FakeGainNode).outputs).toEqual([sound.master]);
+  });
+
   it("loops filtered noise for the rain and the three ambience beds, with slow swells", () => {
     const { sound, ctx } = unlocked();
     const rain = fake(sound.rainGain, FakeGainNode);

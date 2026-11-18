@@ -184,6 +184,7 @@ export class SoundEngine {
       this.verbIn.connect(this.verb).connect(this.master);
     } catch {
       this.verb = null;
+      this.verbIn = undefined;
     }
     this.rainGain = ctx.createGain();
     this.rainGain.gain.value = 0;

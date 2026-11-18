@@ -20,7 +20,7 @@ export function CopyBox() {
   return (
     <div
       id="copybox"
-      className="fixed top-1/2 left-1/2 z-30 grid w-[min(420px,calc(100vw-32px))] [transform:translate(-50%,-50%)] gap-2.5 rounded-[18px] border border-line bg-paper p-4 text-[13px] shadow-panel"
+      className="fixed top-1/2 left-1/2 z-30 grid w-[min(420px,calc(100vw-32px))] [transform:translate(-50%,-50%)] gap-2.5 rounded-[18px] border border-line bg-paper p-4 text-[13px] shadow-panel hidden-attr:hidden"
       hidden={!box.open}
     >
       <span>复制下面的链接，别人打开就是这一双、这个姿势和场景：</span>
