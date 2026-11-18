@@ -10,6 +10,7 @@
  *   --hash <hash>       URL hash to open, e.g. "#look=1~..." from the copy-link button
  *   --size <w>x<h>      viewport size in CSS pixels (default 1280x800)
  *   --dpr <n>           device pixel ratio (default 1)
+ *   --locale <tag>      browser language, which picks the UI language (default en-US)
  *   --click <selector>  click this element once the page is ready (repeatable, in order)
  *   --settle <ms>       time to keep rendering after the page is ready (default 2000)
  *   --angle <backend>   ANGLE backend: vulkan, gl-egl or swiftshader (default vulkan)
@@ -39,6 +40,7 @@ const { values: opts } = parseArgs({
     hash: { type: "string", default: "" },
     size: { type: "string", default: "1280x800" },
     dpr: { type: "string", default: "1" },
+    locale: { type: "string", default: "en-US" },
     click: { type: "string", multiple: true, default: [] },
     settle: { type: "string", default: "2000" },
     angle: { type: "string", default: "vulkan" },
@@ -157,7 +159,11 @@ const consoleErrors: string[] = [];
 let failure = "";
 try {
   const cdp = await browser.newBrowserCDPSession();
-  const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: Number(opts.dpr) });
+  const page = await browser.newPage({
+    viewport: { width, height },
+    deviceScaleFactor: Number(opts.dpr),
+    locale: opts.locale,
+  });
   page.on("console", (msg) => msg.type() === "error" && consoleErrors.push(msg.text()));
   page.on("pageerror", (err) => consoleErrors.push(String(err)));
 
@@ -200,6 +206,7 @@ try {
     browser: browser.version(),
     angle: opts.angle,
     viewport: { width, height, dpr: Number(opts.dpr) },
+    locale: opts.locale,
     readyMs,
     fps: Math.round((frames / settleMs) * 10000) / 10,
     webgl,
