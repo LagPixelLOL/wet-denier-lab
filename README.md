@@ -175,4 +175,5 @@ Tests run in Node without a browser or GPU and take a few seconds. Vitest has tw
 
 ## License
 
-No license has been chosen yet.
+The code is released under the [MIT License](LICENSE). Third-party assets bundled with it (see Credits) keep their
+own licenses.
