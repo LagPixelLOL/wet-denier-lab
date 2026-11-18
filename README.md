@@ -184,7 +184,7 @@ npm run render:check -- --size 1920x1080 --hash '#look=1~...'
 ```
 
 Options: `--url` (render an existing page instead), `--no-build`, `--hash`, `--size WxH`, `--dpr`,
-`--settle <ms>`, `--angle vulkan|gl-egl|swiftshader` (default `vulkan`), `--out <file.png>` and
+`--click <selector>` (repeatable, clicked in order once the page is ready), `--settle <ms>`, `--angle vulkan|gl-egl|swiftshader` (default `vulkan`), `--out <file.png>` and
 `--allow-software`. It needs a machine with a GPU. Without one, it fails unless you pass `--allow-software`, and
 software rendering is slow (about 9 s to boot and 2-3 fps).
 
