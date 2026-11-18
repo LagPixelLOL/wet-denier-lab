@@ -25,6 +25,7 @@
 @custom-variant roomy-mat-open (body.roomy.mat-open &);
 /* Elements whose language (inherited from <html lang>) is English, for labels that need more room. */
 @custom-variant en (&:lang(en));
+@custom-variant narrow-en (body:not(.wide) &:lang(en));
 /* Matches elements carrying the HTML hidden attribute (needed where a utility sets display). */
 @custom-variant hidden-attr (&[hidden]);
 

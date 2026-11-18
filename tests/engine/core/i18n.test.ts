@@ -49,7 +49,7 @@ describe("detectLocale", () => {
 describe("translate", () => {
   it("looks up the message in the given locale", () => {
     expect(translate("zh-CN", "dock.wardrobe")).toBe("衣橱");
-    expect(translate("en-US", "dock.wardrobe")).toBe("Wardrobe");
+    expect(translate("en-US", "dock.wardrobe")).toBe("Closet");
   });
 
   it("fills in parameters and leaves unknown placeholders alone", () => {

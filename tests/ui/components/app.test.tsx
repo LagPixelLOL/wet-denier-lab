@@ -141,7 +141,7 @@ describe("main entry", () => {
         await import("../../../src/main");
       });
       expect(ui.get().locale).toBe("en-US");
-      expect(root.querySelector("#dock, .dock")).toHaveTextContent("Wardrobe");
+      expect(root.querySelector("#dock, .dock")).toHaveTextContent("Closet");
     } finally {
       languages.mockRestore();
       document.documentElement.lang = "";

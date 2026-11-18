@@ -50,7 +50,7 @@ describe("LanguageMenu", () => {
     await userEvent.click(button());
     await userEvent.click(screen.getByRole("menuitemradio", { name: "English" }));
     expect(ui.get().locale).toBe("en-US");
-    expect(screen.getByText("Wardrobe")).toBeInTheDocument();
+    expect(screen.getByText("Closet")).toBeInTheDocument();
     expect(screen.queryByText("衣橱")).toBeNull();
     expect(document.querySelector("#bucketBtn")).toHaveAttribute("data-key", "Space");
     expect(menu()).not.toBeVisible();
