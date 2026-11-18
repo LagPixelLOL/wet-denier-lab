@@ -57,56 +57,58 @@
   --shadow-panel: var(--shadow);
 }
 
-:root {
-  --stage: #efe9f1;
-  --ink: #3a3346;
-  --ink-strong: #2f2838;
-  --ink-soft: #7d7489;
-  --glass: rgba(255, 255, 255, 0.64);
-  --paper: rgba(255, 255, 255, 0.9);
-  --well: rgba(90, 76, 110, 0.08);
-  --glass-strong: rgba(255, 255, 255, 0.86);
-  --chip: rgba(255, 255, 255, 0.72);
-  --line: rgba(255, 255, 255, 0.85);
-  --hairline: rgba(90, 76, 110, 0.14);
-  --on-ink: #ffffff;
-  --accent: #5d7bff;
-  --accent-deep: #4a66ec;
-  --accent-soft: rgba(93, 123, 255, 0.14);
-  --focus: rgba(93, 123, 255, 0.55);
-  --shadow: 0 10px 30px rgba(92, 70, 120, 0.16), 0 2px 6px rgba(92, 70, 120, 0.08);
-  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
-  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
-  --safe-b: env(safe-area-inset-bottom, 0px);
-  --safe-t: env(safe-area-inset-top, 0px);
-}
-* {
-  box-sizing: border-box;
-  -webkit-tap-highlight-color: transparent;
-}
-html,
-body {
-  margin: 0;
-  height: 100%;
-  overflow: hidden;
-}
-body {
-  background: var(--stage);
-  color: var(--ink);
-  font: 14px/1.4 var(--font-ui);
-  padding-left: var(--gutter-l);
-  padding-right: var(--gutter-r);
-}
-button {
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  border: 0;
-  background: none;
-}
-button:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+@layer base {
+  :root {
+    --stage: #efe9f1;
+    --ink: #3a3346;
+    --ink-strong: #2f2838;
+    --ink-soft: #7d7489;
+    --glass: rgba(255, 255, 255, 0.64);
+    --paper: rgba(255, 255, 255, 0.9);
+    --well: rgba(90, 76, 110, 0.08);
+    --glass-strong: rgba(255, 255, 255, 0.86);
+    --chip: rgba(255, 255, 255, 0.72);
+    --line: rgba(255, 255, 255, 0.85);
+    --hairline: rgba(90, 76, 110, 0.14);
+    --on-ink: #ffffff;
+    --accent: #5d7bff;
+    --accent-deep: #4a66ec;
+    --accent-soft: rgba(93, 123, 255, 0.14);
+    --focus: rgba(93, 123, 255, 0.55);
+    --shadow: 0 10px 30px rgba(92, 70, 120, 0.16), 0 2px 6px rgba(92, 70, 120, 0.08);
+    --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+    --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    background: var(--stage);
+    color: var(--ink);
+    font: 14px/1.4 var(--font-ui);
+    padding-left: var(--gutter-l);
+    padding-right: var(--gutter-r);
+  }
+  button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    border: 0;
+    background: none;
+  }
+  button:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
 }
 #view {
   position: fixed;

@@ -45,7 +45,7 @@ export async function loadLegModel(url: string, options?: LegModelOptions): Prom
   );
 }
 
-function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions = {}): LegModel {
+export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions = {}): LegModel {
   const wrap = data.wrapData || (data.wrap ? decodeBase64Int16(data.wrap) : null);
   let mesh: SubdividedMesh<Float32Array> = {
     pos: new Float32Array(data.stocking.positions),
