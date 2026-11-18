@@ -10,7 +10,7 @@ import { lookUrl } from "../share/lookCodec";
 
 export function shareLook() {
   const url = lookUrl(currentLook(), location.href);
-  const onCopied = () => showHint("链接已复制 · 别人打开就是这一双、这个姿势和场景", 3400);
+  const onCopied = () => showHint("链接已复制 · 别人打开就是这一双、这个姿势、场景和视角", 3400);
   const showCopyBox = () => ui.set({ copyBox: { url, open: true } });
   try {
     navigator.clipboard.writeText(url).then(onCopied, showCopyBox);
@@ -45,7 +45,7 @@ export function takePhoto() {
   ctx.fillText("雨丝", margin, h - margin - Math.round(scale * 20));
   ctx.fillStyle = dark ? "rgba(255, 255, 255, 0.74)" : "rgba(92, 82, 108, 0.82)";
   ctx.font = Math.round(scale * 13) + 'px system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-  ctx.fillText("WET DENIER LAB  ·  newtonquan-yusi.pages.dev", margin, h - margin);
+  ctx.fillText("WET DENIER LAB", margin, h - margin);
   const dataUrl = out.toDataURL("image/jpeg", 0.93);
   const inClaude = typeof window.claude !== "undefined";
   const tip = app.isMobile

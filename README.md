@@ -64,7 +64,7 @@ peer requirement.
 
 ```
 index.html              page shell and meta tags
-public/                 files copied as-is (og.png, robots.txt)
+public/                 files copied as-is (robots.txt)
 src/
   main.tsx              React entry
   App.tsx               page layout

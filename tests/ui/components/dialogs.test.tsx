@@ -101,6 +101,11 @@ describe("CopyBox", () => {
     expect(field.selectionStart).toBe(0);
     expect(field.selectionEnd).toBe(URL_TEXT.length);
   });
+  it("says what the link restores", () => {
+    render(<CopyBox />);
+    setUi({ copyBox: { url: URL_TEXT, open: true } });
+    expect(screen.getByText("复制下面的链接，别人打开就是这一双、这个姿势、场景和视角：")).toBeInTheDocument();
+  });
 
   it("stays mounted but hidden, without stealing focus, when closed", () => {
     render(<CopyBox />);

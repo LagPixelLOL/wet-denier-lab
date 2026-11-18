@@ -19,15 +19,8 @@ let h: Harness;
 
 const settle = () => h.frames(60, 20);
 
-/** Ops of the newest 2D context; the footer line is cut at its first double space (it ends in the site name). */
-function photoOps(): CanvasOp[] {
-  return h.contexts.at(-1)!.ops.map(([name, ...args]): CanvasOp => {
-    if (name === "fillText") {
-      return [name, String(args[0]).split("  ")[0], ...args.slice(1)];
-    }
-    return [name, ...args];
-  });
-}
+/** Ops of the newest 2D context. */
+const photoOps = (): CanvasOp[] => h.contexts.at(-1)!.ops;
 
 function takePhoto() {
   actions.requestPhoto();

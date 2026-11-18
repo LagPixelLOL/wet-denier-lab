@@ -23,7 +23,7 @@ export function CopyBox() {
       className="fixed top-1/2 left-1/2 z-30 grid w-[min(420px,calc(100vw-32px))] [transform:translate(-50%,-50%)] gap-2.5 rounded-[18px] border border-line bg-paper p-4 text-[13px] shadow-panel hidden-attr:hidden"
       hidden={!box.open}
     >
-      <span>复制下面的链接，别人打开就是这一双、这个姿势和场景：</span>
+      <span>复制下面的链接，别人打开就是这一双、这个姿势、场景和视角：</span>
       <input
         ref={field}
         className="w-full rounded-[10px] border border-hairline bg-on-ink px-2.5 py-[9px] text-ink [font:12px/1.3_ui-monospace,Menlo,Consolas,monospace]"
