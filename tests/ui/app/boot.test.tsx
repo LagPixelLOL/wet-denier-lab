@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import * as THREE from "three";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { actions } from "../../../src/engine/app/actions";
 import { orbit } from "../../../src/engine/app/camera";
 import { currentLook } from "../../../src/engine/app/outfit";
 import { app } from "../../../src/engine/app/runtime";
@@ -210,6 +211,39 @@ describe("share links at boot", () => {
     expect(orbit.cur.yaw).toBeCloseTo(orbit.yaw, 6);
     // The copied link carries the wrapped yaw back.
     expect(unpackLook(hashOf(lookUrl(currentLook(), location.href)))?.view?.yaw).toBe(1);
+  });
+
+  it("re-applies a pasted link the page already shows, which only fires popstate", () => {
+    orbit.cur.yaw = 0.5;
+    const linked: Look = {
+      ...currentLook(),
+      pose: "step",
+      view: { yaw: 0.5, pitch: 0.3, dist: 2, target: [0, 0.43, 0.035] },
+    };
+    history.replaceState(null, "", hashOf(lookUrl(linked, location.href)));
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(currentLook()).toEqual(linked);
+    // The user moves on; pasting the same link again brings the linked look back.
+    actions.pose("pair");
+    orbit.yaw = 2;
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(currentLook()).toEqual(linked);
+  });
+
+  it("applies a hash navigation once, although it fires popstate and then hashchange", () => {
+    const setPose = vi.spyOn(app.rig, "setPose");
+    history.replaceState(null, "", hashOf(lookUrl({ ...currentLook(), pose: "crossed" }, location.href)));
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(setPose).toHaveBeenCalledTimes(1);
+    // A later hashchange on its own (no popstate before it) is applied again.
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(setPose).toHaveBeenCalledTimes(2);
+    // Back/forward to an entry without a look changes nothing.
+    history.replaceState(null, "", "#about");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(setPose).toHaveBeenCalledTimes(2);
+    setPose.mockRestore();
   });
 
   it("applies only the legs of a link whose pose, scene and backdrop are unknown", () => {

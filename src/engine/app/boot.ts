@@ -61,10 +61,24 @@ async function boot() {
   if (shared) {
     applyLook(shared);
   }
-  addEventListener("hashchange", () => {
+  // Pasting the link the page already has fires only popstate (the hash did not change), while a new hash fires
+  // popstate and then hashchange. Apply on either, but only once per navigation.
+  let appliedOnPopstate: string | null = null;
+  const applyLinkedLook = () => {
     const linked = unpackLook(location.hash);
     if (linked) {
       applyLook(linked);
+    }
+  };
+  addEventListener("popstate", () => {
+    appliedOnPopstate = location.hash;
+    applyLinkedLook();
+  });
+  addEventListener("hashchange", () => {
+    const seen = appliedOnPopstate === location.hash;
+    appliedOnPopstate = null;
+    if (!seen) {
+      applyLinkedLook();
     }
   });
   if (!IS_PROD) {
