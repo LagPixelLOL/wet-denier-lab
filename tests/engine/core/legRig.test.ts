@@ -30,7 +30,7 @@ class RecordingTarget implements LegRigTarget {
   setLegOpacity(index: number, opacity: number): void {
     this.opacity[index] = opacity;
   }
-  setCastPoints(points: Vec3[]): void {
+  setCastPoints(points: Vec3[], _radii?: number[]): void {
     this.castPoints = points.map((p): Vec3 => [p[0], p[1], p[2]]);
   }
 }

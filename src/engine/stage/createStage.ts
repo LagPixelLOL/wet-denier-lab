@@ -85,7 +85,10 @@ export type FloorUniforms = BackdropUniforms & {
   uFloorShadow: U<THREE.Texture>;
   uContactShadow: U<THREE.Texture>;
   uPuddleTex: U<THREE.Texture>;
+  /** Floor area (x, z, width, depth) covered by the key light shadow map; refitted to the shadow on each bake. */
   uShadowRect: U<THREE.Vector4>;
+  /** Floor area covered by the contact shadow map; fixed. */
+  uContactRect: U<THREE.Vector4>;
   uPuddleRect: U<THREE.Vector4>;
   uLogoTex: U<THREE.Texture>;
   uLogoRect: U<THREE.Vector4>;
@@ -224,7 +227,8 @@ export interface Stage extends LegRigTarget {
   setLegPose(index: number, pose: LegPose, matrix: ArrayLike<number>): void;
   setLegOpacity(index: number, opacity: number): void;
   setOrder(frontIndex: number): void;
-  setCastPoints(points: Iterable<Vec3>): void;
+  /** Leg axis points for shadow fitting, with the leg radius around each (default: the thigh radius). */
+  setCastPoints(points: Iterable<Vec3>, radii?: ArrayLike<number>): void;
   aimLights(yaw: number, tilt?: number): void;
   bakeShadow(force?: boolean): void;
   shadowScene: THREE.Scene;
@@ -392,6 +396,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       value: blankTexture,
     },
     uShadowRect: {
+      value: floorMapRect.clone(),
+    },
+    uContactRect: {
       value: floorMapRect,
     },
     uPuddleRect: {
@@ -835,6 +842,54 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
   floorCamera.position.set(0, 1, 0);
   floorCamera.up.set(0, 0, -1);
   floorCamera.lookAt(0, 0, 0);
+  /** Points the floor camera at a floor rect (x, z, width, depth). */
+  function aimFloorCamera(rect: THREE.Vector4): void {
+    floorCamera.left = rect.x;
+    floorCamera.right = rect.x + rect.z;
+    floorCamera.top = -rect.y;
+    floorCamera.bottom = -(rect.y + rect.w);
+    floorCamera.updateProjectionMatrix();
+  }
+  /** Leg radius around a cast point given without one: the widest part of the leg, at the thigh top. */
+  const MAX_LEG_RADIUS = 0.14;
+  /** Radius of the floor disc; the shadow map never needs to reach past it. */
+  const FLOOR_RADIUS = 1.6;
+  /**
+   * Fits the shadow map to the legs' shadow along `dir`, so a low or turned light never projects the thighs past
+   * the map edge (where sampling would smear the edge texels into streaks). Keeps the default rect whenever the
+   * shadow fits in it; otherwise grows to a square around the default rect and the shadow, within the floor.
+   */
+  function fitShadowRect(rect: THREE.Vector4, dir: THREE.Vector3): void {
+    rect.copy(floorMapRect);
+    const run = 1 / Math.max(dir.y, 0.2);
+    // A ball of radius r projects to within r * sqrt(1 + (dx / dy)^2) of its center's shadow along x (same for z).
+    const spreadX = Math.hypot(1, dir.x * run);
+    const spreadZ = Math.hypot(1, dir.z * run);
+    let minX = floorMapRect.x;
+    let minZ = floorMapRect.y;
+    let maxX = floorMapRect.x + floorMapRect.z;
+    let maxZ = floorMapRect.y + floorMapRect.w;
+    let grown = false;
+    castPoints.forEach((point, i) => {
+      const x = point[0] - dir.x * point[1] * run;
+      const z = point[2] - dir.z * point[1] * run;
+      const rx = castRadii[i] * spreadX;
+      const rz = castRadii[i] * spreadZ;
+      if (x - rx < minX || x + rx > maxX || z - rz < minZ || z + rz > maxZ) {
+        grown = true;
+        minX = Math.min(minX, x - rx);
+        maxX = Math.max(maxX, x + rx);
+        minZ = Math.min(minZ, z - rz);
+        maxZ = Math.max(maxZ, z + rz);
+      }
+    });
+    if (!grown) {
+      return;
+    }
+    const size = Math.min(FLOOR_RADIUS * 2, Math.max(maxX - minX, maxZ - minZ));
+    const clampStart = (center: number) => THREE.MathUtils.clamp(center - size / 2, -FLOOR_RADIUS, FLOOR_RADIUS - size);
+    rect.set(clampStart((minX + maxX) / 2), clampStart((minZ + maxZ) / 2), size, size);
+  }
   const blurScene = new THREE.Scene();
   const quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const blurMaterial = new THREE.ShaderMaterial({
@@ -878,11 +933,14 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     renderer.render(blurScene, quadCamera);
   }
   const castPoints: Vec3[] = [];
+  const castRadii: number[] = [];
   const tmpVec = new THREE.Vector3();
   const biasMatrix = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
-  function setCastPoints(points: Iterable<Vec3>): void {
+  function setCastPoints(points: Iterable<Vec3>, radii?: ArrayLike<number>): void {
     castPoints.length = 0;
+    castRadii.length = 0;
     for (const point of points) {
+      castRadii.push(radii?.[castPoints.length] ?? MAX_LEG_RADIUS);
       castPoints.push(point);
     }
   }
@@ -948,7 +1006,12 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     const prevClearColor = renderer.getClearColor(tmpClearColor);
     const prevClearAlpha = renderer.getClearAlpha();
     renderer.setClearColor(0, 1);
-    renderFloorShadow(floorShadowTarget, dir, 0, 1.7);
+    const shadowRect = floorUniforms.uShadowRect.value;
+    fitShadowRect(shadowRect, dir);
+    aimFloorCamera(shadowRect);
+    // Same blur on the floor whatever the rect size.
+    renderFloorShadow(floorShadowTarget, dir, 0, (1.7 * floorMapRect.z) / shadowRect.z);
+    aimFloorCamera(floorMapRect);
     if (force || !lastShadowKey) {
       renderFloorShadow(floorContactTarget, worldUp, 1, 3.4);
     }

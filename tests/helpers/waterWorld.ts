@@ -33,7 +33,7 @@ export class RigUniformLegs implements LegRigTarget {
   setLegOpacity(index: number, opacity: number): void {
     this.opacity[index] = opacity;
   }
-  setCastPoints(points: Vec3[]): void {
+  setCastPoints(points: Vec3[], _radii?: number[]): void {
     this.castPoints = points;
   }
 }

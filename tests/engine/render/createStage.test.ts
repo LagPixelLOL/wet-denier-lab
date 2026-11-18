@@ -619,6 +619,134 @@ describe("bakeShadow", () => {
   });
 });
 
+describe("floor shadow rect", () => {
+  const DEFAULT_RECT = [-0.65, -0.72, 1.3, 1.3];
+
+  /** A rigged stage that records the floor camera bounds and blur step of every floor shadow pass. */
+  function recordingStage() {
+    const passes: { target: string; bounds?: number[]; blur?: number[] }[] = [];
+    const fixture = buildStage({
+      onRender: (scene, cam, target) => {
+        const name =
+          target === stage.uniforms.floor.uFloorShadow.value.renderTarget
+            ? "shadow"
+            : target === stage.uniforms.floor.uContactShadow.value.renderTarget
+              ? "contact"
+              : "";
+        if (scene === stage.shadowScene && name) {
+          const ortho = cam as THREE.OrthographicCamera;
+          passes.push({ target: name, bounds: [ortho.left, ortho.right, ortho.top, ortho.bottom] });
+        } else if (name || target?.width === 640) {
+          const blur = (scene.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>).material;
+          passes.push({ target: name || "temp", blur: blur.uniforms.uBlurStep.value.toArray() });
+        }
+      },
+    });
+    const { stage } = fixture;
+    const rig = new LegRig(legModel().collision, stage);
+    return { ...fixture, rig, passes };
+  }
+
+  /** Each axis point's shadow on the floor along `dir`, as the projection shader computes it. */
+  const projected = (rig: LegRig, dir: THREE.Vector3) =>
+    rig.legs
+      .flatMap((leg) => leg.axis)
+      .map(([x, y, z]) => [x - (dir.x * y) / Math.max(dir.y, 0.2), z - (dir.z * y) / Math.max(dir.y, 0.2)]);
+
+  it("keeps the default rect, camera and blur while the shadow fits in it", () => {
+    const { stage, passes } = recordingStage();
+    stage.aimLights(0.282, 0.737);
+    stage.setCastPoints(
+      [
+        [0.1, 0.3, 0],
+        [-0.1, 0.05, 0.1],
+      ],
+      [0.08, 0.1],
+    );
+    stage.bakeShadow(true);
+    expect(stage.uniforms.floor.uShadowRect.value.toArray()).toEqual(DEFAULT_RECT);
+    expect(stage.uniforms.floor.uContactRect.value.toArray()).toEqual(DEFAULT_RECT);
+    const defaultBounds = [-0.65, 0.65, 0.72, -0.58];
+    expect(passes.filter((pass) => pass.bounds).map((pass) => pass.bounds!.map((v) => +v.toFixed(9)))).toEqual([
+      defaultBounds,
+      defaultBounds,
+    ]);
+    expect(passes.find((pass) => pass.target === "temp")?.blur).toEqual([1.7 / 640, 0]);
+  });
+
+  it.each([0.62, 0.697, -0.368])("grows to hold the whole thigh shadow when the light turns (yaw %s)", (yaw) => {
+    const { stage, rig, passes } = recordingStage();
+    stage.bakeShadow();
+    stage.aimLights(yaw, 0.55);
+    passes.length = 0;
+    stage.bakeShadow();
+    const rect = stage.uniforms.floor.uShadowRect.value;
+    const dir = stage.legs[0].shadow.material.uniforms.uProjDir.value;
+    expect(rect.z).toBeGreaterThan(1.3);
+    expect(rect.w).toBe(rect.z);
+    // Every projected axis point, with room for the thigh around it, lies inside the new rect...
+    const room = 0.14 * Math.hypot(1, Math.max(Math.abs(dir.x), Math.abs(dir.z)) / dir.y);
+    for (const [x, z] of projected(rig, dir).slice(0, 2)) {
+      expect(x - room).toBeGreaterThanOrEqual(rect.x - 1e-12);
+      expect(x + room).toBeLessThanOrEqual(rect.x + rect.z + 1e-12);
+      expect(z - room).toBeGreaterThanOrEqual(rect.y - 1e-12);
+      expect(z + room).toBeLessThanOrEqual(rect.y + rect.w + 1e-12);
+    }
+    for (const [x, z] of projected(rig, dir)) {
+      expect(x).toBeGreaterThan(rect.x);
+      expect(x).toBeLessThan(rect.x + rect.z);
+      expect(z).toBeGreaterThan(rect.y);
+      expect(z).toBeLessThan(rect.y + rect.w);
+    }
+    // ...which still contains the default rect.
+    expect(rect.x).toBeLessThanOrEqual(-0.65);
+    expect(rect.y).toBeLessThanOrEqual(-0.72);
+    expect(rect.x + rect.z).toBeGreaterThanOrEqual(0.65);
+    expect(rect.y + rect.w).toBeGreaterThanOrEqual(0.58);
+    // The shadow pass renders exactly that rect, with the blur scaled to stay the same on the floor.
+    expect(passes[0].bounds).toEqual([rect.x, rect.x + rect.z, -rect.y, -(rect.y + rect.w)]);
+    expect(passes[1].blur![0]).toBeCloseTo(((1.7 / 640) * 1.3) / rect.z, 12);
+    // The contact map keeps its own fixed rect.
+    expect(stage.uniforms.floor.uContactRect.value.toArray()).toEqual(DEFAULT_RECT);
+    stage.bakeShadow(true);
+    expect(passes.find((pass) => pass.target === "contact" && pass.bounds)?.bounds?.map((v) => +v.toFixed(9))).toEqual([
+      -0.65, 0.65, 0.72, -0.58,
+    ]);
+  });
+
+  it("sizes the room around each point by its radius, defaulting to the thigh radius", () => {
+    const { stage } = recordingStage();
+    stage.aimLights(0.697, 0.55);
+    const rectFor = (radii?: number[]) => {
+      stage.setCastPoints([[0, 0.85, 0.03]], radii);
+      stage.bakeShadow(true);
+      return stage.uniforms.floor.uShadowRect.value.toArray();
+    };
+    const thin = rectFor([0.02]);
+    const thick = rectFor([0.14]);
+    expect(thick[2]).toBeGreaterThan(thin[2]);
+    expect(rectFor()).toEqual(thick);
+  });
+
+  it("never reaches past the floor disc, however low the light", () => {
+    const { stage } = recordingStage();
+    stage.bakeShadow();
+    stage.uniforms.light.uKeyDir.value.set(-1, 0.05, 0.1).normalize();
+    stage.bakeShadow();
+    const rect = stage.uniforms.floor.uShadowRect.value;
+    expect(rect.z).toBeLessThanOrEqual(3.2);
+    expect(rect.x).toBeGreaterThanOrEqual(-1.6);
+    expect(rect.y).toBeGreaterThanOrEqual(-1.6);
+    expect(rect.x + rect.z).toBeLessThanOrEqual(1.6 + 1e-12);
+    expect(rect.y + rect.w).toBeLessThanOrEqual(1.6 + 1e-12);
+    // Once the shadow fits again, the default rect comes back.
+    stage.setCastPoints([[0, 0.1, 0]], [0.05]);
+    stage.aimLights(0.282, 0.737);
+    stage.bakeShadow(true);
+    expect(rect.toArray()).toEqual(DEFAULT_RECT);
+  });
+});
+
 describe("renderMirror", () => {
   it("is skipped when the scene has no mirror floor or the camera is at floor level", () => {
     const { stage, renderer } = buildStage();

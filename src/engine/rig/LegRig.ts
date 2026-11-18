@@ -22,7 +22,8 @@ import type { CollisionMesh } from "../model/legModel";
 export interface LegRigTarget {
   setLegPose(index: number, pose: LegPose, matrix: Float64Array): void;
   setLegOpacity(index: number, opacity: number): void;
-  setCastPoints(points: Vec3[]): void;
+  /** World-space leg axis points, each with the radius of the leg around it. */
+  setCastPoints(points: Vec3[], radii: number[]): void;
 }
 
 /** A pose with reach knees already solved for this rig's rest mesh. */
@@ -71,6 +72,12 @@ const LEG_AXIS_POINTS: Vec3[] = [
   [0.005, 0.07, 0.01],
   [0, 0.03, 0.11],
 ];
+
+/**
+ * Per axis point, a radius that holds the leg surface around it (measured on the shipped model: 0.128 at the thigh
+ * top down to 0.075 at the shin, plus 1 cm for pose bending).
+ */
+const LEG_AXIS_RADII = [0.14, 0.14, 0.09, 0.085, 0.095, 0.115, 0.115];
 
 export class LegRig {
   declare rest: CollisionMesh;
@@ -209,7 +216,7 @@ export class LegRig {
       this.look.setLegPose(i, legPose, leg.m);
       LEG_AXIS_POINTS.forEach((pt, j) => skinLegPoint(legPose, side, leg.lift, pt[0], pt[1], pt[2], leg.axis[j]));
     }
-    this.look.setCastPoints(this.legs[0].axis.concat(this.legs[1].axis));
+    this.look.setCastPoints(this.legs[0].axis.concat(this.legs[1].axis), LEG_AXIS_RADII.concat(LEG_AXIS_RADII));
     this._fade();
   }
   _fade(): void {

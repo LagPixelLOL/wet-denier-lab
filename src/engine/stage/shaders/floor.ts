@@ -15,7 +15,7 @@ void main() {
 
 export const FLOOR_FRAGMENT_SHADER = `
 ${BACKDROP_GLSL}uniform sampler2D uFloorShadow, uContactShadow, uPuddleTex, uLogoTex;
-uniform vec4 uShadowRect, uPuddleRect, uLogoRect;
+uniform vec4 uShadowRect, uContactRect, uPuddleRect, uLogoRect;
 uniform vec3 uFloorColor, uShadowColor;
 uniform vec2 uSpotCenter;
 uniform vec4 uRipples[16];
@@ -32,8 +32,10 @@ void main() {
   float spot = 1.0 - smoothstep(0.32, 0.95, r);
   vec2 shadowUv = (vWorldPos.xz - uShadowRect.xy) / uShadowRect.zw;
   shadowUv.y = 1.0 - shadowUv.y;
+  vec2 contactUv = (vWorldPos.xz - uContactRect.xy) / uContactRect.zw;
+  contactUv.y = 1.0 - contactUv.y;
   float shd = texture2D(uFloorShadow, shadowUv).r;
-  float contact = texture2D(uContactShadow, shadowUv).r;
+  float contact = texture2D(uContactShadow, contactUv).r;
   vec3 col = mix(bg, uFloorColor, spot * 0.85);
   col = mix(col, uShadowColor, clamp(shd * 0.55 + contact * 0.42, 0.0, 0.8) * (0.35 + 0.65 * spot));
   vec2 logoUv = (vWorldPos.xz - uLogoRect.xy) / uLogoRect.zw;
@@ -67,7 +69,9 @@ void main() {
   vec3 col = floorColor(vWorldPos, rd, dist);
   vec2 shadowUv = (vWorldPos.xz - uShadowRect.xy) / uShadowRect.zw;
   shadowUv.y = 1.0 - shadowUv.y;
-  float shd = texture2D(uFloorShadow, shadowUv).r, contact = texture2D(uContactShadow, shadowUv).r;
+  vec2 contactUv = (vWorldPos.xz - uContactRect.xy) / uContactRect.zw;
+  contactUv.y = 1.0 - contactUv.y;
+  float shd = texture2D(uFloorShadow, shadowUv).r, contact = texture2D(uContactShadow, contactUv).r;
   col = mix(col, uShadowColor, clamp(shd * 0.55 + contact * 0.42, 0.0, 0.8));
   vec2 logoUv = (vWorldPos.xz - uLogoRect.xy) / uLogoRect.zw;
   if (logoUv.x > 0.0 && logoUv.x < 1.0 && logoUv.y > 0.0 && logoUv.y < 1.0) col = mix(col, uMarkColor.rgb, texture2D(uLogoTex, vec2(logoUv.x, 1.0 - logoUv.y)).a * uMarkColor.a);
