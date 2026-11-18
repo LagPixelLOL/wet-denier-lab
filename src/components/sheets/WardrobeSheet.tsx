@@ -33,7 +33,7 @@ const TABS: [WardrobeTab, string][] = [
   ["fun", "彩蛋"],
 ];
 
-const BARE_HINT = "光腿没穿袜子，这些选项用不上。在款式里选个长度就能穿回来。";
+const BARE_HINT = "光腿没穿袜子，这些选项用不上。";
 
 const isPaletteColor = (color: string) => !!(COLORS as Partial<Record<string, ColorDef>>)[color];
 

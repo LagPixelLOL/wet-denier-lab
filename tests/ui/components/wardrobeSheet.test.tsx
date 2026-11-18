@@ -363,7 +363,7 @@ describe("WardrobeSheet pattern and fun panes", () => {
 
 describe("WardrobeSheet bare legs", () => {
   const FABRIC_GROUPS = ["cuff", "garter", "color", "material", "denier", "pattern", "secret", "wetColor"];
-  const BARE_HINT = "光腿没穿袜子，这些选项用不上。在款式里选个长度就能穿回来。";
+  const BARE_HINT = "光腿没穿袜子，这些选项用不上。";
   const isDisabled = (el: HTMLElement) => (el as HTMLButtonElement).disabled && el.classList.contains("opacity-35");
 
   it("offers bare legs as the first length", () => {
