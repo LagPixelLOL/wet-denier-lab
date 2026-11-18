@@ -234,7 +234,7 @@ export function WardrobeSheet() {
           </div>
         ))}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-x-2.5 gap-y-2 border-t border-t-hairline pt-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2.5 gap-y-2 border-t border-t-hairline pt-2 narrow-en:gap-x-1.5">
         <div
           className={`flex rounded-[999px] bg-well p-0.5 ${tab === "pose" || solo ? "invisible" : ""}`}
           data-key="target"
@@ -248,7 +248,7 @@ export function WardrobeSheet() {
                 key={value}
                 data-v={value}
                 role="radio"
-                className={`rounded-[999px] px-3 py-[5px] text-[12.5px] whitespace-nowrap [transition:background_0.2s,color_0.2s] wide:px-[9px] narrow-en:px-2.5 ${on ? "bg-glass-strong font-semibold text-ink-strong shadow-[0_1px_4px_#5c467829]" : "text-ink-soft"}`}
+                className={`rounded-[999px] px-3 py-[5px] text-[12.5px] whitespace-nowrap [transition:background_0.2s,color_0.2s] wide:px-[9px] narrow-en:px-2 narrow-en:text-[12px] ${on ? "bg-glass-strong font-semibold text-ink-strong shadow-[0_1px_4px_#5c467829]" : "text-ink-soft"}`}
                 aria-checked={spec ? on : undefined}
                 onClick={() => actions.target(Number(value))}
               >
@@ -257,13 +257,17 @@ export function WardrobeSheet() {
             );
           })}
         </div>
-        <div className="flex gap-[7px]">
-          <Pill id="randomBtn" className="wide:px-[11px] narrow-en:px-[11px]" onClick={actions.random}>
+        <div className="flex gap-[7px] narrow-en:gap-1.5">
+          <Pill
+            id="randomBtn"
+            className="wide:px-[11px] narrow-en:px-2.5 narrow-en:text-[12px]"
+            onClick={actions.random}
+          >
             {t("wardrobe.random")}
           </Pill>
           <Pill
             id="shareBtn"
-            className="wide:px-[11px] narrow-en:px-[11px]"
+            className="wide:px-[11px] narrow-en:px-2.5 narrow-en:text-[12px]"
             title={t("wardrobe.shareTitle")}
             onClick={actions.share}
           >
