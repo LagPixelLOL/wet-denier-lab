@@ -28,7 +28,7 @@ export function AboutDialog() {
           制作 <strong className="text-[14px] tracking-[0.04em] text-ink-strong">Newton Quan</strong>
         </div>
       </div>
-      <p className="mx-0 mt-3.5 mb-0 text-ink text-pretty">
+      <p className="mx-0 mt-3.5 mb-0 text-pretty text-ink">
         点丝袜泼水，看水花炸开、湿处透出皮肤、水珠挂住滑落。底栏切换泼水和视角；「场景」里换地方，「衣橱」里换姿势、款式、材质和花纹，每种料子遇水的样子都不一样。
       </p>
       <dl className="mx-0 mt-3.5 mb-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px]">

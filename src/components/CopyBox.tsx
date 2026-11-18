@@ -26,11 +26,11 @@ export function CopyBox() {
       <span>复制下面的链接，别人打开就是这一双、这个姿势和场景：</span>
       <input
         ref={field}
-        className="w-full rounded-[10px] border border-hairline bg-on-ink px-2.5 py-[9px] [font:12px/1.3_ui-monospace,Menlo,Consolas,monospace] text-ink"
+        className="w-full rounded-[10px] border border-hairline bg-on-ink px-2.5 py-[9px] text-ink [font:12px/1.3_ui-monospace,Menlo,Consolas,monospace]"
         readOnly
         value={box.url}
       />
-      <Pill className="justify-self-end" onClick={actions.closeCopyBox}>
+      <Pill className="[justify-self:end]" onClick={actions.closeCopyBox}>
         好
       </Pill>
     </div>
