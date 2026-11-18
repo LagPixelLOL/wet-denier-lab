@@ -51,14 +51,7 @@ export class FakeAudioParam {
 }
 
 export type AudioNodeKind =
-  | "destination"
-  | "gain"
-  | "compressor"
-  | "biquad"
-  | "bufferSource"
-  | "oscillator"
-  | "panner"
-  | "convolver";
+  "destination" | "gain" | "compressor" | "biquad" | "bufferSource" | "oscillator" | "panner" | "convolver";
 
 export class FakeAudioNode {
   readonly kind: AudioNodeKind;
@@ -179,6 +172,8 @@ export interface FakeAudioOptions {
   noPanner?: boolean;
   /** Make createConvolver throw (reverb unavailable). */
   convolverFails?: boolean;
+  /** Make resume() reject (autoplay blocked). */
+  resumeFails?: boolean;
   /** Make createBufferSource throw after the graph is built (exercises the unlock try/catch). */
   bufferSourceFailsAfter?: number;
 }
@@ -248,6 +243,9 @@ export class FakeAudioContext {
   }
   resume(): Promise<void> {
     this.resumeCalls++;
+    if (this.options.resumeFails) {
+      return Promise.reject(new Error("NotAllowedError"));
+    }
     this.state = "running";
     return Promise.resolve();
   }
@@ -261,6 +259,26 @@ export class FakeAudioContext {
     return this.nodes.filter((node) => node.kind === kind).length;
   }
 }
+
+type FakeObject = FakeAudioNode | FakeAudioParam | FakeAudioBuffer | FakeAudioContext;
+
+/**
+ * The fake behind a Web Audio typed value held by the code under test (checked at runtime), e.g.
+ * `fake(sound.master, FakeGainNode)`. This is the one place the DOM audio types are bridged to the fakes.
+ */
+export function fake<T extends FakeObject>(
+  value: AudioNode | AudioParam | AudioBuffer | BaseAudioContext | null | undefined,
+  type: abstract new (...args: never[]) => T,
+): T {
+  const object: unknown = value;
+  if (!(object instanceof type)) {
+    throw new Error(`expected a ${type.name}`);
+  }
+  return object;
+}
+
+/** The fake context typed as a real one, for APIs that take an AudioContext. */
+export const asAudioContext = (ctx: FakeAudioContext): AudioContext => ctx as unknown as AudioContext;
 
 /** Installs FakeAudioContext as window.AudioContext (or webkitAudioContext). Undo with vi.unstubAllGlobals(). */
 export function installFakeAudio(options: FakeAudioOptions = {}, name = "AudioContext"): typeof FakeAudioContext {

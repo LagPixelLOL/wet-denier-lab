@@ -133,7 +133,12 @@ export class FakeContext2D {
     return digest(new TextEncoder().encode(JSON.stringify(this.ops)));
   }
 
-  getImageData(x: number, y: number, width: number, height: number): { data: Uint8ClampedArray; width: number; height: number } {
+  getImageData(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): { data: Uint8ClampedArray; width: number; height: number } {
     this.record("getImageData", [x, y, width, height]);
     let state = parseInt(this.opsDigest, 16) >>> 0;
     const data = new Uint8ClampedArray(width * height * 4);
@@ -228,6 +233,9 @@ export function installFakeDocument({ coarsePointer = false } = {}): { contexts:
       return new FakeCanvasElement((ctx) => contexts.push(ctx));
     },
   });
-  vi.stubGlobal("matchMedia", (query: string) => ({ matches: coarsePointer && query === "(pointer: coarse)", media: query }));
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: coarsePointer && query === "(pointer: coarse)",
+    media: query,
+  }));
   return { contexts };
 }

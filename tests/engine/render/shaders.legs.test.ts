@@ -1,7 +1,58 @@
+import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { defineProgramSuite, fragmentName, programGroups, unusedUniformsByProgram } from "../../helpers/shaderCatalog";
+import { parseShader, resolveIncludes, splitDeclaratorLists } from "../../helpers/glsl";
+import {
+  defineProgramSuite,
+  expectUniformsWired,
+  fragmentName,
+  programGroups,
+  unusedUniformsByProgram,
+  valueFits,
+} from "../../helpers/shaderCatalog";
 
-const isStageProgram = (label: string) => !label.includes(" SCENE=") && !/^(WET_|DROPLET_|BEAD_|GLINT_)/.test(fragmentName(label));
+const isStageProgram = (label: string) =>
+  !label.includes(" SCENE=") && !/^(WET_|DROPLET_|BEAD_|GLINT_)/.test(fragmentName(label));
+
+describe("GLSL validation helpers", () => {
+  it("reject undeclared names and accept three's built-ins", () => {
+    expect(() => parseShader("void main() { gl_FragColor = vec4(uNope); }", "fragment")).toThrow(/uNope/);
+    expect(() => parseShader("void main() { gl_FragColor = vec4(helper()); }", "fragment")).toThrow(/helper/);
+    expect(() =>
+      parseShader("void main() { gl_Position = projectionMatrix * vec4(position, 1.0); }", "vertex"),
+    ).not.toThrow();
+  });
+
+  it("apply defines and #if branches like the GPU would", () => {
+    const source = "#if SCENE == 2\nvoid main() { gl_FragColor = vec4(1.0); }\n#else\nvoid main() { broken }\n#endif\n";
+    expect(() => parseShader(source, "fragment", { defines: { SCENE: 2 } })).not.toThrow();
+    expect(() => parseShader(source, "fragment", { defines: { SCENE: 1 } })).toThrow();
+  });
+
+  it("split declarator lists so later initializers see earlier names", () => {
+    expect(splitDeclaratorLists("  float a = f(1.0, 2.0), b = a, c = a * b;\nuniform float u, v;")).toBe(
+      "  float a = f(1.0, 2.0);\n  float b = a;\n  float c = a * b;\nuniform float u, v;",
+    );
+  });
+
+  it("resolve #include chunks from THREE.ShaderChunk", () => {
+    expect(resolveIncludes("#include <common>")).toContain("#define PI 3.141592653589793");
+    expect(() => resolveIncludes("#include <nope>")).toThrow(/nope/);
+  });
+
+  it("find uniforms that are not wired", () => {
+    const material = new THREE.ShaderMaterial({
+      vertexShader: "void main() { gl_Position = vec4(position, 1.0); }",
+      fragmentShader:
+        "uniform vec3 uColor; uniform float uGain; void main() { gl_FragColor = vec4(uColor * uGain, 1.0); }",
+      uniforms: { uColor: { value: new THREE.Color() }, uGain: { value: new THREE.Vector2() } },
+    });
+    const use = { label: "test", material, instancing: false, geometries: new Set<THREE.BufferGeometry>() };
+    expect(() => expectUniformsWired(use)).toThrow(/vec2|float uGain/);
+    expect(valueFits("vec4[]", [new THREE.Vector4()])).toBe(true);
+    expect(valueFits("sampler2D", null)).toBe(true);
+    expect(valueFits("bvec2", true)).toBe(false);
+  });
+});
 
 describe("shader catalog", () => {
   it("covers every program the stage, wet map and water simulation draw", () => {

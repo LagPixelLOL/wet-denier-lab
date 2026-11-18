@@ -41,7 +41,8 @@ function namesFor(stage: Stage): Map<object, string> {
   return names;
 }
 
-const backdropMaterial = (stage: Stage) => (stage.scene.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>).material;
+const backdropMaterial = (stage: Stage) =>
+  (stage.scene.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>).material;
 
 function expectLookApplied(leg: StageLeg, look: LegLook, { initial = false } = {}): void {
   const f = leg.fabric;
@@ -262,9 +263,9 @@ describe("setBackdrop", () => {
       expect(stage.backdropNow).toBe(def);
       const bg = stage.uniforms.bg;
       const floor = stage.uniforms.floor;
-      expect([bg.uTopColor, bg.uBottomColor, bg.uGlowColor, floor.uFloorColor, floor.uShadowColor].map((u) => hex(u.value))).toEqual(
-        [def.top, def.bottom, def.glow, def.floor, def.shadow],
-      );
+      expect(
+        [bg.uTopColor, bg.uBottomColor, bg.uGlowColor, floor.uFloorColor, floor.uShadowColor].map((u) => hex(u.value)),
+      ).toEqual([def.top, def.bottom, def.glow, def.floor, def.shadow]);
     }
   });
 
@@ -434,7 +435,9 @@ describe("leg pose, opacity and order", () => {
       expect(leg.rig.uKneeRot.value.elements).toEqual(new THREE.Matrix3().set(...pose.K).elements);
       expect(leg.rig.uRigOn.value).toBe(pose.on);
     });
-    expect(digestRounded([...stage.legs[0].matrix.elements, ...stage.legs[1].matrix.elements], 9)).toMatchInlineSnapshot(`"46e7de9d"`);
+    expect(
+      digestRounded([...stage.legs[0].matrix.elements, ...stage.legs[1].matrix.elements], 9),
+    ).toMatchInlineSnapshot(`"46e7de9d"`);
   });
 
   it("hides a leg (with its mirror and shadow) once its opacity is all but zero", () => {
@@ -486,7 +489,9 @@ describe("aimLights", () => {
     const light = stage.uniforms.light;
     stage.aimLights(0.3, -0.5);
     expect(light.uKeyDir.value.length()).toBeCloseTo(1, 12);
-    expect(digestRounded([...light.uKeyDir.value.toArray(), ...light.uRimDir.value.toArray()], 9)).toMatchInlineSnapshot(`"65a95832"`);
+    expect(
+      digestRounded([...light.uKeyDir.value.toArray(), ...light.uRimDir.value.toArray()], 9),
+    ).toMatchInlineSnapshot(`"65a95832"`);
   });
 });
 
@@ -570,6 +575,14 @@ describe("bakeShadow", () => {
     expect(proj.value.x / proj.value.z).toBeCloseTo(key.x / key.z, 12);
   });
 
+  it("projects straight down for a light right overhead below the minimum elevation", () => {
+    const { stage } = riggedStage();
+    stage.bakeShadow();
+    stage.uniforms.light.uKeyDir.value.set(0, 0.2, 0);
+    stage.bakeShadow();
+    expect(stage.legs[0].shadow.material.uniforms.uProjDir.value.toArray()).toEqual([0, 0.45, 0]);
+  });
+
   it("fits the leg shadow camera around the cast points", () => {
     const { stage } = riggedStage();
     stage.bakeShadow();
@@ -650,7 +663,9 @@ describe("renderMirror", () => {
       "clearColor #112233 0.5",
     ]);
     expect(seen).toEqual([[-1, SCENES.street.floor.mirrorFall, -before[0][1], -castBefore[5]]]);
-    expect([light.uKeyDir, light.uRimDir, light.uRim2Dir, light.uEnvADir, light.uEnvBDir].map((u) => u.value.toArray())).toEqual(before);
+    expect(
+      [light.uKeyDir, light.uRimDir, light.uRim2Dir, light.uEnvADir, light.uEnvBDir].map((u) => u.value.toArray()),
+    ).toEqual(before);
     expect([...stage.legs[0].fabric.uCastShadowMatrix.value.elements]).toEqual(castBefore);
     expect([light.uMirrorFlipY.value, light.uMirrorFalloff.value]).toEqual([1, 0]);
   });

@@ -4,11 +4,16 @@ import { SCENE_ORDER } from "../../../src/engine/stage/scenes";
 import { SoundEngine } from "../../../src/engine/audio/SoundEngine";
 import { digest, digestRounded } from "../../helpers/digest";
 import {
+  FakeAudioBuffer,
   FakeAudioContext,
   FakeAudioParam,
   FakeBufferSourceNode,
+  FakeConvolverNode,
   FakeGainNode,
   FakeOscillatorNode,
+  FakePannerNode,
+  asAudioContext,
+  fake,
   installFakeAudio,
   lastContext,
 } from "../../helpers/fakeAudio";
@@ -33,8 +38,12 @@ function unlocked(options: FakeAudioOptions = {}): { sound: SoundEngine; ctx: Fa
   return { sound, ctx: lastContext() };
 }
 
-const gainsOf = (sound: SoundEngine) => sound.beds as unknown as Record<"street" | "pool" | "bath", FakeGainNode>;
-const param = (value: AudioParam) => value as unknown as FakeAudioParam;
+const gainsOf = (sound: SoundEngine) => ({
+  street: fake(sound.beds?.street, FakeGainNode),
+  pool: fake(sound.beds?.pool, FakeGainNode),
+  bath: fake(sound.beds?.bath, FakeGainNode),
+});
+const param = (value: AudioParam) => fake(value, FakeAudioParam);
 
 describe("SoundEngine before unlock", () => {
   it("starts idle and enabled", () => {
@@ -86,11 +95,19 @@ describe("unlock", () => {
     expect(FakeAudioContext.instances).toHaveLength(1);
   });
 
+  it("stays suspended (and retries on the next unlock) when autoplay is blocked", async () => {
+    const { sound, ctx } = unlocked({ resumeFails: true });
+    await Promise.resolve();
+    expect(sound.running).toBe(false);
+    sound.unlock();
+    expect(ctx.resumeCalls).toBe(2);
+  });
+
   it("reuses a context passed to _create and survives a failing kick", () => {
     installFakeAudio({ bufferSourceFailsAfter: 6 });
     const ctx = new FakeAudioContext();
     const sound = new SoundEngine();
-    sound._create(ctx as unknown as AudioContext);
+    sound._create(asAudioContext(ctx));
     expect(sound.ctx).toBe(ctx);
     expect(() => sound.unlock()).not.toThrow();
     expect(ctx.resumeCalls).toBe(1);
@@ -100,7 +117,7 @@ describe("unlock", () => {
 describe("the audio graph", () => {
   it("routes everything through a compressed master bus", () => {
     const { sound, ctx } = unlocked();
-    const master = sound.master as unknown as FakeGainNode;
+    const master = fake(sound.master, FakeGainNode);
     expect(master.gain.value).toBe(0.9);
     const [compressor] = master.outputs;
     expect(compressor).toMatchObject({ kind: "compressor" });
@@ -121,9 +138,10 @@ describe("the audio graph", () => {
     expect(Math.min(...noise)).toBeGreaterThanOrEqual(-1);
     expect(Math.max(...noise)).toBeLessThanOrEqual(1);
     const dust = ctx.buffers[1].getChannelData(0);
-    expect(dust.filter((v) => v === 0).length).toBeGreaterThan(dust.length / 2);
-    expect(digest(noise)).toMatchInlineSnapshot();
-    expect(digest(dust)).toMatchInlineSnapshot();
+    expect(dust).toHaveLength(16000);
+    expect(dust.some((v) => v !== 0)).toBe(true);
+    expect(digest(noise)).toMatchInlineSnapshot(`"5d7e849c"`);
+    expect(digest(dust)).toMatchInlineSnapshot(`"6a80982b"`);
   });
 
   it("feeds a normalized stereo reverb from a 0.9 s impulse", () => {
@@ -131,13 +149,18 @@ describe("the audio graph", () => {
     const impulse = ctx.buffers[2];
     expect([impulse.numberOfChannels, impulse.length]).toEqual([2, 7200]);
     // silent for the first 7 ms
-    expect(impulse.getChannelData(0).subarray(0, 56).every((v) => v === 0)).toBe(true);
+    expect(
+      impulse
+        .getChannelData(0)
+        .subarray(0, 56)
+        .every((v) => v === 0),
+    ).toBe(true);
     expect(impulse.getChannelData(1)[56]).not.toBe(0);
-    const verb = sound.verb as unknown as { normalize: boolean; buffer: unknown; outputs: unknown[] };
+    const verb = fake(sound.verb, FakeConvolverNode);
     expect(verb.normalize).toBe(true);
     expect(verb.buffer).toBe(impulse);
     expect(verb.outputs).toEqual([sound.master]);
-    expect((sound.verbIn as unknown as FakeGainNode).outputs).toEqual([sound.verb]);
+    expect(fake(sound.verbIn, FakeGainNode).outputs).toEqual([sound.verb]);
     expect(digestRounded(impulse.getChannelData(1), 6)).toMatchInlineSnapshot(`"89ce8916"`);
   });
 
@@ -145,18 +168,20 @@ describe("the audio graph", () => {
     const { sound } = unlocked({ convolverFails: true });
     expect(sound.verb).toBeNull();
     expect(sound.verbIn).toBeUndefined();
-    expect((sound.rainGain as unknown as FakeGainNode).outputs).toEqual([sound.master]);
+    expect(fake(sound.rainGain, FakeGainNode).outputs).toEqual([sound.master]);
     sound.splash(0.5);
     sound.setScene("bath");
   });
 
   it("loops filtered noise for the rain and the three ambience beds, with slow swells", () => {
     const { sound, ctx } = unlocked();
-    const rain = sound.rainGain as unknown as FakeGainNode;
+    const rain = fake(sound.rainGain, FakeGainNode);
     expect(rain.gain.value).toBe(0);
     expect(rain.outputs).toEqual([sound.master, sound.verbIn]);
     const loops = ctx.nodes.filter((n): n is FakeBufferSourceNode => n instanceof FakeBufferSourceNode && n.loop);
-    expect(loops.map((n) => [n.buffer === sound.noise ? "noise" : "dust", n.playbackRate.value])).toEqual([
+    expect(
+      loops.map((n) => [n.buffer === fake(sound.noise, FakeAudioBuffer) ? "noise" : "dust", n.playbackRate.value]),
+    ).toEqual([
       ["noise", 1],
       ["dust", 0.85],
       ["noise", 0.5],
@@ -165,7 +190,7 @@ describe("the audio graph", () => {
     ]);
     expect(loops.every((n) => n.started !== null)).toBe(true);
     const beds = gainsOf(sound);
-    const swell = sound.bedSwell as unknown as Record<"street" | "pool", FakeGainNode>;
+    const swell = { street: fake(sound.bedSwell.street, FakeGainNode), pool: fake(sound.bedSwell.pool, FakeGainNode) };
     expect(beds.street.outputs).toEqual([swell.street]);
     expect(beds.pool.outputs).toEqual([swell.pool]);
     expect(beds.bath.outputs).toEqual([sound.master]);
@@ -181,7 +206,7 @@ describe("the audio graph", () => {
     const sound = new SoundEngine();
     sound.setEnabled(false);
     sound.unlock();
-    expect((sound.master as unknown as FakeGainNode).gain.value).toBe(0);
+    expect(fake(sound.master, FakeGainNode).gain.value).toBe(0);
   });
 });
 
@@ -194,7 +219,12 @@ describe("setScene", () => {
       ctx.currentTime += 1;
       sound.setScene(key);
       const beds = gainsOf(sound);
-      levels[key] = [beds.street.gain.target!, beds.pool.gain.target!, beds.bath.gain.target!, param(sound.verbIn!.gain).target!];
+      levels[key] = [
+        beds.street.gain.target!,
+        beds.pool.gain.target!,
+        beds.bath.gain.target!,
+        param(sound.verbIn!.gain).target!,
+      ];
       expect(beds.bath.gain.events.at(-1)).toMatchObject({ time: ctx.currentTime, timeConstant: 0.6 });
     }
     expect(levels).toEqual({
@@ -250,6 +280,17 @@ describe("setScene", () => {
     expect(oscillators()).toBe(left);
   });
 
+  it("doubles some tap drips (pinned by the engine's own seed)", () => {
+    vi.useFakeTimers();
+    const { sound, ctx } = unlocked();
+    sound.setScene("bath");
+    // first drip after 2.7 s (one bloop), second after another 5.3 s (two bloops)
+    vi.advanceTimersByTime(2700);
+    expect(ctx.count("oscillator")).toBe(2 + 1);
+    vi.advanceTimersByTime(5300);
+    expect(ctx.count("oscillator")).toBe(2 + 1 + 2);
+  });
+
   it("stops the drip loop if the scene changes before the timer fires", () => {
     vi.useFakeTimers();
     const { sound, ctx } = unlocked();
@@ -298,11 +339,16 @@ describe("splash", () => {
     // voice input + panner, four bursts (source, filter(s), gain), a thump and up to six bubbles
     expect(kinds.filter((k) => k === "bufferSource")).toHaveLength(4);
     expect(kinds.filter((k) => k === "oscillator").length).toBeGreaterThanOrEqual(2);
-    const panner = voice.find((n) => n.kind === "panner") as unknown as { pan: FakeAudioParam; outputs: unknown[] };
+    const panner = voice.find((n): n is FakePannerNode => n instanceof FakePannerNode)!;
     expect(panner.pan.value).toBeGreaterThan(0.4);
     expect(panner.outputs).toEqual([sound.master, sound.verbIn]);
     const sources = voice.filter((n): n is FakeBufferSourceNode => n instanceof FakeBufferSourceNode);
-    expect(sources.map((s) => (s.buffer === sound.dust ? "dust" : "noise"))).toEqual(["noise", "noise", "dust", "noise"]);
+    expect(sources.map((s) => (s.buffer === fake(sound.dust, FakeAudioBuffer) ? "dust" : "noise"))).toEqual([
+      "noise",
+      "noise",
+      "dust",
+      "noise",
+    ]);
     for (const source of sources) {
       expect(source.started![0]).toBeGreaterThanOrEqual(1.004);
       expect(source.started![1]).toBeLessThan(1.5);
@@ -314,7 +360,12 @@ describe("splash", () => {
       "exponentialRampToValueAtTime",
     ]);
     expect(envelope[1].value).toBeCloseTo(0.54, 12);
-    expect(digestRounded(voice.flatMap((n) => (n instanceof FakeOscillatorNode ? [n.started!, n.stopped!] : [])), 9)).toMatchInlineSnapshot(`"fa67af6a"`);
+    expect(
+      digestRounded(
+        voice.flatMap((n) => (n instanceof FakeOscillatorNode ? [n.started!, n.stopped!] : [])),
+        9,
+      ),
+    ).toMatchInlineSnapshot(`"fa67af6a"`);
   });
 
   it("stays light for soft hits: no thump, no hiss tail", () => {
@@ -352,9 +403,9 @@ describe("splash", () => {
     const { sound, ctx } = unlocked({ noPanner: true });
     sound.splash(0.5);
     expect(ctx.count("panner")).toBe(0);
-    expect(ctx.nodes.filter((n) => n.kind === "gain").some((n) => n.outputs.includes(sound.master as unknown as FakeGainNode))).toBe(
-      true,
-    );
+    expect(
+      ctx.nodes.filter((n) => n.kind === "gain").some((n) => n.outputs.includes(fake(sound.master, FakeGainNode))),
+    ).toBe(true);
   });
 });
 
@@ -459,9 +510,20 @@ describe("iOS silent-audio keepalive", () => {
     }
   }
 
+  function stubObjectUrl(create: (blob: Blob) => string): void {
+    Object.defineProperty(URL, "createObjectURL", { value: create, configurable: true, writable: true });
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(URL, "createObjectURL");
+  });
+
   async function loadOnIos(): Promise<typeof SoundEngine> {
     vi.resetModules();
-    Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)", configurable: true });
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)",
+      configurable: true,
+    });
     try {
       return (await import("../../../src/engine/audio/SoundEngine")).SoundEngine;
     } finally {
@@ -472,11 +534,9 @@ describe("iOS silent-audio keepalive", () => {
   it("plays a looping silent WAV while sound is enabled and pauses it when disabled", async () => {
     const blobs: Blob[] = [];
     vi.stubGlobal("Audio", FakeAudioElement);
-    vi.stubGlobal("URL", {
-      createObjectURL: (blob: Blob) => {
-        blobs.push(blob);
-        return "blob:silence";
-      },
+    stubObjectUrl((blob) => {
+      blobs.push(blob);
+      return "blob:silence";
     });
     FakeAudioElement.created = [];
     installFakeAudio();
@@ -504,11 +564,29 @@ describe("iOS silent-audio keepalive", () => {
     expect(element.plays).toBe(2);
   });
 
+  it("treats touch Macs (iPadOS) as iOS", async () => {
+    vi.resetModules();
+    Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
+    Object.defineProperty(navigator, "maxTouchPoints", { value: 5, configurable: true });
+    let IpadSoundEngine: typeof SoundEngine;
+    try {
+      IpadSoundEngine = (await import("../../../src/engine/audio/SoundEngine")).SoundEngine;
+    } finally {
+      Reflect.deleteProperty(navigator, "platform");
+      Reflect.deleteProperty(navigator, "maxTouchPoints");
+    }
+    FakeAudioElement.created = [];
+    vi.stubGlobal("Audio", FakeAudioElement);
+    stubObjectUrl(() => "blob:ipad");
+    new IpadSoundEngine().setEnabled(true);
+    expect(FakeAudioElement.created).toHaveLength(1);
+  });
+
   it("does nothing on disable before any element exists, and survives a broken Audio", async () => {
     vi.stubGlobal("Audio", function BrokenAudio() {
       throw new Error("no media");
     });
-    vi.stubGlobal("URL", { createObjectURL: () => "blob:x" });
+    stubObjectUrl(() => "blob:x");
     const IosSoundEngine = await loadOnIos();
     const sound = new IosSoundEngine();
     expect(() => sound.setEnabled(false)).not.toThrow();

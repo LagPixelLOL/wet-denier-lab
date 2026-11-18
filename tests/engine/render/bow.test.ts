@@ -65,6 +65,17 @@ describe("computeBowMatrix", () => {
     expect(m[12]).toBeGreaterThan(0);
   });
 
+  it("falls back to an x tangent when the anchor normal points straight up", () => {
+    // a flat ring of four vertices at the ring height, all with an upward normal
+    const ringY = 0.5 - 0.016;
+    const pos = new Float32Array([0.05, ringY, 0, -0.05, ringY, 0, 0, ringY, 0.05, 0, ringY, -0.05]);
+    const nrm = new Float32Array([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]);
+    const m = computeBowMatrix({ pos, nrm }, 0.5);
+    expect([...m.subarray(0, 3)].map((v) => v + 0)).toEqual([0, 0, 0]);
+    expect([...m.subarray(8, 11)]).toEqual([0, 1, 0]);
+    expect(m[13]).toBeCloseTo(ringY + 0.0004, 7);
+  });
+
   it("writes into the given array and pins the placement for each stocking length", () => {
     const out = new Float64Array(16);
     expect(computeBowMatrix(collision, STOCKING_LENGTHS.thigh.cuffY, out)).toBe(out);

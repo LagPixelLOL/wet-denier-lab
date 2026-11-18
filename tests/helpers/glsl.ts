@@ -55,7 +55,12 @@ function customDefines(defines: Record<string, unknown> = {}): string {
 
 /** Equivalent of the WebGL2 prefix three r187 prepends to ShaderMaterial sources. */
 export function prelude(stage: ShaderStage, options: PreludeOptions = {}): string {
-  const common = [PRECISION, "#define HIGH_PRECISION", "#define SHADER_TYPE ShaderMaterial", "#define SHADER_NAME test"];
+  const common = [
+    PRECISION,
+    "#define HIGH_PRECISION",
+    "#define SHADER_TYPE ShaderMaterial",
+    "#define SHADER_NAME test",
+  ];
   if (stage === "vertex") {
     return [
       "#version 300 es",

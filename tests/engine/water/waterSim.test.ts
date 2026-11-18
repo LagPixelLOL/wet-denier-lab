@@ -30,7 +30,11 @@ function surfacePoint(world: WaterWorld, leg = 0, y = 0.33, z = 0.06): SurfaceHi
   return { ...hit };
 }
 
-function bead(hit: Pick<SurfaceHit, "x" | "y" | "z" | "nx" | "ny" | "nz" | "leg">, r: number, extra: Partial<Bead> = {}): Bead {
+function bead(
+  hit: Pick<SurfaceHit, "x" | "y" | "z" | "nx" | "ny" | "nz" | "leg">,
+  r: number,
+  extra: Partial<Bead> = {},
+): Bead {
   return {
     x: hit.x,
     y: hit.y,
@@ -53,7 +57,14 @@ function bead(hit: Pick<SurfaceHit, "x" | "y" | "z" | "nx" | "ny" | "nz" | "leg"
   };
 }
 
-function freeDrop(kind: FreeDrop["kind"], x: number, y: number, z: number, r: number, v: [number, number, number] = [0, 0, 0]): FreeDrop {
+function freeDrop(
+  kind: FreeDrop["kind"],
+  x: number,
+  y: number,
+  z: number,
+  r: number,
+  v: [number, number, number] = [0, 0, 0],
+): FreeDrop {
   return { kind, t: 0, r, x, y, z, vx: v[0], vy: v[1], vz: v[2] };
 }
 
@@ -173,17 +184,34 @@ describe("throwAt", () => {
     expect(water.drops).toHaveLength(8);
   });
 
-  it("moves the launch point when the other leg blocks the line of flight", () => {
+  it("moves the launch point off the normal, then closer, when the legs block the line of flight", () => {
+    const world = waterWorld();
+    const { water, rig } = world;
+    // vertices found by scanning the step pose: from the viewer, 17094 is blocked only when launching off the
+    // normal; 1141 is blocked both ways and launches from just short of the blocker
+    const launches = [17094, 1141].map((vertex) => {
+      const hit = {
+        ...rig.surface.closest(rig.pos[vertex * 3], rig.pos[vertex * 3 + 1], rig.pos[vertex * 3 + 2], 0.01)!,
+      };
+      water.drops.length = 0;
+      water.throwAt(hit, EYE, { count: 4 });
+      expect(water.drops.length).toBeGreaterThan(0);
+      const drop = water.drops[0] as ThrownDrop;
+      return Math.hypot(drop.sx - hit.x, drop.sy - hit.y, drop.sz - hit.z);
+    });
+    expect(launches[0]).toBeGreaterThan(0.35);
+    expect(launches[1]).toBeLessThan(0.35);
+    expect(digestRounded(launches, 9)).toMatchInlineSnapshot(`"aae0cd3e"`);
+  });
+
+  it("aims along x on horizontal targets and drops nothing when nothing is near", () => {
     const world = waterWorld();
     const { water } = world;
-    // the inner side of leg 0, thrown at from the far side of leg 1
-    const hit = surfacePoint(world, 0, 0.3, 0.02);
-    const [ox, oy, oz] = world.rig.point(1, 0, 0.3, 0.02);
-    const from = { x: ox - 0.5, y: oy, z: oz };
-    water.throwAt(hit, from, { count: 6 });
-    const launch = water.drops.map((d) => (d as ThrownDrop).sx);
-    expect(launch.length).toBeGreaterThan(0);
-    expect(digestRounded(launch, 9)).toMatchInlineSnapshot(`"f6ae4071"`);
+    const top = surfacePoint(world, 0, 0.05, 0.1);
+    water.throwAt({ ...top, nx: 0, ny: 1, nz: 0 }, EYE, { count: 3 });
+    expect(water.drops).toHaveLength(3);
+    water.throwAt({ x: 2, y: 0.5, z: 0, nx: 0, ny: 0, nz: 1 }, EYE, { count: 5 });
+    expect(water.drops).toHaveLength(3);
   });
 
   it("flies drops along their arc while airborne", () => {
@@ -243,7 +271,12 @@ describe("a splash on the leg", () => {
       ),
     ).toMatchInlineSnapshot(`"1496fc2d"`);
     expect(digest(water.puddleBytes)).toMatchInlineSnapshot(`"0e001606"`);
-    expect(digestRounded(water.ripples.flatMap((r) => r.toArray()), 7)).toMatchInlineSnapshot(`"5b0c5276"`);
+    expect(
+      digestRounded(
+        water.ripples.flatMap((r) => r.toArray()),
+        7,
+      ),
+    ).toMatchInlineSnapshot(`"5b0c5276"`);
   });
 
   it("centers the impact energy on the hit point", () => {
@@ -334,7 +367,11 @@ describe("beads", () => {
     const { water, rig } = world;
     let best = -1;
     for (let i = 0; i < rig.pos.length / 3; i++) {
-      if (rig.nrm[i * 3 + 1] < -0.6 && rig.pos[i * 3 + 1] > 0.03 && (best < 0 || rig.pos[i * 3 + 1] > rig.pos[best * 3 + 1])) {
+      if (
+        rig.nrm[i * 3 + 1] < -0.6 &&
+        rig.pos[i * 3 + 1] > 0.03 &&
+        (best < 0 || rig.pos[i * 3 + 1] > rig.pos[best * 3 + 1])
+      ) {
         best = i;
       }
     }
@@ -361,6 +398,17 @@ describe("beads", () => {
     expect(kindCounts(water)).toEqual([0, 0, 1, 0]);
     expect(water.events.floor).toBe(1);
     expect(puddleSum(water)).toBeGreaterThan(0);
+  });
+
+  it("never slide faster than 55 cm/s", () => {
+    const world = waterWorld();
+    const { water } = world;
+    const side = surfacePoint(world, 0, 0.4, 0.06);
+    const b = bead(side, 0.004, { vy: -3 });
+    water.beads.push(b);
+    water.update(DT);
+    expect(Math.hypot(b.vx, b.vy, b.vz)).toBeLessThanOrEqual(0.55 + 1e-12);
+    expect(Math.hypot(b.x - side.x, b.y - side.y, b.z - side.z)).toBeLessThan(0.55 * DT + 0.001);
   });
 
   it("disappear once evaporated below 0.45 mm", () => {
@@ -410,6 +458,32 @@ describe("beads", () => {
     water.beads.push(bead(hit, 0.002));
     water.shakeOff();
     expect(water.drops).toHaveLength(2);
+  });
+});
+
+describe("impacts", () => {
+  it("splash beads around the hit, two per splash on mobile, and skip spots off the mesh", () => {
+    const desktop = waterWorld();
+    const hit = surfacePoint(desktop);
+    desktop.water._impact(hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz, 0, 0, -0.5, 0.0005, true, 0);
+    expect(desktop.water.beads.length).toBeLessThanOrEqual(3);
+    expect(desktop.water.beads.length).toBeGreaterThan(0);
+    const mobile = waterWorld({ mobile: true });
+    const mobileHit = surfacePoint(mobile);
+    mobile.water._impact(mobileHit.x, mobileHit.y, mobileHit.z, 0, 1, 0, 0, -0.5, 0, 0.0005, true, 0);
+    expect(mobile.water.beads.length).toBeLessThanOrEqual(2);
+    const far = waterWorld().water;
+    far._impact(3, 0.5, 0, 0, 0, 1, 0, 0, -0.5, 0.0005, true, 0);
+    expect(far.beads).toHaveLength(0);
+    expect(far.events.impacts).toBe(1);
+  });
+
+  it("skip splash beads when the bead budget is nearly used up", () => {
+    const world = waterWorld();
+    const hit = surfacePoint(world);
+    world.water.maxBeads = 40;
+    world.water._impact(hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz, 0, 0, -0.5, 0.0005, true, 0);
+    expect(world.water.beads).toHaveLength(0);
   });
 });
 
@@ -641,7 +715,10 @@ describe("sync", () => {
     // a young bead is drawn smaller while it grows in
     expect(water.beadMesh.geometry.getAttribute("aR").getX(0)).toBeCloseTo(0.002, 9);
     expect(water.beadMesh.geometry.getAttribute("aR").getX(1)).toBeCloseTo(0.001 * (0.55 + 0.18), 9);
-    const matrices = [...water.beadMesh.instanceMatrix.array.subarray(0, 32), ...water.dropMesh.instanceMatrix.array.subarray(0, 32)];
+    const matrices = [
+      ...water.beadMesh.instanceMatrix.array.subarray(0, 32),
+      ...water.dropMesh.instanceMatrix.array.subarray(0, 32),
+    ];
     expect(matrices.every(Number.isFinite)).toBe(true);
     expect(digestRounded(matrices, 6)).toMatchInlineSnapshot(`"bd80a248"`);
   });

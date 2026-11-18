@@ -162,7 +162,14 @@ describe("WetMap.stamp", () => {
     const at = (name: string, i: number) => [...wetmap.attr[name].array.subarray(i * 4, i * 4 + 4)];
     rects.forEach((rect, i) => {
       expect(at("aRect", i)).toEqual(
-        Array.from(new Float32Array([rect[0] - wetmap.padU, rect[1] - wetmap.padV, rect[2] + wetmap.padU, rect[3] + wetmap.padV])),
+        Array.from(
+          new Float32Array([
+            rect[0] - wetmap.padU,
+            rect[1] - wetmap.padV,
+            rect[2] + wetmap.padU,
+            rect[3] + wetmap.padV,
+          ]),
+        ),
       );
       expect(at("aA", i)).toEqual(Array.from(new Float32Array([hit.x, hit.y, hit.z, 0.01])));
       // leg 1 lives in the right half of the atlas, so cotton's take applies

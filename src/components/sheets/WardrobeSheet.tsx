@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { actions } from "../../engine/app/actions";
+import { Pill } from "../Pill";
 import { thumbCanvases } from "../../engine/app/thumbnails";
 import { COLORS, COLOR_ORDER, type ColorDef } from "../../engine/catalog/colors";
 import {
@@ -197,7 +198,7 @@ export function WardrobeSheet() {
         {TABS.map(([id]) => (
           <div
             key={id}
-            className="grid gap-[9px] [align-content:start] hidden-attr:hidden"
+            className="grid [align-content:start] gap-[9px] hidden-attr:hidden"
             data-pane={id}
             role="tabpanel"
             hidden={id !== tab}
@@ -206,7 +207,7 @@ export function WardrobeSheet() {
           </div>
         ))}
       </div>
-      <div className="sheet-foot flex items-center justify-between gap-2.5 border-t border-t-hairline pt-2">
+      <div className="flex items-center justify-between gap-2.5 border-t border-t-hairline pt-2">
         <div
           className={`flex rounded-[999px] bg-well p-0.5 ${tab === "pose" || solo ? "invisible" : ""}`}
           data-key="target"
@@ -230,12 +231,17 @@ export function WardrobeSheet() {
           })}
         </div>
         <div className="flex gap-[7px]">
-          <button id="randomBtn" className="pill" onClick={actions.random}>
+          <Pill id="randomBtn" className="wide:px-[11px]" onClick={actions.random}>
             随机一双
-          </button>
-          <button id="shareBtn" className="pill" title="把这一双连同姿势和场景生成一个链接" onClick={actions.share}>
+          </Pill>
+          <Pill
+            id="shareBtn"
+            className="wide:px-[11px]"
+            title="把这一双连同姿势和场景生成一个链接"
+            onClick={actions.share}
+          >
             复制链接
-          </button>
+          </Pill>
         </div>
       </div>
     </section>

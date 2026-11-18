@@ -110,42 +110,9 @@
     outline: 2px solid var(--focus);
     outline-offset: 2px;
   }
-}
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 7px 14px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  white-space: nowrap;
-  text-decoration: none;
-  background: var(--chip);
-  color: var(--ink);
-  border: 1px solid var(--hairline);
-  transition:
-    transform 0.12s,
-    background 0.2s;
-}
-.pill:active {
-  transform: scale(0.95);
-}
-.pill[hidden] {
-  display: none;
-}
-.pill.solid {
-  background: linear-gradient(160deg, var(--accent), var(--accent-deep));
-  color: var(--on-ink);
-  border-color: transparent;
-  box-shadow: 0 6px 16px var(--focus);
-}
-
-body.wide .sheet-foot .pill {
-  padding: 7px 11px;
-}
-body.dim {
-  --glass: rgba(255, 255, 255, 0.82);
-  --glass-strong: rgba(255, 255, 255, 0.92);
-  --chip: rgba(255, 255, 255, 0.82);
+  body.dim {
+    --glass: rgba(255, 255, 255, 0.82);
+    --glass-strong: rgba(255, 255, 255, 0.92);
+    --chip: rgba(255, 255, 255, 0.82);
+  }
 }
