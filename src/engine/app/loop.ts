@@ -140,8 +140,6 @@ export function step(now: number, fixedDt?: number) {
     thumbJobs.length &&
     !poseState &&
     !app.rig.moving &&
-    app.rig.awayNow[0] === 0 &&
-    app.rig.awayNow[1] === 0 &&
     !app.previewBackup &&
     (!app.isMobile || app.oddFrame)
   ) {

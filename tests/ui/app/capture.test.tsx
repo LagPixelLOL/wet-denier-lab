@@ -227,6 +227,37 @@ describe("thumbnails", () => {
     settle();
   });
 
+  it("renders while a leg is faded for a close-up, showing both legs fully, then restores the fade", () => {
+    // Keep leg 1 faded as if the camera were close up behind it.
+    const setAway = vi.spyOn(app.rig, "setAway").mockImplementation(() => {});
+    app.rig.away[1] = app.rig.awayNow[1] = 1;
+    app.rig.applyOpacity();
+    const opacity = app.stage.legs.map((leg) => leg.fabric.uOpacity);
+    const faded = opacity[1].value;
+    expect(faded).toBeCloseTo(0.16, 9);
+    const seen: number[][] = [];
+    const render = h.renderer.render;
+    const spy = vi.spyOn(h.renderer, "render").mockImplementation((scene, cam) => {
+      if (cam === app.thumbCamera) {
+        seen.push(opacity.map((u) => u.value));
+      }
+      render.call(h.renderer, scene, cam);
+    });
+    actions.pose("crossed");
+    setPanel("mat");
+    expect(thumbJobs).toHaveLength(PRESETS.length);
+    settle();
+    expect(thumbJobs).toHaveLength(0);
+    expect(seen).toHaveLength(PRESETS.length);
+    expect(seen.every(([a, b]) => a === 1 && b === 1)).toBe(true);
+    expect(opacity.map((u) => u.value)).toEqual([1, faded]);
+    spy.mockRestore();
+    setAway.mockRestore();
+    app.rig.away[1] = app.rig.awayNow[1] = 0;
+    app.rig.applyOpacity();
+    settle();
+  });
+
   it("does not queue or render while a preset is previewed", () => {
     actions.previewPreset(4);
     actions.pose("step");

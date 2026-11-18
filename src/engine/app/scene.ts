@@ -145,6 +145,11 @@ export function frontLeg(eye = app.camera.position) {
       return 1;
     }
   }
+  return nearerLeg(eye);
+}
+
+/** The leg whose hip is closer to `eye`. */
+export function nearerLeg(eye: THREE.Vector3) {
   const root0 = app.rig.legs[0].axis[0];
   const root1 = app.rig.legs[1].axis[0];
   if (

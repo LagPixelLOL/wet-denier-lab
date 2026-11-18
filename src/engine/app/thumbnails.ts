@@ -8,7 +8,7 @@ import { homeView, orbit } from "./camera";
 import { isPanelOpen } from "./layout";
 import { holdPerf } from "./loop";
 import { applyStocking } from "./outfit";
-import { frontLeg } from "./scene";
+import { nearerLeg } from "./scene";
 import { outfit, state } from "./state";
 import { PRESETS, withLegDefaults, type LegSpec } from "../catalog/presets";
 import { SCENE_ORDER } from "../stage/scenes";
@@ -142,9 +142,14 @@ export function renderThumb(job: ThumbJob) {
   floorU.uMirrorStrength.value = 0;
   floorU.uPuddleTex.value = app.stage.blank;
   fabricU.uWetMap.value = app.stage.blank;
+  // A leg faded for the main view's close-up is drawn (and casts its shadow) at full opacity in the thumbnail.
+  const faded = app.rig.awayNow[0] > 0 || app.rig.awayNow[1] > 0;
+  if (faded) {
+    app.rig.applyOpacity(true);
+  }
   app.stage.aimLights(yaw, pitch);
-  app.stage.bakeShadow(false);
-  app.stage.setOrder(frontLeg(app.thumbCamera.position));
+  app.stage.bakeShadow(faded);
+  app.stage.setOrder(nearerLeg(app.thumbCamera.position));
   app.renderer.setRenderTarget(app.thumbTarget);
   app.renderer.clear();
   app.renderer.render(app.stage.scene, app.thumbCamera);
@@ -170,8 +175,11 @@ export function renderThumb(job: ThumbJob) {
   bgU.uFloorFade.value = saved.fade;
   floorU.uPuddleTex.value = saved.puddle;
   fabricU.uWetMap.value = saved.wet;
+  if (faded) {
+    app.rig.applyOpacity();
+  }
   app.stage.aimLights(orbit.cur.yaw, orbit.cur.pitch);
-  app.stage.bakeShadow(false);
+  app.stage.bakeShadow(faded);
   const ctx = job.canvas.getContext("2d")!;
   const img = ctx.createImageData(w, h);
   const rowBytes = w * 4;

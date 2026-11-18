@@ -217,11 +217,13 @@ export class LegRig {
       LEG_AXIS_POINTS.forEach((pt, j) => skinLegPoint(legPose, side, leg.lift, pt[0], pt[1], pt[2], leg.axis[j]));
     }
     this.look.setCastPoints(this.legs[0].axis.concat(this.legs[1].axis), LEG_AXIS_RADII.concat(LEG_AXIS_RADII));
-    this._fade();
+    this.applyOpacity();
   }
-  _fade(): void {
+  /** Pushes each leg's opacity to the stage; `ignoreAway` shows legs faded for a close-up at full opacity. */
+  applyOpacity(ignoreAway = false): void {
     for (let i = 0; i < 2; i++) {
-      this.look.setLegOpacity(i, this.presence[i] * (1 - (1 - AWAY_LEG_OPACITY) * this.awayNow[i]));
+      const away = ignoreAway ? 0 : this.awayNow[i];
+      this.look.setLegOpacity(i, this.presence[i] * (1 - (1 - AWAY_LEG_OPACITY) * away));
     }
   }
   _collide(specs: LegPoseSpec[]): void {
@@ -357,7 +359,7 @@ export class LegRig {
     if (posed) {
       this._place();
     } else if (faded) {
-      this._fade();
+      this.applyOpacity();
     }
     const justSettled = this.moving && !posed;
     this.moving = posed;
