@@ -1,8 +1,8 @@
 /**
  * Photo capture with watermark and share links.
  */
+import { ui } from "../../state/ui";
 import { app } from "./runtime";
-import { $ } from "./dom";
 import { showHint } from "./hud";
 import { currentLook } from "./outfit";
 import { buzz } from "./splash";
@@ -11,31 +11,7 @@ import { lookUrl } from "../share/lookCodec";
 export function shareLook() {
   const url = lookUrl(currentLook());
   const onCopied = () => showHint("链接已复制 · 别人打开就是这一双、这个姿势和场景", 3400);
-  const showCopyBox = () => {
-    let box = $("#copybox");
-    if (!box) {
-      box = document.createElement("div");
-      box.id = "copybox";
-      box.className = "copybox";
-      const label = document.createElement("span");
-      const input = document.createElement("input");
-      const okBtn = document.createElement("button");
-      label.textContent = "复制下面的链接，别人打开就是这一双、这个姿势和场景：";
-      input.readOnly = true;
-      okBtn.className = "pill";
-      okBtn.textContent = "好";
-      okBtn.onclick = () => {
-        box.hidden = true;
-      };
-      box.append(label, input, okBtn);
-      document.body.append(box);
-    }
-    const field = box.querySelector("input");
-    field.value = url;
-    box.hidden = false;
-    field.focus();
-    field.select();
-  };
+  const showCopyBox = () => ui.set({ copyBox: { url, open: true } });
   try {
     navigator.clipboard.writeText(url).then(onCopied, showCopyBox);
   } catch {
@@ -43,9 +19,13 @@ export function shareLook() {
   }
 }
 
+export function closeCopyBox() {
+  ui.set((s) => ({ copyBox: s.copyBox && { ...s.copyBox, open: false } }));
+}
+
 export function showPhoto(show) {
   document.body.classList.toggle("photo-open", show);
-  $("#photo").setAttribute("aria-hidden", String(!show));
+  ui.set((s) => ({ photo: { ...s.photo, open: show } }));
 }
 
 export function takePhoto() {
@@ -67,15 +47,13 @@ export function takePhoto() {
   ctx.font = Math.round(scale * 13) + 'px system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
   ctx.fillText("WET DENIER LAB  ·  newtonquan-yusi.pages.dev", margin, h - margin);
   const dataUrl = out.toDataURL("image/jpeg", 0.93);
-  $("#photoImg").src = dataUrl;
-  $("#photoSave").href = dataUrl;
   const inClaude = typeof window.claude !== "undefined";
-  $("#photoSave").hidden = inClaude;
-  $("#photoTip").textContent = app.isMobile
+  const tip = app.isMobile
     ? "长按图片可以保存"
     : inClaude
       ? "在图片上点右键，选「图片另存为」"
       : "点「保存图片」下载，或在图片上点右键另存为";
+  ui.set((s) => ({ photo: { ...s.photo, src: dataUrl, saveHidden: inClaude, tip } }));
   showPhoto(true);
   buzz(12);
 }

@@ -2,7 +2,6 @@
  * Development-only hooks for scripted captures.
  */
 import { app } from "./runtime";
-import { IS_PROD } from "./config";
 import { step } from "./loop";
 
 export function installDevHooks() {

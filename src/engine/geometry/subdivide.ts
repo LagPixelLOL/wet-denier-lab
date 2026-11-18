@@ -3,20 +3,41 @@
  */
 import { computeWeldedNormals, weldVertices } from "./weld";
 
-export function subdivideSmooth(positions, uvs, indices) {
+/** Result of one smooth subdivision step. */
+export interface SubdividedMesh<UV extends Float32Array | null = Float32Array | null> {
+  pos: Float32Array;
+  uv: UV;
+  idx: Uint32Array;
+}
+
+export function subdivideSmooth(
+  positions: ArrayLike<number>,
+  uvs: ArrayLike<number>,
+  indices: ArrayLike<number>,
+): SubdividedMesh<Float32Array>;
+export function subdivideSmooth(
+  positions: ArrayLike<number>,
+  uvs: ArrayLike<number> | null,
+  indices: ArrayLike<number>,
+): SubdividedMesh;
+export function subdivideSmooth(
+  positions: ArrayLike<number>,
+  uvs: ArrayLike<number> | null,
+  indices: ArrayLike<number>,
+): SubdividedMesh {
   const weld = weldVertices(positions);
   const normals = computeWeldedNormals(positions, indices, weld);
   const vertexCount = positions.length / 3;
-  const edgeMidpoints = new Map();
+  const edgeMidpoints = new Map<number, number>();
   const outPos = new Float32Array(positions.length + indices.length * 3);
   const outUv = uvs ? new Float32Array(uvs.length + indices.length * 2) : null;
   outPos.set(positions);
   if (outUv) {
-    outUv.set(uvs);
+    outUv.set(uvs!);
   }
   let nextVertex = vertexCount;
   const roundness = 0.75;
-  function edgeMidpoint(a, b) {
+  function edgeMidpoint(a: number, b: number): number {
     const key = a < b ? a * 2097152 + b : b * 2097152 + a;
     const cached = edgeMidpoints.get(key);
     if (cached !== undefined) {
@@ -52,8 +73,8 @@ export function subdivideSmooth(positions, uvs, indices) {
     outPos[mid * 3 + 1] = (1 - roundness) * my + roundness * py;
     outPos[mid * 3 + 2] = (1 - roundness) * mz + roundness * pz;
     if (outUv) {
-      outUv[mid * 2] = (uvs[a * 2] + uvs[b * 2]) / 2;
-      outUv[mid * 2 + 1] = (uvs[a * 2 + 1] + uvs[b * 2 + 1]) / 2;
+      outUv[mid * 2] = (uvs![a * 2] + uvs![b * 2]) / 2;
+      outUv[mid * 2 + 1] = (uvs![a * 2 + 1] + uvs![b * 2 + 1]) / 2;
     }
     edgeMidpoints.set(key, mid);
     return mid;
@@ -76,11 +97,21 @@ export function subdivideSmooth(positions, uvs, indices) {
   };
 }
 
-export function buildAdaptiveIndex(coarseIdx, fineIdx, finePos, weld, maxY) {
+/**
+ * Index buffer that uses the fine (subdivided) triangles where any corner is below maxY and stitches
+ * neighbouring coarse triangles so no T-junction cracks appear.
+ */
+export function buildAdaptiveIndex(
+  coarseIdx: ArrayLike<number>,
+  fineIdx: ArrayLike<number>,
+  finePos: ArrayLike<number>,
+  weld: ArrayLike<number>,
+  maxY: number,
+): Uint32Array {
   const triCount = coarseIdx.length / 3;
   const refined = new Uint8Array(triCount);
-  const splitEdges = new Set();
-  const edgeKey = (a, b) => {
+  const splitEdges = new Set<number>();
+  const edgeKey = (a: number, b: number): number => {
     a = weld[a];
     b = weld[b];
     if (a < b) {
@@ -100,7 +131,7 @@ export function buildAdaptiveIndex(coarseIdx, fineIdx, finePos, weld, maxY) {
       splitEdges.add(edgeKey(c, a));
     }
   }
-  const out = [];
+  const out: number[] = [];
   for (let t = 0; t < triCount; t++) {
     const base = t * 12;
     const a = coarseIdx[t * 3];
@@ -112,7 +143,7 @@ export function buildAdaptiveIndex(coarseIdx, fineIdx, finePos, weld, maxY) {
     const hasAB = splitEdges.has(edgeKey(a, b));
     const hasBC = splitEdges.has(edgeKey(b, c));
     const hasCA = splitEdges.has(edgeKey(c, a));
-    const splitCount = hasAB + hasBC + hasCA;
+    const splitCount = Number(hasAB) + Number(hasBC) + Number(hasCA);
     if (refined[t] || splitCount === 3) {
       for (let k = 0; k < 12; k++) {
         out.push(fineIdx[base + k]);

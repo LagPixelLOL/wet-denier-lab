@@ -2,6 +2,16 @@
  * The pose catalog.
  */
 
+import type { LegPoseSpec } from "./skinning";
+
+export interface PoseDefinition {
+  label: string;
+  /** Only the first leg is shown. */
+  solo?: boolean;
+  /** [left, right] */
+  legs: [LegPoseSpec, LegPoseSpec];
+}
+
 export const POSES = {
   single: {
     label: "单腿",
@@ -127,8 +137,10 @@ export const POSES = {
       },
     ],
   },
-};
+} satisfies Record<string, PoseDefinition>;
 
-export const POSE_ORDER = ["single", "together", "step", "crossed", "tiptoe", "point", "pigeon"];
+export type PoseName = keyof typeof POSES;
 
-export const DEFAULT_POSE = "step";
+export const POSE_ORDER: PoseName[] = ["single", "together", "step", "crossed", "tiptoe", "point", "pigeon"];
+
+export const DEFAULT_POSE: PoseName = "step";

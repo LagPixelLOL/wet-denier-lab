@@ -2,20 +2,17 @@
  * Pointer, wheel, pinch and keyboard input plus toolbar wiring.
  */
 import * as THREE from "three";
-import { app } from "./runtime";
+import { POSE_ORDER } from "../rig/poses";
+import { toggleSlow } from "./actions";
 import { MAX_DIST, MIN_DIST, clampTarget, orbit, orbitBy, panBy, resetView, zoomBy } from "./camera";
-import { $ } from "./dom";
 import { setMode, showHint } from "./hud";
 import { isPanelOpen, setPanel, togglePanel } from "./layout";
-import { previewPreset, setTargetLeg, wear, wearPreset, wearRandom } from "./outfit";
-import { shareLook, showPhoto } from "./photo";
-import { setBackdrop, setPose, setRain, setScene } from "./scene";
+import { closeCopyBox, showPhoto } from "./photo";
+import { app } from "./runtime";
+import { setPose, setRain } from "./scene";
+import { publishScenes, publishWardrobe } from "./sheets";
 import { bucketSplash, dryOff, pick, splashAt } from "./splash";
-import { outfit, state } from "./state";
-import { refreshThumbs } from "./thumbnails";
-import { PRESETS } from "../catalog/presets";
-import { POSE_ORDER } from "../rig/poses";
-import { buildSceneSheet, buildWardrobeSheet } from "../ui/sheets";
+import { state } from "./state";
 
 export const pointers = new Map();
 
@@ -153,18 +150,6 @@ export function bindUi() {
   }
   setMode("water", false);
   showHint("点丝袜任意位置泼水 · 按住拖动连续浇", 0);
-  $("#modeWater").onclick = () => {
-    if (state.mode !== "water") {
-      setMode("water");
-    }
-  };
-  $("#modeView").onclick = () => {
-    if (state.mode !== "view") {
-      setMode("view");
-    }
-  };
-  $("#aboutBtn").onclick = () => setPanel(isPanelOpen("about") ? null : "about");
-  $("#aboutClose").onclick = () => setPanel(null);
   addEventListener(
     "click",
     (ev) => {
@@ -179,10 +164,7 @@ export function bindUi() {
     if (ev.key === "Escape") {
       setPanel(null);
       showPhoto(false);
-      const box = $("#copybox");
-      if (box) {
-        box.hidden = true;
-      }
+      closeCopyBox();
       return;
     }
     const tag = ev.target.tagName;
@@ -210,7 +192,7 @@ export function bindUi() {
         app.sound.unlock();
         setRain(!state.rain);
       } else if (key === "s") {
-        $("#slowBtn").click();
+        toggleSlow();
       } else if (key === "d") {
         dryOff();
       } else if (key === "p") {
@@ -236,60 +218,9 @@ export function bindUi() {
       }
     }
   });
-  $("#bucketBtn").onclick = bucketSplash;
-  $("#dryBtn").onclick = dryOff;
-  $("#rainBtn").onclick = () => {
-    app.sound.unlock();
-    setRain(!state.rain);
-  };
-  $("#slowBtn").onclick = () => {
-    state.slow = !state.slow;
-    $("#slowBtn").setAttribute("aria-pressed", String(state.slow));
-    if (state.slow) {
-      showHint("慢动作 0.2× · 再泼一次看看水花", 2600);
-    }
-  };
-  $("#matBtn").onclick = () => togglePanel("mat");
-  $("#sceneBtn").onclick = () => togglePanel("scene");
-  $("#sound").onclick = () => {
-    app.sound.unlock();
-    const on = $("#sound").getAttribute("aria-pressed") !== "true";
-    $("#sound").setAttribute("aria-pressed", String(on));
-    app.sound.setEnabled(on);
-  };
-  $("#zoomIn").onclick = () => zoomBy(1 / 1.25);
-  $("#zoomOut").onclick = () => zoomBy(1.25);
-  $("#viewReset").onclick = resetView;
-  app.scenePicker = buildSceneSheet($("#scenes"), {
-    scene: setScene,
-    backdrop: setBackdrop,
-    sceneName: () => state.scene,
-    backdropName: () => state.backdrop,
-  });
-  app.wardrobe = buildWardrobeSheet($("#materials"), {
-    pose: setPose,
-    wear: wear,
-    random: wearRandom,
-    target: setTargetLeg,
-    preset: (index) => wearPreset(PRESETS[index]),
-    preview: previewPreset,
-    share: shareLook,
-    tabShown: refreshThumbs,
-    spec: () => outfit.legs[outfit.target === 1 && !app.rig.solo ? 1 : 0],
-    solo: () => app.rig.solo,
-    poseName: () => app.rig.name,
-    targetLeg: () => outfit.target,
-  });
-  $("#photoBtn").onclick = () => {
-    app.photoRequested = true;
-  };
-  $("#photoClose").onclick = () => showPhoto(false);
-  $("#photoShare").onclick = shareLook;
-  $("#photo").addEventListener("click", (ev) => {
-    if (ev.target === ev.currentTarget) {
-      showPhoto(false);
-    }
-  });
+  app.uiBound = true;
+  publishScenes();
+  publishWardrobe();
   app.canvas.addEventListener("pointerdown", () => {
     if (isPanelOpen("about")) {
       setPanel(null);

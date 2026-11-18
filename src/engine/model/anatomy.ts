@@ -3,7 +3,8 @@
  */
 import { computeWeldedNormals } from "../geometry/weld";
 
-export function computeLegAxisProfile(positions) {
+/** Smoothed leg axis (x, z pairs) for 100 height bins of 1 cm. */
+export function computeLegAxisProfile(positions: ArrayLike<number>): Float64Array {
   const sumX = new Float64Array(100);
   const sumZ = new Float64Array(100);
   const counts = new Float64Array(100);
@@ -48,7 +49,8 @@ const THIGH_FLESH = {
   amount: 0.095,
 };
 
-export function inflateThigh(positions, axisProfile) {
+/** Pushes thigh vertices outward from the axis, in place. Returns `positions`. */
+export function inflateThigh(positions: Float32Array, axisProfile: ArrayLike<number>): Float32Array {
   for (let i = 0; i < positions.length; i += 3) {
     const y = positions[i + 1];
     if (y <= THIGH_FLESH.y0) {
@@ -76,7 +78,16 @@ export function inflateThigh(positions, axisProfile) {
   return positions;
 }
 
-const ANATOMY_BUMPS = [
+/** Anisotropic Gaussian: center, radii, amplitude, facing direction and optional flattening exponent. */
+interface GaussianBlob {
+  c: readonly number[];
+  r: readonly number[];
+  a: number;
+  d: readonly number[];
+  flat?: number;
+}
+
+const ANATOMY_BUMPS: GaussianBlob[] = [
   {
     c: [-0.003, 0.497, 0.08],
     r: [0.024, 0.027, 0.03],
@@ -164,7 +175,7 @@ const ANATOMY_BUMPS = [
   },
 ];
 
-const BONY_REGIONS = [
+const BONY_REGIONS: GaussianBlob[] = [
   {
     c: [-0.003, 0.49, 0.075],
     r: [0.04, 0.046, 0.04],
@@ -197,7 +208,15 @@ const BONY_REGIONS = [
   },
 ];
 
-function sumGaussianBlobs(blobs, x, y, z, nx, ny, nz) {
+function sumGaussianBlobs(
+  blobs: readonly GaussianBlob[],
+  x: number,
+  y: number,
+  z: number,
+  nx: number,
+  ny: number,
+  nz: number,
+): number {
   let total = 0;
   for (const blob of blobs) {
     const dy = (y - blob.c[1]) / blob.r[1];
@@ -216,7 +235,15 @@ function sumGaussianBlobs(blobs, x, y, z, nx, ny, nz) {
   return total;
 }
 
-export function applyAnatomyBumps(positions, indices, weld) {
+/**
+ * Displaces `positions` along the normals by the anatomy bumps, in place.
+ * Returns per-vertex skinFx pairs: (bump depth, bony factor).
+ */
+export function applyAnatomyBumps(
+  positions: Float32Array,
+  indices: ArrayLike<number>,
+  weld: ArrayLike<number>,
+): Float32Array {
   const normals = computeWeldedNormals(positions, indices, weld);
   const vertexCount = positions.length / 3;
   const offsets = new Float32Array(vertexCount);

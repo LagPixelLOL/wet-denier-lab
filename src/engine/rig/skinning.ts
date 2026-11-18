@@ -3,27 +3,60 @@
  * Mirrors LEG_SKINNING_GLSL so raycasts, floor contact and droplets match the rendered legs.
  */
 import { DEG2RAD, LEG_JOINTS } from "./joints";
+import type { Vec3 } from "./joints";
 
-const rotX = (angle) => {
+/** Row-major 3x3 matrix. */
+export type Mat3 = [number, number, number, number, number, number, number, number, number];
+
+export type LegPoseKey = "x" | "z" | "yaw" | "roll" | "pitch" | "knee" | "heel" | "ankle" | "toe";
+
+/**
+ * Authored pose of one leg: x/z offsets and angles in degrees (all default 0).
+ * `reach` lets solveReachKnees bend the knee so the foot just touches the floor.
+ */
+export type LegPoseSpec = Partial<Record<LegPoseKey, number>> & { reach?: boolean };
+
+/** A LegPoseSpec resolved into radians and joint rotation matrices. */
+export interface LegPose {
+  x: number;
+  z: number;
+  yaw: number;
+  roll: number;
+  pitch: number;
+  knee: number;
+  ankle: number;
+  /** Ankle eversion that keeps the foot level. */
+  ev: number;
+  toe: number;
+  T: Mat3;
+  A: Mat3;
+  K: Mat3;
+  /** Hip rotation. */
+  H: Mat3;
+  /** 1 when any joint below the hip is rotated. */
+  on: number;
+}
+
+const rotX = (angle: number): Mat3 => {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   return [1, 0, 0, 0, c, -s, 0, s, c];
 };
 
-const rotY = (angle) => {
+const rotY = (angle: number): Mat3 => {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   return [c, 0, s, 0, 1, 0, -s, 0, c];
 };
 
-const rotZ = (angle) => {
+const rotZ = (angle: number): Mat3 => {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   return [c, -s, 0, s, c, 0, 0, 0, 1];
 };
 
-function mat3Mul(a, b) {
-  const out = new Array(9);
+function mat3Mul(a: Mat3, b: Mat3): Mat3 {
+  const out = new Array<number>(9) as Mat3;
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 3; col++) {
       out[row * 3 + col] = a[row * 3] * b[col] + a[row * 3 + 1] * b[3 + col] + a[row * 3 + 2] * b[6 + col];
@@ -32,16 +65,16 @@ function mat3Mul(a, b) {
   return out;
 }
 
-const LEG_SPEC_KEYS = ["x", "z", "yaw", "roll", "pitch", "knee", "heel", "ankle", "toe"];
+const LEG_SPEC_KEYS: LegPoseKey[] = ["x", "z", "yaw", "roll", "pitch", "knee", "heel", "ankle", "toe"];
 
-export function lerpLegSpec(from, to, t, out = {}) {
+export function lerpLegSpec(from: LegPoseSpec, to: LegPoseSpec, t: number, out: LegPoseSpec = {}): LegPoseSpec {
   for (const key of LEG_SPEC_KEYS) {
     out[key] = (from[key] || 0) + ((to[key] || 0) - (from[key] || 0)) * t;
   }
   return out;
 }
 
-export function buildLegPose(spec) {
+export function buildLegPose(spec: LegPoseSpec): LegPose {
   const yaw = (spec.yaw || 0) * DEG2RAD;
   const roll = (spec.roll || 0) * DEG2RAD;
   const pitch = (spec.pitch || 0) * DEG2RAD;
@@ -83,17 +116,24 @@ const SKIN_OUT = {
 
 const JACOBIAN_SCRATCH = new Float64Array(9);
 
-function smoothstep(edge0, edge1, x) {
+function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - t * 2);
 }
 
-function smoothstepDeriv(edge0, edge1, x) {
+function smoothstepDeriv(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return (t * 6 * (1 - t)) / (edge1 - edge0);
 }
 
-function applyJointBlend(rot, pivot, weight, dWeightDy, dWeightDz, withJacobian) {
+function applyJointBlend(
+  rot: Mat3,
+  pivot: Vec3,
+  weight: number,
+  dWeightDy: number,
+  dWeightDz: number,
+  withJacobian: boolean,
+): void {
   const dx = SKIN_OUT.x - pivot[0];
   const dy = SKIN_OUT.y - pivot[1];
   const dz = SKIN_OUT.z - pivot[2];
@@ -118,7 +158,7 @@ function applyJointBlend(rot, pivot, weight, dWeightDy, dWeightDz, withJacobian)
   SKIN_OUT.z += weight * offZ;
 }
 
-function skinRestPoint(pose, x, y, z, withJacobian) {
+function skinRestPoint(pose: LegPose, x: number, y: number, z: number, withJacobian: boolean): void {
   SKIN_OUT.x = x;
   SKIN_OUT.y = y;
   SKIN_OUT.z = z;
@@ -165,7 +205,13 @@ function skinRestPoint(pose, x, y, z, withJacobian) {
   }
 }
 
-export function buildLegMatrix(pose, side, lift, out = new Float64Array(16)) {
+/** Column-major 4x4 hip transform (mirrored in x for side < 0), lifted so the foot meets the floor. */
+export function buildLegMatrix(
+  pose: LegPose,
+  side: number,
+  lift: number,
+  out: Float64Array = new Float64Array(16),
+): Float64Array {
   const hipRot = pose.H;
   const hip = LEG_JOINTS.hip;
   const mirror = side < 0 ? -1 : 1;
@@ -182,7 +228,13 @@ export function buildLegMatrix(pose, side, lift, out = new Float64Array(16)) {
   return out;
 }
 
-export function computeFootLift(restPos, footIndices, pose, floorY) {
+/** Vertical offset that puts the lowest posed foot vertex on floorY. */
+export function computeFootLift(
+  restPos: ArrayLike<number>,
+  footIndices: readonly number[],
+  pose: LegPose,
+  floorY: number,
+): number {
   const hipRot = pose.H;
   const hip = LEG_JOINTS.hip;
   let minY = Infinity;
@@ -201,7 +253,17 @@ export function computeFootLift(restPos, footIndices, pose, floorY) {
   return floorY - minY;
 }
 
-export function skinLegVertices(restPos, restNrm, pose, side, lift, outPos, outNrm, offset = 0) {
+/** Skins every rest vertex into outPos (and outNrm when given), starting at vertex `offset`. */
+export function skinLegVertices(
+  restPos: ArrayLike<number>,
+  restNrm: ArrayLike<number>,
+  pose: LegPose,
+  side: number,
+  lift: number,
+  outPos: Float32Array,
+  outNrm: Float32Array | null,
+  offset = 0,
+): void {
   const legMatrix = buildLegMatrix(pose, side, lift);
   const count = restPos.length / 3;
   const jac = SKIN_OUT.J;
@@ -243,7 +305,15 @@ export function skinLegVertices(restPos, restNrm, pose, side, lift, outPos, outN
   }
 }
 
-export function skinLegPoint(pose, side, lift, x, y, z, out = [0, 0, 0]) {
+export function skinLegPoint(
+  pose: LegPose,
+  side: number,
+  lift: number,
+  x: number,
+  y: number,
+  z: number,
+  out: Vec3 = [0, 0, 0],
+): Vec3 {
   const legMatrix = buildLegMatrix(pose, side, lift);
   skinRestPoint(pose, x, y, z, false);
   out[0] = legMatrix[0] * SKIN_OUT.x + legMatrix[4] * SKIN_OUT.y + legMatrix[8] * SKIN_OUT.z + legMatrix[12];
@@ -252,7 +322,13 @@ export function skinLegPoint(pose, side, lift, x, y, z, out = [0, 0, 0]) {
   return out;
 }
 
-export function solveReachKnees(legSpecs, restPos, footIndices, floorY) {
+/** Sets `knee` on every `reach` leg (in place) so its foot lift matches the other leg's. */
+export function solveReachKnees<T extends LegPoseSpec[]>(
+  legSpecs: T,
+  restPos: ArrayLike<number>,
+  footIndices: readonly number[],
+  floorY: number,
+): T {
   legSpecs.forEach((spec, index) => {
     if (!spec.reach) {
       return;

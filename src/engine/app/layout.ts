@@ -1,6 +1,7 @@
 /**
  * Responsive layout, side panels and the canvas insets they create.
  */
+import { ui } from "../../state/ui";
 import { app } from "./runtime";
 import { $ } from "./dom";
 import { refreshThumbs } from "./thumbnails";
@@ -34,10 +35,9 @@ export const togglePanel = (panel) => setPanel(layout.roomy || !isPanelOpen(pane
 function syncPanels() {
   const cls = document.body.classList;
   cls.toggle("sheet-open", cls.contains("mat-open") || cls.contains("scene-open"));
-  $("#matBtn").setAttribute("aria-pressed", String(cls.contains("mat-open")));
-  $("#sceneBtn").setAttribute("aria-pressed", String(cls.contains("scene-open")));
-  $("#aboutBtn").setAttribute("aria-expanded", String(cls.contains("about-open")));
-  $("#about").setAttribute("aria-hidden", String(!cls.contains("about-open")));
+  ui.set({
+    panels: { mat: cls.contains("mat-open"), scene: cls.contains("scene-open"), about: cls.contains("about-open") },
+  });
   updateInsets();
   refreshThumbs();
 }

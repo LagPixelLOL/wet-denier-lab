@@ -1,5 +1,6 @@
 import { AboutDialog } from "./components/AboutDialog";
 import { Brand } from "./components/Brand";
+import { CopyBox } from "./components/CopyBox";
 import { CornerBar } from "./components/CornerBar";
 import { Dock } from "./components/Dock";
 import { Hint } from "./components/Hint";
@@ -22,6 +23,7 @@ export function App() {
       <SidePanels />
       <Dock />
       <PhotoDialog />
+      <CopyBox />
     </>
   );
 }

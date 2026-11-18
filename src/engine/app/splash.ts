@@ -3,7 +3,7 @@
  */
 import * as THREE from "three";
 import { app } from "./runtime";
-import { $ } from "./dom";
+import { hideHint } from "./hud";
 import { state } from "./state";
 
 export function maybeIntroSplash() {
@@ -142,6 +142,6 @@ export function dryOff() {
 
 function onSplashed() {
   if (state.splashes === 1) {
-    setTimeout(() => $("#hint").classList.add("hide"), 1600);
+    setTimeout(hideHint, 1600);
   }
 }

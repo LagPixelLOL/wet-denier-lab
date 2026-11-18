@@ -3,8 +3,31 @@
  */
 import { COLOR_ORDER } from "./colors";
 import { DENIER_OPTIONS, MATERIALS } from "./garments";
+import type { CuffStyleKey, MaterialKey, PatternKey, SecretDecalKey, StockingLengthKey } from "./garments";
 
-export const DEFAULT_LEG_SPEC = {
+/** One leg's outfit, expressed as catalog keys. */
+export interface LegSpec {
+  length: StockingLengthKey;
+  cuff: CuffStyleKey;
+  garter: boolean;
+  material: MaterialKey;
+  denier: number;
+  pattern: PatternKey;
+  /** Palette key or custom "#rrggbb". */
+  color: string;
+  secret: SecretDecalKey;
+  /** Color the fabric turns when wet (palette key or "#rrggbb"), or null. */
+  wetColor: string | null;
+}
+
+/** A named outfit: either the same spec on both legs or one spec per leg. */
+export interface OutfitPreset {
+  name: string;
+  both?: Partial<LegSpec>;
+  legs?: [Partial<LegSpec>, Partial<LegSpec>];
+}
+
+export const DEFAULT_LEG_SPEC: LegSpec = {
   length: "thigh",
   cuff: "lace",
   garter: false,
@@ -16,12 +39,12 @@ export const DEFAULT_LEG_SPEC = {
   wetColor: null,
 };
 
-export const withLegDefaults = (spec) => ({
+export const withLegDefaults = (spec?: Partial<LegSpec>): LegSpec => ({
   ...DEFAULT_LEG_SPEC,
   ...spec,
 });
 
-export const PRESETS = [
+export const PRESETS: OutfitPreset[] = [
   {
     name: "经典黑丝",
     both: {
@@ -156,8 +179,8 @@ export const PRESETS = [
   },
 ];
 
-export function randomLegSpec(rng = Math.random) {
-  const pick = (list) => list[Math.floor(rng() * list.length)];
+export function randomLegSpec(rng: () => number = Math.random): LegSpec {
+  const pick = <const T>(list: readonly T[]): T => list[Math.floor(rng() * list.length)];
   const material = pick(["sheer", "sheer", "sheer", "matte", "gloss", "pearl", "velvet", "cotton", "latex"]);
   const isThick = MATERIALS[material].minDenier > 0;
   const lengthKey = pick(

@@ -4,8 +4,72 @@
  */
 import { closestPointOnTriangle, closestPointOut } from "./closestPoint";
 
+/** Triangle mesh indexed by a SurfaceGrid. Arrays are read live, so the grid follows in-place updates. */
+export interface SurfaceMesh {
+  pos: ArrayLike<number>;
+  nrm: ArrayLike<number>;
+  uv: ArrayLike<number>;
+  idx: ArrayLike<number>;
+  /** Per-vertex rest height, interpolated into SurfaceHit.ry (defaults to the hit y). */
+  ry?: ArrayLike<number> | null;
+  /** Triangles below this index belong to leg 0, the rest to leg 1. */
+  legTris?: number;
+}
+
+/**
+ * Result of a surface query. One object per grid is reused by every query,
+ * so copy the fields before the next call.
+ */
+export interface SurfaceHit {
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  ny: number;
+  nz: number;
+  u: number;
+  v: number;
+  tri: number;
+  dist: number;
+  /** 1 when the query point is on the normal side, else -1. */
+  side: number;
+  leg: number;
+  ry: number;
+  /** Ray parameter of the hit (raycast only; stale for closest). */
+  t: number;
+}
+
+/** UV bounding rectangle: [minU, minV, maxU, maxV]. */
+export type UvRect = [number, number, number, number];
+
 export class SurfaceGrid {
-  constructor({ pos: pos, nrm: nrm, uv: uv, idx: idx, ry: restY = null, legTris = Infinity }, cellSize = 0.012) {
+  declare pos: ArrayLike<number>;
+  declare nrm: ArrayLike<number>;
+  declare uv: ArrayLike<number>;
+  declare idx: ArrayLike<number>;
+  declare ry: ArrayLike<number> | null;
+  declare legTris: number;
+  declare cell: number;
+  declare triCount: number;
+  /** Per triangle: centroid xyz and bounding radius. */
+  declare triC: Float32Array;
+  /** Per triangle: UV bounds. */
+  declare triUV: Float32Array;
+  declare triIsland: Int32Array;
+  declare islandCount: number;
+  declare mark: Int32Array;
+  declare query: number;
+  declare min: number[];
+  declare max: number[];
+  declare dims: number[];
+  declare cellStart: Int32Array;
+  declare cellTris: Int32Array;
+  declare hit: SurfaceHit;
+  /** Number of triangles currently indexed. */
+  declare active: number;
+  declare _range?: Int32Array;
+  declare _fill2?: Int32Array;
+  constructor({ pos, nrm, uv, idx, ry: restY = null, legTris = Infinity }: SurfaceMesh, cellSize = 0.012) {
     this.pos = pos;
     this.nrm = nrm;
     this.uv = uv;
@@ -30,7 +94,7 @@ export class SurfaceGrid {
     for (let i = 0; i < parentOf.length; i++) {
       parentOf[i] = i;
     }
-    const findRoot = (v) => {
+    const findRoot = (v: number): number => {
       while (parentOf[v] !== v) {
         parentOf[v] = parentOf[parentOf[v]];
         v = parentOf[v];
@@ -44,14 +108,14 @@ export class SurfaceGrid {
       parentOf[rb] = ra;
       parentOf[findRoot(rc)] = ra;
     }
-    const islandIds = new Map();
+    const islandIds = new Map<number, number>();
     this.triIsland = new Int32Array(triCount);
     for (let i = 0; i < triCount; i++) {
       const root = findRoot(idx[i * 3]);
       if (!islandIds.has(root)) {
         islandIds.set(root, islandIds.size);
       }
-      this.triIsland[i] = islandIds.get(root);
+      this.triIsland[i] = islandIds.get(root)!;
     }
     this.islandCount = islandIds.size;
     this.mark = new Int32Array(triCount);
@@ -79,7 +143,8 @@ export class SurfaceGrid {
     };
     this.rebuild();
   }
-  rebuild(activeTris = this.triCount) {
+  /** Re-indexes the first `activeTris` triangles at their current positions. */
+  rebuild(activeTris = this.triCount): void {
     const pos = this.pos;
     const idx = this.idx;
     const triC = this.triC;
@@ -147,7 +212,7 @@ export class SurfaceGrid {
     const originY = this.min[1];
     const originZ = this.min[2];
     const invCell = 1 / cellSize;
-    const cellCoord = (value, lo, count) => {
+    const cellCoord = (value: number, lo: number, count: number): number => {
       const cell = Math.floor((value - lo) * invCell);
       if (cell < 0) {
         return 0;
@@ -211,7 +276,7 @@ export class SurfaceGrid {
       }
     }
   }
-  _cx(x) {
+  _cx(x: number): number {
     const cell = Math.floor((x - this.min[0]) / this.cell);
     const count = this.dims[0];
     if (cell < 0) {
@@ -222,7 +287,7 @@ export class SurfaceGrid {
       return cell;
     }
   }
-  _cy(y) {
+  _cy(y: number): number {
     const cell = Math.floor((y - this.min[1]) / this.cell);
     const count = this.dims[1];
     if (cell < 0) {
@@ -233,7 +298,7 @@ export class SurfaceGrid {
       return cell;
     }
   }
-  _cz(z) {
+  _cz(z: number): number {
     const cell = Math.floor((z - this.min[2]) / this.cell);
     const count = this.dims[2];
     if (cell < 0) {
@@ -244,7 +309,7 @@ export class SurfaceGrid {
       return cell;
     }
   }
-  inBounds(x, y, z, margin = 0) {
+  inBounds(x: number, y: number, z: number, margin = 0): boolean {
     return (
       x > this.min[0] - margin &&
       x < this.max[0] + margin &&
@@ -254,7 +319,8 @@ export class SurfaceGrid {
       z < this.max[2] + margin
     );
   }
-  closest(x, y, z, maxDist = 0.02) {
+  /** Closest surface point within maxDist, or null. */
+  closest(x: number, y: number, z: number, maxDist = 0.02): SurfaceHit | null {
     if (!this.inBounds(x, y, z, maxDist)) {
       return null;
     }
@@ -332,7 +398,7 @@ export class SurfaceGrid {
       return this._fill(bestTri, bestWa, bestWb, bestWc, x, y, z);
     }
   }
-  _fill(tri, wa, wb, wc, px, py, pz) {
+  _fill(tri: number, wa: number, wb: number, wc: number, px: number, py: number, pz: number): SurfaceHit {
     const pos = this.pos;
     const nrm = this.nrm;
     const uv = this.uv;
@@ -363,7 +429,17 @@ export class SurfaceGrid {
     hit.side = dx * hit.nx + dy * hit.ny + dz * hit.nz >= 0 ? 1 : -1;
     return hit;
   }
-  raycast(ox, oy, oz, dx, dy, dz, maxT = 10, skipLeg = -1) {
+  /** First hit along the ray within maxT, ignoring triangles of leg `skipLeg` (when >= 0). */
+  raycast(
+    ox: number,
+    oy: number,
+    oz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    maxT = 10,
+    skipLeg = -1,
+  ): SurfaceHit | null {
     let tNear = 0;
     let tFar = maxT;
     const rayOrigin = [ox, oy, oz];
@@ -457,13 +533,14 @@ export class SurfaceGrid {
     hit.t = bestT;
     return hit;
   }
-  uvRects(x, y, z, radius, out) {
+  /** Fills `out` with one UV rectangle per UV island touched by the sphere. */
+  uvRects(x: number, y: number, z: number, radius: number, out: UvRect[]): UvRect[] {
     out.length = 0;
     if (!this.inBounds(x, y, z, radius)) {
       return out;
     }
     const queryId = ++this.query;
-    const rectsByIsland = new Map();
+    const rectsByIsland = new Map<number, UvRect>();
     const x0 = this._cx(x - radius);
     const x1 = this._cx(x + radius);
     const y0 = this._cy(y - radius);

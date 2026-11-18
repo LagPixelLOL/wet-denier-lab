@@ -2,6 +2,54 @@
  * Wardrobe catalog: stocking lengths, cuff styles, materials, denier options, patterns and secret decals.
  */
 
+export interface StockingLengthDef {
+  label: string;
+  /** Rest-space height of the cuff. */
+  cuffY: number;
+  band: number;
+  tights?: boolean;
+}
+
+export interface CuffStyleDef {
+  label: string;
+  id: number;
+  bow?: boolean;
+}
+
+/** How a material takes up and sheds water. */
+export interface MaterialWater {
+  soak: number;
+  wick: number;
+  take: number;
+  bead: number;
+  slip: number;
+  shed?: number;
+}
+
+export interface MaterialDef {
+  label: string;
+  hint: string;
+  gloss: number;
+  sheen: number;
+  sheenPow: number;
+  wetClear: number;
+  wetDark: number;
+  shine: number;
+  pearl: number;
+  knit: number;
+  knitScale: number;
+  rib: number;
+  minDenier: number;
+  print: number;
+  water: MaterialWater;
+}
+
+/** Labeled catalog entry with a shader id (patterns, secret decals). */
+export interface CatalogIdDef {
+  label: string;
+  id: number;
+}
+
 export const STOCKING_LENGTHS = {
   ankle: {
     label: "短袜",
@@ -34,9 +82,11 @@ export const STOCKING_LENGTHS = {
     band: 0.05,
     tights: true,
   },
-};
+} satisfies Record<string, StockingLengthDef>;
 
-export const STOCKING_LENGTH_ORDER = ["ankle", "crew", "knee", "over", "thigh", "tights"];
+export type StockingLengthKey = keyof typeof STOCKING_LENGTHS;
+
+export const STOCKING_LENGTH_ORDER: StockingLengthKey[] = ["ankle", "crew", "knee", "over", "thigh", "tights"];
 
 export const CUFF_STYLES = {
   plain: {
@@ -60,9 +110,11 @@ export const CUFF_STYLES = {
     id: 0,
     bow: true,
   },
-};
+} satisfies Record<string, CuffStyleDef>;
 
-export const CUFF_STYLE_ORDER = ["lace", "plain", "stripes", "rib", "bow"];
+export type CuffStyleKey = keyof typeof CUFF_STYLES;
+
+export const CUFF_STYLE_ORDER: CuffStyleKey[] = ["lace", "plain", "stripes", "rib", "bow"];
 
 export const MATERIALS = {
   sheer: {
@@ -228,11 +280,13 @@ export const MATERIALS = {
       shed: 0.55,
     },
   },
-};
+} satisfies Record<string, MaterialDef>;
 
-export const MATERIAL_ORDER = ["sheer", "matte", "gloss", "pearl", "velvet", "cotton", "latex"];
+export type MaterialKey = keyof typeof MATERIALS;
 
-export const DENIER_OPTIONS = [15, 40, 70, 120];
+export const MATERIAL_ORDER: MaterialKey[] = ["sheer", "matte", "gloss", "pearl", "velvet", "cotton", "latex"];
+
+export const DENIER_OPTIONS: number[] = [15, 40, 70, 120];
 
 export const PATTERNS = {
   none: {
@@ -283,9 +337,11 @@ export const PATTERNS = {
     label: "猫爪",
     id: 11,
   },
-};
+} satisfies Record<string, CatalogIdDef>;
 
-export const PATTERN_ORDER = [
+export type PatternKey = keyof typeof PATTERNS;
+
+export const PATTERN_ORDER: PatternKey[] = [
   "none",
   "dots",
   "argyle",
@@ -321,6 +377,8 @@ export const SECRET_DECALS = {
     label: "雨丝",
     id: 4,
   },
-};
+} satisfies Record<string, CatalogIdDef>;
 
-export const SECRET_DECAL_ORDER = ["none", "hearts", "stars", "paws", "words"];
+export type SecretDecalKey = keyof typeof SECRET_DECALS;
+
+export const SECRET_DECAL_ORDER: SecretDecalKey[] = ["none", "hearts", "stars", "paws", "words"];

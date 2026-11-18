@@ -2,6 +2,7 @@
  * Startup: creates the renderer and runtime, loads the model and starts the frame loop.
  */
 import * as THREE from "three";
+import { ui } from "../../state/ui";
 import { app } from "./runtime";
 import { orbit } from "./camera";
 import { IS_PROD, MODEL_URL } from "./config";
@@ -14,7 +15,7 @@ import { applyLook, currentLook, wear, wearPreset, wearRandom } from "./outfit";
 import { setBackdrop, setPose, setRain, setScene, syncFootprint } from "./scene";
 import { pick, splashAt } from "./splash";
 import { outfit, state } from "./state";
-import { thumbJobs } from "./thumbnails";
+import { THUMB_SIZE, thumbJobs } from "./thumbnails";
 import { SoundEngine } from "../audio/SoundEngine";
 import { PRESETS } from "../catalog/presets";
 import { loadLegModel } from "../model/legModel";
@@ -22,7 +23,6 @@ import { LegRig } from "../rig/LegRig";
 import { lookUrl, unpackLook } from "../share/lookCodec";
 import { createStage } from "../stage/createStage";
 import { SCENES } from "../stage/scenes";
-import { THUMB_SIZE } from "../ui/sheets";
 import { WaterSim } from "../water/WaterSim";
 import { WetMap } from "../water/WetMap";
 
@@ -102,12 +102,7 @@ async function boot() {
       audio: app.sound,
       legMs: legMs,
       thumbJobs: thumbJobs,
-      get wardrobe() {
-        return app.wardrobe;
-      },
-      get scenePicker() {
-        return app.scenePicker;
-      },
+      ui,
     };
   }
   requestAnimationFrame(frame);
@@ -142,6 +137,6 @@ export function startApp() {
   if (!IS_PROD) installDevHooks();
   boot().catch((err) => {
     console.error(err);
-    $("#loading").innerHTML = "三维画面启动失败：" + err.message + "<br>请用最新版 Chrome / Safari / Edge 打开";
+    ui.set({ bootError: err.message });
   });
 }

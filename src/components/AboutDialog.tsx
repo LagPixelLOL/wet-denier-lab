@@ -1,9 +1,13 @@
+import { actions } from "../engine/app/actions";
+import { useStore } from "../state/useStore";
+import { ui } from "../state/ui";
 import { CloseIcon } from "./icons";
 
 export function AboutDialog() {
+  const open = useStore(ui, (s) => s.panels.about);
   return (
-    <section id="about" className="about" role="dialog" aria-label="制作说明" aria-hidden="true">
-      <button id="aboutClose" className="close" aria-label="关闭说明">
+    <section id="about" className="about" role="dialog" aria-label="制作说明" aria-hidden={!open}>
+      <button id="aboutClose" className="close" aria-label="关闭说明" onClick={actions.closeAbout}>
         <CloseIcon />
       </button>
       <div className="about-head">

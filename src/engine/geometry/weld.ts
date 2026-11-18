@@ -3,10 +3,11 @@
  */
 import * as THREE from "three";
 
-export function weldVertices(positions) {
+/** Maps each vertex to the first vertex sharing its (rounded) position. */
+export function weldVertices(positions: ArrayLike<number>): Int32Array {
   const vertexCount = positions.length / 3;
   const canonical = new Int32Array(vertexCount);
-  const keyToIndex = new Map();
+  const keyToIndex = new Map<string, number>();
   for (let i = 0; i < vertexCount; i++) {
     const key =
       Math.round(positions[i * 3] * 100000) +
@@ -24,7 +25,11 @@ export function weldVertices(positions) {
   return canonical;
 }
 
-export function computeWeldedNormals(positions, indices, weld) {
+export function computeWeldedNormals(
+  positions: ArrayLike<number>,
+  indices: ArrayLike<number>,
+  weld: ArrayLike<number>,
+): Float32Array {
   const accum = new Float64Array(positions.length);
   const normals = new Float32Array(positions.length);
   for (let t = 0; t < indices.length; t += 3) {
@@ -62,7 +67,12 @@ export function computeWeldedNormals(positions, indices, weld) {
   return normals;
 }
 
-export function buildGeometry(positions, uvs, indices, weld = weldVertices(positions)) {
+export function buildGeometry(
+  positions: Float32Array,
+  uvs: Float32Array | null,
+  indices: Uint32Array,
+  weld: ArrayLike<number> = weldVertices(positions),
+): THREE.BufferGeometry {
   const normals = computeWeldedNormals(positions, indices, weld);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));

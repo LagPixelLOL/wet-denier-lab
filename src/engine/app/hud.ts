@@ -1,25 +1,26 @@
 /**
  * Hint bubble and touch mode.
  */
+import { ui, type TouchMode } from "../../state/ui";
 import { app } from "./runtime";
-import { $ } from "./dom";
 import { state } from "./state";
 
 export function showHint(text, ms = 3200) {
-  const hint = $("#hint");
-  hint.textContent = text;
-  hint.classList.remove("hide");
+  ui.set({ hint: { text, hidden: false } });
   clearTimeout(app.hintTimer);
   if (ms) {
-    app.hintTimer = setTimeout(() => hint.classList.add("hide"), ms);
+    app.hintTimer = setTimeout(hideHint, ms);
   }
 }
 
-export function setMode(mode, announce = true) {
+export function hideHint() {
+  ui.set((s) => ({ hint: { ...s.hint, hidden: true } }));
+}
+
+export function setMode(mode: TouchMode, announce = true) {
   state.mode = mode;
   document.body.classList.toggle("view-mode", mode === "view");
-  $("#modeWater").setAttribute("aria-checked", String(mode === "water"));
-  $("#modeView").setAttribute("aria-checked", String(mode === "view"));
+  ui.set({ mode });
   app.canvas.style.cursor = mode === "view" ? "grab" : "crosshair";
   if (announce) {
     showHint(

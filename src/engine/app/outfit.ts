@@ -2,6 +2,7 @@
  * Outfit per leg: wearing specs and presets, preset previews and the target leg.
  */
 import { app } from "./runtime";
+import { publishWardrobe } from "./sheets";
 import { setBackdrop, setPose, setScene } from "./scene";
 import { outfit, state } from "./state";
 import { PRESETS, randomLegSpec, withLegDefaults } from "../catalog/presets";
@@ -72,9 +73,7 @@ export function wearPreset(preset) {
     outfit.legs[i] = withLegDefaults({});
     wear(specs[i], i);
   }
-  if (app.wardrobe) {
-    app.wardrobe.sync();
-  }
+  publishWardrobe();
 }
 
 export function wearRandom() {

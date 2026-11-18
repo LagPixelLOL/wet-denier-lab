@@ -3,23 +3,51 @@
  */
 import * as THREE from "three";
 import { buildAdaptiveIndex, subdivideSmooth } from "../geometry/subdivide";
+import type { SubdividedMesh } from "../geometry/subdivide";
 import { buildGeometry, computeWeldedNormals, weldVertices } from "../geometry/weld";
 import { applyAnatomyBumps, computeLegAxisProfile, inflateThigh } from "./anatomy";
 import { parseModelGlb } from "./glb";
+import type { ModelData } from "./glb";
 import { computeCircumference, computeLegTangents } from "./tangents";
 import { applyWrapOffsets, decodeBase64Int16 } from "./wrapOffsets";
 
-export async function loadLegModel(url, options) {
+/** Coarse (one subdivision) welded mesh used for raycasts, skinning on the CPU and the bow fit. */
+export interface CollisionMesh {
+  pos: Float32Array;
+  uv: Float32Array;
+  idx: Uint32Array;
+  nrm: Float32Array;
+}
+
+export interface LegModelOptions {
+  /** Subdivision levels for the render mesh (default 2). */
+  levels?: number;
+}
+
+export interface LegModel {
+  /** Render mesh with adaptive detail near the foot. */
+  stocking: THREE.BufferGeometry;
+  /** Same attributes as `stocking`, coarse index. */
+  stockingLow: THREE.BufferGeometry;
+  /** Bare skin above the stocking. */
+  skin: THREE.BufferGeometry;
+  /** Smoothed circumference per 1 cm height bin. */
+  circumference: Float64Array;
+  collision: CollisionMesh;
+}
+
+/** Loads a leg model from a .glb (binary) or JSON url. */
+export async function loadLegModel(url: string, options?: LegModelOptions): Promise<LegModel> {
   const response = await fetch(url);
   return buildLegModel(
-    url.endsWith(".glb") ? parseModelGlb(await response.arrayBuffer()) : await response.json(),
+    url.endsWith(".glb") ? parseModelGlb(await response.arrayBuffer()) : ((await response.json()) as ModelData),
     options,
   );
 }
 
-function buildLegModel(data, { levels = 2 } = {}) {
+function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions = {}): LegModel {
   const wrap = data.wrapData || (data.wrap ? decodeBase64Int16(data.wrap) : null);
-  let mesh = {
+  let mesh: SubdividedMesh<Float32Array> = {
     pos: new Float32Array(data.stocking.positions),
     uv: new Float32Array(data.stocking.uvs),
     idx: new Uint32Array(data.stocking.indices),
@@ -30,7 +58,7 @@ function buildLegModel(data, { levels = 2 } = {}) {
   const coarseWeld = weldVertices(coarseWrapped.pos);
   inflateThigh(coarseWrapped.pos, axisProfile);
   const coarseSkinFx = applyAnatomyBumps(coarseWrapped.pos, mesh.idx, coarseWeld);
-  const collision = {
+  const collision: CollisionMesh = {
     pos: coarseWrapped.pos,
     uv: mesh.uv,
     idx: mesh.idx,

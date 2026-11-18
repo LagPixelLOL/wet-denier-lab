@@ -2,7 +2,21 @@
  * Hip/knee/ankle/toe pivots and the GLSL skinning chunk (mirrored on the CPU in skinning.ts).
  */
 
-export const LEG_JOINTS = {
+export type Vec3 = [number, number, number];
+
+/** Pivot points (rest space) and the [start, end] blend ranges of each joint's weight. */
+export interface LegJoints {
+  hip: Vec3;
+  knee: Vec3;
+  kneeY: [number, number];
+  ankle: Vec3;
+  ankleY: [number, number];
+  toe: Vec3;
+  toeZ: [number, number];
+  toeY: [number, number];
+}
+
+export const LEG_JOINTS: LegJoints = {
   hip: [0, 0.9, 0.03],
   knee: [0, 0.49, 0.015],
   kneeY: [0.415, 0.565],
@@ -15,9 +29,9 @@ export const LEG_JOINTS = {
 
 export const DEG2RAD = Math.PI / 180;
 
-const glslFloat = (v) => v.toFixed(4);
+const glslFloat = (v: number): string => v.toFixed(4);
 
-const glslVec3 = (vec) => "vec3(" + vec.map(glslFloat).join(", ") + ")";
+const glslVec3 = (vec: readonly number[]): string => "vec3(" + vec.map(glslFloat).join(", ") + ")";
 
 export const LEG_SKINNING_GLSL = `
 uniform mat3 uToeRot, uAnkleRot, uKneeRot;

@@ -4,7 +4,12 @@
 
 const WRAP_UNIT = 0.00001;
 
-export function decodeBase64Int16(b64) {
+/** Node's Buffer, only reached when atob is missing (non-browser runtimes). */
+declare const Buffer: {
+  from(data: string, encoding: "base64"): { toString(encoding: "binary"): string };
+};
+
+export function decodeBase64Int16(b64: string): Int16Array {
   const binary = typeof atob == "function" ? atob(b64) : Buffer.from(b64, "base64").toString("binary");
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
@@ -13,7 +18,13 @@ export function decodeBase64Int16(b64) {
   return new Int16Array(bytes.buffer);
 }
 
-export function applyWrapOffsets(positions, wrapData) {
+/** Stocking positions moved onto the leg, plus per-vertex (gap, nail) pairs. */
+export interface WrappedPositions {
+  pos: Float32Array;
+  gapNail: Float32Array;
+}
+
+export function applyWrapOffsets(positions: ArrayLike<number>, wrapData: ArrayLike<number> | null): WrappedPositions {
   const vertexCount = positions.length / 3;
   const gapNail = new Float32Array(vertexCount * 2);
   const pos = new Float32Array(positions);

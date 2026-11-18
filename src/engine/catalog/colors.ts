@@ -2,6 +2,25 @@
  * Stocking color palette and helpers for custom colors and accent dyes.
  */
 
+/** Linear 0..1 RGB triple. */
+export type Rgb = [number, number, number];
+
+/** Shading parameters derived from a stocking color (palette entry or custom hex). */
+export interface ColorStyle {
+  dye: string;
+  shade: Rgb;
+  through: number;
+  sheen: string;
+  sheenAmt: number;
+  outline: string;
+  stripe: number;
+}
+
+/** A named palette color. */
+export interface ColorDef extends ColorStyle {
+  label: string;
+}
+
 export const COLORS = {
   ink: {
     label: "墨黑",
@@ -123,9 +142,12 @@ export const COLORS = {
     outline: "#5e0f18",
     stripe: 0.85,
   },
-};
+} satisfies Record<string, ColorDef>;
 
-export const COLOR_ORDER = [
+/** Palette color key. Custom colors are "#rrggbb" strings, so APIs take `string`. */
+export type ColorKey = keyof typeof COLORS;
+
+export const COLOR_ORDER: ColorKey[] = [
   "ink",
   "smoke",
   "ivory",
@@ -140,12 +162,12 @@ export const COLOR_ORDER = [
   "forest",
 ];
 
-export const hexToRgb = (hex) => {
+export const hexToRgb = (hex: string): Rgb => {
   const num = parseInt(hex.slice(1), 16);
   return [(num >> 16) / 255, ((num >> 8) & 255) / 255, (num & 255) / 255];
 };
 
-const rgbToHex = (rgb) =>
+const rgbToHex = (rgb: readonly number[]): string =>
   "#" +
   rgb
     .map((channel) =>
@@ -155,9 +177,10 @@ const rgbToHex = (rgb) =>
     )
     .join("");
 
-const lerpRgb = (a, b, t) => a.map((value, i) => value + (b[i] - value) * t);
+const lerpRgb = (a: readonly number[], b: readonly number[], t: number): number[] =>
+  a.map((value, i) => value + (b[i] - value) * t);
 
-function deriveCustomColor(hex) {
+function deriveCustomColor(hex: string): ColorStyle {
   const rgb = hexToRgb(hex);
   const maxChannel = Math.max(...rgb);
   const minChannel = Math.min(...rgb);
@@ -171,7 +194,7 @@ function deriveCustomColor(hex) {
   );
   return {
     dye: hex,
-    shade: shade,
+    shade: shade as Rgb,
     through: 0.08 + saturation * 0.34 * (1 - luma * 0.45),
     sheen: rgbToHex(lerpRgb(rgb, [1, 1, 1], 0.78)),
     sheenAmt: 0.24 + (1 - Math.abs(luma * 2 - 1)) * 0.1,
@@ -186,9 +209,11 @@ function deriveCustomColor(hex) {
   };
 }
 
-export const resolveColor = (key) => COLORS[key] || deriveCustomColor(key);
+/** Palette entry for a color key, or a style derived from a custom "#rrggbb" color. */
+export const resolveColor = (key: string): ColorStyle =>
+  (COLORS as Partial<Record<string, ColorDef>>)[key] || deriveCustomColor(key);
 
-export function accentDyeFor(key) {
+export function accentDyeFor(key: string): string {
   const rgb = hexToRgb(resolveColor(key).dye);
   if (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 > 0.72) {
     return "#f29bb4";

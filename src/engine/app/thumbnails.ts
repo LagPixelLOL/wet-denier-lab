@@ -2,6 +2,7 @@
  * Offscreen-rendered preset and scene thumbnails, a few per frame.
  */
 import * as THREE from "three";
+import { ui } from "../../state/ui";
 import { app } from "./runtime";
 import { homeView, orbit } from "./camera";
 import { isPanelOpen } from "./layout";
@@ -11,7 +12,17 @@ import { frontLeg } from "./scene";
 import { outfit, state } from "./state";
 import { PRESETS, withLegDefaults } from "../catalog/presets";
 import { SCENE_ORDER } from "../stage/scenes";
-import { THUMB_SIZE } from "../ui/sheets";
+
+export const THUMB_SIZE = {
+  w: 180,
+  h: 240,
+};
+
+/** Thumbnail canvases rendered by the sheets, registered through ref callbacks. */
+export const thumbCanvases = {
+  presets: [],
+  scenes: {},
+};
 
 export const thumbJobs = [];
 
@@ -21,7 +32,7 @@ const thumbKeys = {
 };
 
 function queueThumbs(kind) {
-  if (!app.wardrobe || !app.scenePicker || app.previewBackup) {
+  if (!app.uiBound || app.previewBackup) {
     return;
   }
   const key = kind === "presets" ? app.rig.name : [app.rig.name, state.backdrop, JSON.stringify(outfit.legs)].join("|");
@@ -36,7 +47,7 @@ function queueThumbs(kind) {
       PRESETS.forEach((preset, i) =>
         thumbJobs.push({
           kind: kind,
-          canvas: app.wardrobe.presetCanvases[i],
+          canvas: thumbCanvases.presets[i],
           legs: preset.legs || [preset.both, preset.both],
         }),
       );
@@ -46,7 +57,7 @@ function queueThumbs(kind) {
           if (thumbKeys.scenes === key) {
             thumbJobs.push({
               kind: kind,
-              canvas: app.scenePicker.canvases[sceneId],
+              canvas: thumbCanvases.scenes[sceneId],
               scene: sceneId,
             });
           }
@@ -60,7 +71,7 @@ export function refreshThumbs() {
   if (isPanelOpen("scene")) {
     queueThumbs("scenes");
   }
-  if (isPanelOpen("mat") && app.wardrobe && app.wardrobe.tab === "preset") {
+  if (isPanelOpen("mat") && app.uiBound && ui.get().wardrobe.tab === "preset") {
     queueThumbs("presets");
   }
 }

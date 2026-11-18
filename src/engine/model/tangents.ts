@@ -3,7 +3,8 @@
  */
 import * as THREE from "three";
 
-export function computeLegTangents(geometry) {
+/** Adds a "legTangent" attribute pointing up the leg (or forward on near-horizontal faces). */
+export function computeLegTangents(geometry: THREE.BufferGeometry): void {
   const normals = geometry.attributes.normal.array;
   const count = normals.length / 3;
   const tangents = new Float32Array(count * 3);
@@ -31,7 +32,15 @@ export function computeLegTangents(geometry) {
   geometry.setAttribute("legTangent", new THREE.BufferAttribute(tangents, 3));
 }
 
-export function computeCircumference(geometry, minY = 0.105, refCircumference = 0.34) {
+/**
+ * Adds a "stretch" attribute (local circumference / refCircumference) and returns the smoothed
+ * circumference per 1 cm height bin.
+ */
+export function computeCircumference(
+  geometry: THREE.BufferGeometry,
+  minY = 0.105,
+  refCircumference = 0.34,
+): Float64Array {
   const positions = geometry.attributes.position.array;
   const count = positions.length / 3;
   const binSize = 0.01;

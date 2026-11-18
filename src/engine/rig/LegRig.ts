@@ -1,7 +1,9 @@
 /**
  * CPU skinning of both legs, floor placement, eased pose blending and solo/away opacity fades.
  */
+import type { Vec3 } from "./joints";
 import { DEFAULT_POSE, POSES } from "./poses";
+import type { PoseDefinition } from "./poses";
 import {
   buildLegMatrix,
   buildLegPose,
@@ -12,9 +14,47 @@ import {
   solveReachKnees,
 } from "./skinning";
 import { fadeHeight } from "../stage/shaders/leg";
+import type { LegPose, LegPoseSpec } from "./skinning";
 import { SurfaceGrid } from "../surface/SurfaceGrid";
+import type { CollisionMesh } from "../model/legModel";
 
-const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+/** The part of the stage a LegRig drives. */
+export interface LegRigTarget {
+  setLegPose(index: number, pose: LegPose, matrix: Float64Array): void;
+  setLegOpacity(index: number, opacity: number): void;
+  setCastPoints(points: Vec3[]): void;
+}
+
+/** A pose with reach knees already solved for this rig's rest mesh. */
+export type RigPose = Omit<PoseDefinition, "legs"> & { legs: LegPoseSpec[] };
+
+/** Per-leg skinning state. */
+export interface RigLeg {
+  p: LegPose | null;
+  lift: number;
+  /** Column-major hip matrix. */
+  m: Float64Array;
+  /** World-space points along the leg axis, hip to toe. */
+  axis: Vec3[];
+}
+
+/** Floor area the visible legs cover (center x/z, width, depth). */
+export interface Footprint {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+}
+
+export type RigUpdateState = "moving" | "settled" | "fading" | null;
+
+interface SettledLeg {
+  spec: LegPoseSpec;
+  p: LegPose;
+  lift: number;
+}
+
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 
 const POSE_BLEND_SECONDS = 0.55;
 
@@ -22,7 +62,7 @@ const LEG_FADE_SECONDS = 0.32;
 
 const AWAY_LEG_OPACITY = 0.16;
 
-const LEG_AXIS_POINTS = [
+const LEG_AXIS_POINTS: Vec3[] = [
   [0, 0.8, 0.03],
   [0, 0.62, 0.03],
   [0, 0.49, 0.02],
@@ -33,7 +73,41 @@ const LEG_AXIS_POINTS = [
 ];
 
 export class LegRig {
-  constructor(rest, look) {
+  declare rest: CollisionMesh;
+  declare look: LegRigTarget;
+  /** Vertices per leg. */
+  declare n: number;
+  declare floorY: number;
+  /** Rest vertex indices of the foot (used for floor contact). */
+  declare foot: number[];
+  declare poses: Record<string, RigPose>;
+  /** Posed positions/normals of both legs (leg 1 after leg 0). */
+  declare pos: Float32Array;
+  declare nrm: Float32Array;
+  /** Triangles per leg. */
+  declare legTris: number;
+  /** Current pose name. */
+  declare name: string;
+  /** Current, start and target leg poses of the blend. */
+  declare spec: LegPoseSpec[];
+  declare from: LegPoseSpec[];
+  declare to: LegPoseSpec[];
+  /** Blend progress, 1 when settled. */
+  declare t: number;
+  declare solo: boolean;
+  declare shown: number[];
+  declare presence: number[];
+  declare away: number[];
+  declare awayNow: number[];
+  declare legs: RigLeg[];
+  declare footprint: Footprint;
+  /** Front-most z of the visible legs. */
+  declare front: number;
+  declare moving: boolean;
+  declare _settled: (SettledLeg | null)[];
+  /** Collision grid over the posed legs (at the target pose). */
+  declare surface: SurfaceGrid;
+  constructor(rest: CollisionMesh, look: LegRigTarget) {
     this.rest = rest;
     this.look = look;
     const vertCount = (this.n = rest.pos.length / 3);
@@ -49,7 +123,7 @@ export class LegRig {
       }
     }
     this.poses = {};
-    for (const [key, pose] of Object.entries(POSES)) {
+    for (const [key, pose] of Object.entries<PoseDefinition>(POSES)) {
       this.poses[key] = {
         ...pose,
         legs: solveReachKnees(
@@ -98,11 +172,11 @@ export class LegRig {
     this.presence = [...this.shown];
     this.away = [0, 0];
     this.awayNow = [0, 0];
-    this.legs = [0, 1].map(() => ({
+    this.legs = [0, 1].map((): RigLeg => ({
       p: null,
       lift: 0,
       m: new Float64Array(16),
-      axis: LEG_AXIS_POINTS.map(() => [0, 0, 0]),
+      axis: LEG_AXIS_POINTS.map((): Vec3 => [0, 0, 0]),
     }));
     this.footprint = {
       x: 0,
@@ -125,7 +199,7 @@ export class LegRig {
     });
     this.surface.rebuild(this.solo ? triCount : triCount * 2);
   }
-  _place() {
+  _place(): void {
     for (let i = 0; i < 2; i++) {
       const leg = this.legs[i];
       const legPose = (leg.p = buildLegPose(this.spec[i]));
@@ -138,12 +212,12 @@ export class LegRig {
     this.look.setCastPoints(this.legs[0].axis.concat(this.legs[1].axis));
     this._fade();
   }
-  _fade() {
+  _fade(): void {
     for (let i = 0; i < 2; i++) {
       this.look.setLegOpacity(i, this.presence[i] * (1 - (1 - AWAY_LEG_OPACITY) * this.awayNow[i]));
     }
   }
-  _collide(specs) {
+  _collide(specs: LegPoseSpec[]): void {
     const pos = this.pos;
     const n = this.n;
     const solo = this.solo;
@@ -188,7 +262,8 @@ export class LegRig {
       footprint.d = Math.max(0.3, maxZ - minZ + 0.06);
     }
   }
-  setPose(poseName, { instant = false } = {}) {
+  /** Starts blending to a pose (or jumps with instant). Returns false for unknown or current poses. */
+  setPose(poseName: string, { instant = false }: { instant?: boolean } = {}): boolean {
     const pose = this.poses[poseName];
     if (!pose || poseName === this.name) {
       return false;
@@ -230,10 +305,10 @@ export class LegRig {
     this.moving = !instant;
     return true;
   }
-  setAway(legIndex, amount) {
+  setAway(legIndex: number, amount: number): void {
     this.away[legIndex] = amount;
   }
-  get awayLeg() {
+  get awayLeg(): number {
     if (this.awayNow[0] > 0.5) {
       return 0;
     } else if (this.awayNow[1] > 0.5) {
@@ -242,7 +317,7 @@ export class LegRig {
       return -1;
     }
   }
-  update(dt) {
+  update(dt: number): RigUpdateState {
     let posed = false;
     let faded = false;
     if (this.t < 1) {
@@ -253,7 +328,7 @@ export class LegRig {
       }
       posed = true;
     }
-    const approach = (current, target, duration) => {
+    const approach = (current: number, target: number, duration: number): number => {
       const diff = target - current;
       const maxStep = dt / duration;
       if (Math.abs(diff) <= maxStep) {
@@ -289,7 +364,8 @@ export class LegRig {
       return null;
     }
   }
-  point(legIndex, lx, ly, lz, out = [0, 0, 0]) {
+  /** World position of a rest-space point on a leg at its target pose. */
+  point(legIndex: number, lx: number, ly: number, lz: number, out: Vec3 = [0, 0, 0]): Vec3 {
     let cached = this._settled[legIndex];
     if (!cached || cached.spec !== this.to[legIndex]) {
       const legPose = buildLegPose(this.to[legIndex]);
@@ -301,7 +377,7 @@ export class LegRig {
     }
     return skinLegPoint(cached.p, legIndex === 0 ? 1 : -1, cached.lift, lx, ly, lz, out);
   }
-  distanceToLeg(legIndex, x, y, z) {
+  distanceToLeg(legIndex: number, x: number, y: number, z: number): number {
     const axis = this.legs[legIndex].axis;
     let best = Infinity;
     for (let i = 0; i + 1 < axis.length; i++) {
@@ -318,7 +394,7 @@ export class LegRig {
     }
     return best;
   }
-  get visibleLegs() {
+  get visibleLegs(): number[] {
     if (this.solo) {
       return [0];
     } else {

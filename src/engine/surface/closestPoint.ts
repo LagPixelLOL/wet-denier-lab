@@ -4,7 +4,22 @@
 
 export const closestPointOut = new Float64Array(6);
 
-export function closestPointOnTriangle(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz, out) {
+/** Writes barycentric weights (out[0..2]) and the closest point (out[3..5]). */
+export function closestPointOnTriangle(
+  px: number,
+  py: number,
+  pz: number,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  cx: number,
+  cy: number,
+  cz: number,
+  out: Float64Array,
+): void {
   const abx = bx - ax;
   const aby = by - ay;
   const abz = bz - az;
@@ -16,7 +31,7 @@ export function closestPointOnTriangle(px, py, pz, ax, ay, az, bx, by, bz, cx, c
   const apz = pz - az;
   const d1 = abx * apx + aby * apy + abz * apz;
   const d2 = acx * apx + acy * apy + acz * apz;
-  const emit = (wa, wb, wc) => {
+  const emit = (wa: number, wb: number, wc: number): void => {
     out[0] = wa;
     out[1] = wb;
     out[2] = wc;

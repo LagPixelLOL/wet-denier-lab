@@ -2,9 +2,10 @@
  * Scenes, backdrops, rain, poses and which leg is "away" from the camera.
  */
 import * as THREE from "three";
+import { ui } from "../../state/ui";
 import { app } from "./runtime";
+import { publishScenes, publishWardrobe } from "./sheets";
 import { homeView, orbit } from "./camera";
-import { $ } from "./dom";
 import { holdPerf } from "./loop";
 import { state } from "./state";
 import { SCENES } from "../stage/scenes";
@@ -26,10 +27,8 @@ function applyScene(id) {
     setRain(false);
     app.autoRain = false;
   }
-  $("#rainBtn span").textContent = sceneDef.rainLabel;
-  if (app.scenePicker) {
-    app.scenePicker.sync();
-  }
+  ui.set({ rainLabel: sceneDef.rainLabel });
+  publishScenes();
 }
 
 export function setScene(id, opts) {
@@ -63,9 +62,7 @@ export function setBackdrop(id) {
   state.backdrop = id;
   app.stage.setBackdrop(id);
   updateStageTone();
-  if (app.scenePicker) {
-    app.scenePicker.sync();
-  }
+  publishScenes();
 }
 
 function updateStageTone() {
@@ -80,16 +77,14 @@ export function setRain(on) {
   app.autoRain = false;
   app.water.setRain(on);
   app.sound.setRain(on);
-  $("#rainBtn").setAttribute("aria-pressed", String(on));
+  ui.set({ rain: on });
 }
 
 export function setPose(pose, opts) {
   if (app.rig.setPose(pose, opts)) {
     app.water.shakeOff();
     syncFootprint();
-    if (app.wardrobe) {
-      app.wardrobe.sync();
-    }
+    publishWardrobe();
     if (opts && opts.instant) {
       app.wetmap.bake();
       app.stage.bakeShadow(true);
