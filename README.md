@@ -47,6 +47,10 @@ In development, `vite-console-forward-plugin` forwards the browser console to th
 plugin declares an older Vite as its peer dependency but works with Vite 8, so `package.json` overrides that
 peer requirement.
 
+The link preview tags in `index.html` (`og:url`, `og:image`) point at `https://example.com/` as a placeholder.
+Replace it with the real address when deploying. Preview images must be absolute URLs, and `og.png` is served
+from the site root.
+
 ## Controls
 
 - Tap or click the stockings to splash; press and drag to pour.
@@ -64,7 +68,7 @@ peer requirement.
 
 ```
 index.html              page shell and meta tags
-public/                 files copied as-is (robots.txt)
+public/                 files copied as-is (og.png, robots.txt)
 src/
   main.tsx              React entry
   App.tsx               page layout
