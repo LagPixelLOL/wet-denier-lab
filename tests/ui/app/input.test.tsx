@@ -57,10 +57,8 @@ afterEach(() => {
 
 describe("keyboard shortcuts", () => {
   it("throws a bucket at both legs on Space and hides the first-run hint after the first splash", () => {
-    app.idleTime = 5;
     const ev = key(" ");
     expect(ev.defaultPrevented).toBe(true);
-    expect(app.idleTime).toBe(0);
     expect(countsThrown()).toEqual([122, 122]);
     expect(throwAt.mock.calls[1][2]).toMatchObject({ spread: 0.045, size: 1.25, lift: 0.16, wait: 0.07 });
     expect(state.splashes).toBe(1);
@@ -70,11 +68,9 @@ describe("keyboard shortcuts", () => {
   });
 
   it("leaves Space to a focused button", () => {
-    app.idleTime = 5;
     const button = document.getElementById("bucketBtn")!;
     const ev = key(" ", {}, button);
     expect(ev.defaultPrevented).toBe(false);
-    expect(app.idleTime).toBe(5);
     expect(throwAt).not.toHaveBeenCalled();
   });
 
@@ -396,11 +392,9 @@ describe("pointer input in water mode", () => {
 
   it("zooms with the wheel, toward the leg when zooming in", () => {
     settle();
-    app.idleTime = 4;
     const out = new WheelEvent("wheel", { deltaY: 100, clientX: 8, clientY: 8, cancelable: true });
     app.canvas.dispatchEvent(out);
     expect(out.defaultPrevented).toBe(true);
-    expect(app.idleTime).toBe(0);
     expect(orbit.dist).toBeCloseTo(homeView.dist * Math.exp(0.12), 12);
     expect(orbit.target.toArray()).toEqual(homeView.target.toArray());
     const at = onLeg();
@@ -461,15 +455,6 @@ describe("pointer input in view mode", () => {
 });
 
 describe("window listeners", () => {
-  it("resets the idle timer on any pointerdown or wheel", () => {
-    app.idleTime = 3;
-    document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
-    expect(app.idleTime).toBe(0);
-    app.idleTime = 3;
-    document.body.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
-    expect(app.idleTime).toBe(0);
-  });
-
   it("unlocks audio on the first gesture", () => {
     expect(app.sound.ctx).not.toBeNull();
     expect(app.sound.ctx!.state).toBe("running");

@@ -9,7 +9,7 @@ import { buzz } from "./splash";
 import { lookUrl } from "../share/lookCodec";
 
 export function shareLook() {
-  const url = lookUrl(currentLook());
+  const url = lookUrl(currentLook(), location.href);
   const onCopied = () => showHint("链接已复制 · 别人打开就是这一双、这个姿势和场景", 3400);
   const showCopyBox = () => ui.set({ copyBox: { url, open: true } });
   try {

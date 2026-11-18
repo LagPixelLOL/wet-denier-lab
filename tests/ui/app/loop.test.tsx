@@ -2,13 +2,12 @@ import * as THREE from "three";
 import { beforeAll, describe, expect, it, vi, type MockInstance } from "vitest";
 import { actions } from "../../../src/engine/app/actions";
 import { orbit } from "../../../src/engine/app/camera";
-import { setPanel } from "../../../src/engine/app/layout";
 import { holdPerf } from "../../../src/engine/app/loop";
 import { app } from "../../../src/engine/app/runtime";
 import { setRain } from "../../../src/engine/app/scene";
 import { state } from "../../../src/engine/app/state";
 import type { WaterSim } from "../../../src/engine/water/WaterSim";
-import { bootApp, pointer, type Harness } from "../../helpers/appHarness";
+import { bootApp, type Harness } from "../../helpers/appHarness";
 import { seedRandom } from "../../helpers/random";
 
 vi.mock("three", async (importOriginal) => ({
@@ -102,36 +101,12 @@ describe("frame step", () => {
     expect(rain.value).toBeLessThan(0.001);
   });
 
-  it("orbits slowly after 9 s without input", () => {
-    app.idleTime = 10;
+  it("never turns the camera on its own, however long it goes without input", () => {
     const yaw = orbit.yaw;
-    h.frame(20);
-    expect(orbit.yaw - yaw).toBeCloseTo(0.02 * 0.12 * (1.02 / 3), 12);
-    app.idleTime = 30;
-    const yaw2 = orbit.yaw;
-    h.frame(20);
-    expect(orbit.yaw - yaw2).toBeCloseTo(0.02 * 0.12, 12);
-  });
-
-  it("does not auto-orbit with reduced motion, while a pointer is down or behind a covering sheet", () => {
-    const yaw = orbit.yaw;
-    h.media.reducedMotion = true;
-    app.idleTime = 30;
-    h.frame(20);
+    // 15 s at 60 fps, well past any idle delay.
+    h.frames(900, FRAME);
     expect(orbit.yaw).toBe(yaw);
-    h.media.reducedMotion = false;
-    pointer("pointerdown", { x: 8, y: 8, button: 2 });
-    app.idleTime = 30;
-    h.frame(20);
-    pointer("pointerup", { x: 8, y: 8, button: 2 });
-    expect(orbit.yaw).toBe(yaw);
-    setPanel("scene");
-    app.idleTime = 30;
-    h.frame(20);
-    expect(orbit.yaw).toBe(yaw);
-    setPanel(null);
-    app.idleTime = 0;
-    orbit.yaw = orbit.cur.yaw;
+    expect(orbit.cur.yaw).toBeCloseTo(yaw, 9);
   });
 });
 

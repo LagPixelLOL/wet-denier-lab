@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { actions } from "../../../src/engine/app/actions";
-import { isPanelOpen, layout, setPanel, sheetCovers } from "../../../src/engine/app/layout";
+import { isPanelOpen, layout, setPanel } from "../../../src/engine/app/layout";
 import { app } from "../../../src/engine/app/runtime";
 import { ui } from "../../../src/state/ui";
 import { bootApp, placeElement, pointer, type Harness } from "../../helpers/appHarness";
@@ -44,7 +44,6 @@ describe("phone layout", () => {
     actions.toggleWardrobe();
     expect(panelClasses()).toBe("mat-open sheet-open");
     expect(ui.get().panels).toEqual({ mat: true, scene: false, about: false });
-    expect(sheetCovers()).toBe(true);
     actions.toggleScenes();
     expect(panelClasses()).toBe("scene-open sheet-open");
     expect(ui.get().panels).toEqual({ mat: false, scene: true, about: false });
@@ -53,7 +52,6 @@ describe("phone layout", () => {
     actions.toggleAbout();
     expect(panelClasses()).toBe("about-open");
     expect(ui.get().panels).toEqual({ mat: false, scene: false, about: true });
-    expect(sheetCovers()).toBe(false);
     actions.toggleAbout();
     expect(panelClasses()).toBe("");
     actions.toggleAbout();
@@ -110,7 +108,6 @@ describe("wide layout", () => {
     actions.toggleWardrobe();
     expect(layout.insetR).toBe(390);
     expect(rootVar("--stage-x")).toBe("497px");
-    expect(sheetCovers()).toBe(true);
     actions.toggleScenes();
     expect(panelClasses()).toBe("scene-open sheet-open");
     expect(layout.insetR).toBe(410);
@@ -145,7 +142,6 @@ describe("roomy layout", () => {
     expect(ui.get().panels).toEqual({ mat: true, scene: true, about: false });
     expect(layout.insetR).toBe(370);
     expect(rootVar("--stage-x")).toBe("567px");
-    expect(sheetCovers()).toBe(false);
   });
 
   it("toggles each sheet independently and overlays the about panel", () => {

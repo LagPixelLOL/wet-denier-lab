@@ -192,7 +192,6 @@ export function bindUi() {
     const key = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
     const poseIndex = "1234567".indexOf(key);
     if (key !== " " || tag !== "BUTTON") {
-      app.idleTime = 0;
       if (key === " ") {
         ev.preventDefault();
         bucketSplash();

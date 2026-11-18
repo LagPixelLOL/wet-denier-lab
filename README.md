@@ -54,7 +54,11 @@ peer requirement.
 - Keyboard: `Space` bucket of water, `1`-`7` poses, `R` rain, `S` slow motion, `D` dry off, `P` photo,
   `V` toggle mode, `C` scenes, `W` wardrobe, arrow keys orbit, `+`/`-` zoom, `0`/`Home` reset view,
   `Esc` close panels.
-- Share links have the form `#look=1~<pose>~<scene>~<backdrop>~<leg0>~<leg1>`.
+- The camera only moves when you move it; it does not orbit on its own when idle.
+- The copy-link button copies a link to the page the app is running on, of the form
+  `#look=1~<pose>~<scene>~<backdrop>~<leg0>~<leg1>~<view>`. The view is the camera as
+  `yaw,pitch,dist,targetX,targetY,targetZ`. It is optional, so older links without it still load and keep the
+  current camera. Opening a link, or changing the hash on an open page, applies the look and moves the camera.
 
 ## Project structure
 

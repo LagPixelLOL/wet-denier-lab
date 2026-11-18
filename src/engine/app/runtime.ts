@@ -81,7 +81,6 @@ export interface AppRuntime {
   thumbPixels: Uint8Array | null;
   photoRequested: boolean;
   lastTime: number;
-  idleTime: number;
   shakeTime: number;
   oddFrame: boolean;
   wetmapDt: number;
@@ -134,7 +133,6 @@ export const app: AppRuntime = {
   thumbPixels: null,
   photoRequested: false,
   lastTime: undefined!,
-  idleTime: 0,
   shakeTime: 0,
   oddFrame: false,
   wetmapDt: 0,

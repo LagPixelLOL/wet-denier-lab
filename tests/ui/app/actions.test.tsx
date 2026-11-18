@@ -329,7 +329,11 @@ describe("share links", () => {
     setClipboard(writeText);
     hideHint();
     actions.share();
-    expect(writeText).toHaveBeenCalledWith(lookUrl(currentLook()));
+    expect(writeText).toHaveBeenCalledWith(lookUrl(currentLook(), location.href));
+    // The link points at the page the app runs on and ends with the camera view.
+    const url = writeText.mock.calls[0][0];
+    expect(url.startsWith(location.href.split("#")[0] + "#look=1~")).toBe(true);
+    expect(url.split("~").at(-1)).toMatch(/^-?[\d.]+(,-?[\d.]+){5}$/);
     await h.settle();
     expect(ui.get().hint).toEqual({ text: "链接已复制 · 别人打开就是这一双、这个姿势和场景", hidden: false });
     expect(ui.get().copyBox).toBeNull();
@@ -341,16 +345,16 @@ describe("share links", () => {
     setClipboard(() => Promise.reject(new Error("denied")));
     actions.share();
     await h.settle();
-    expect(ui.get().copyBox).toEqual({ url: lookUrl(currentLook()), open: true });
+    expect(ui.get().copyBox).toEqual({ url: lookUrl(currentLook(), location.href), open: true });
     actions.closeCopyBox();
-    expect(ui.get().copyBox).toEqual({ url: lookUrl(currentLook()), open: false });
+    expect(ui.get().copyBox).toEqual({ url: lookUrl(currentLook(), location.href), open: false });
   });
 
   it("falls back to the copy box without a clipboard API", () => {
     setClipboard(null);
     actions.wearChip("color", "ivory");
     actions.share();
-    expect(ui.get().copyBox).toEqual({ url: lookUrl(currentLook()), open: true });
+    expect(ui.get().copyBox).toEqual({ url: lookUrl(currentLook(), location.href), open: true });
     expect(ui.get().copyBox!.url).toContain("ivory");
   });
 });

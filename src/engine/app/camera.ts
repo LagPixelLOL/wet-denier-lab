@@ -3,6 +3,7 @@
  */
 import * as THREE from "three";
 import { app, type PickHit } from "./runtime";
+import type { CameraView } from "../share/lookCodec";
 import { layout } from "./layout";
 
 export const homeView = {
@@ -29,11 +30,36 @@ export const MIN_DIST = 0.2;
 
 export const MAX_DIST = 3.2;
 
+const MIN_PITCH = -1.3;
+
+const MAX_PITCH = 1.15;
+
 export function resetView() {
   orbit.yaw = homeView.yaw;
   orbit.pitch = homeView.pitch;
   orbit.dist = homeView.dist;
   orbit.target.copy(homeView.target);
+}
+
+/** Where the camera is heading (not where it is mid-ease), as stored in share links. */
+export function currentView(): CameraView {
+  return {
+    yaw: orbit.yaw,
+    pitch: orbit.pitch,
+    dist: orbit.dist,
+    target: [orbit.target.x, orbit.target.y, orbit.target.z],
+  };
+}
+
+/** Moves the camera to a shared view, clamped to the usual limits; the camera eases there. */
+export function applyView(view: CameraView) {
+  const turn = Math.PI * 2;
+  // Take the shortest way round from the current yaw instead of unwinding past turns.
+  orbit.yaw = view.yaw + turn * Math.round((orbit.cur.yaw - view.yaw) / turn);
+  orbit.pitch = THREE.MathUtils.clamp(view.pitch, MIN_PITCH, MAX_PITCH);
+  orbit.dist = THREE.MathUtils.clamp(view.dist, MIN_DIST, MAX_DIST);
+  orbit.target.set(...view.target);
+  clampTarget();
 }
 
 export function updateCamera(dt: number) {
@@ -72,10 +98,6 @@ export function updateCamera(dt: number) {
     app.camera.clearViewOffset();
   }
 }
-
-const MIN_PITCH = -1.3;
-
-const MAX_PITCH = 1.15;
 
 export function orbitBy(dx: number, dy: number) {
   orbit.yaw -= dx * 0.0085;

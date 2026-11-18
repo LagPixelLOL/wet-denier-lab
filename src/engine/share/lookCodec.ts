@@ -1,6 +1,7 @@
 /**
- * Share links: #look=1~<pose>~<scene>~<backdrop>~<leg0>~<leg1>, each leg is
+ * Share links: #look=1~<pose>~<scene>~<backdrop>~<leg0>~<leg1>[~<view>], each leg is
  * length.cuff.garter.material.denier.pattern.color.secret.wetColor (hex colors written as x + 6 hex digits).
+ * The optional view is the camera as yaw,pitch,dist,targetX,targetY,targetZ.
  */
 import { COLORS } from "../catalog/colors";
 import { CUFF_STYLES, DENIER_OPTIONS, MATERIALS, PATTERNS, SECRET_DECALS, STOCKING_LENGTHS } from "../catalog/garments";
@@ -10,6 +11,14 @@ import type { LegSpec } from "../catalog/presets";
 import { POSES } from "../rig/poses";
 import { BACKDROPS, SCENES } from "../stage/scenes";
 
+/** Orbit camera: angles in radians, distance and target in scene units. */
+export interface CameraView {
+  yaw: number;
+  pitch: number;
+  dist: number;
+  target: readonly [number, number, number];
+}
+
 /** Everything a share link encodes. */
 export interface Look {
   pose: string;
@@ -18,6 +27,7 @@ export interface Look {
   backdrop: string;
   /** [left, right] */
   legs: readonly LegSpec[];
+  view?: CameraView;
 }
 
 /** A decoded share link; keys that failed validation are omitted. */
@@ -26,6 +36,7 @@ export interface SharedLook {
   scene?: string;
   backdrop?: string;
   legs: [LegSpec, LegSpec];
+  view?: CameraView;
 }
 
 /** Truthiness lookup by arbitrary string key. */
@@ -33,8 +44,6 @@ type Lookup = Readonly<Record<string, unknown>>;
 
 /** Own-key lookup, so names like "constructor" or "toString" from a link are not mistaken for entries. */
 const has = (table: Lookup, key: string | undefined): key is string => key !== undefined && Object.hasOwn(table, key);
-
-const SITE_URL = "https://newtonquan-yusi.pages.dev/";
 
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 
@@ -87,13 +96,38 @@ function unpackLegSpec(packed: string | undefined): LegSpec {
   return withLegDefaults(spec);
 }
 
+/** Rounds to 3 decimals and prints without trailing zeros ("-0" becomes "0"). */
+const packNumber = (value: number): string => String(Math.round(value * 1000) / 1000 || 0);
+
+/** The yaw is wrapped to [-pi, pi) so links stay short however far the camera was spun. */
+const packView = (view: CameraView): string =>
+  [view.yaw - Math.PI * 2 * Math.floor((view.yaw + Math.PI) / (Math.PI * 2)), view.pitch, view.dist, ...view.target]
+    .map(packNumber)
+    .join(",");
+
+function unpackView(packed: string | undefined): CameraView | undefined {
+  const parts = String(packed || "").split(",");
+  const values = parts.map((part) => (part.trim() === "" ? NaN : Number(part)));
+  if (values.length !== 6 || !values.every(Number.isFinite)) {
+    return undefined;
+  }
+  const [yaw, pitch, dist, x, y, z] = values;
+  return { yaw, pitch, dist, target: [x, y, z] };
+}
+
 function packLook(look: Look): string {
-  return (
-    "look=" +
-    ["1", look.pose, look.scene, packColor(look.backdrop), packLegSpec(look.legs[0]), packLegSpec(look.legs[1])].join(
-      "~",
-    )
-  );
+  const fields = [
+    "1",
+    look.pose,
+    look.scene,
+    packColor(look.backdrop),
+    packLegSpec(look.legs[0]),
+    packLegSpec(look.legs[1]),
+  ];
+  if (look.view) {
+    fields.push(packView(look.view));
+  }
+  return "look=" + fields.join("~");
 }
 
 /** Parses a "#look=..." hash; returns null when absent or of an unknown version. */
@@ -106,7 +140,7 @@ export function unpackLook(hash: string | null | undefined): SharedLook | null {
   try {
     payload = decodeURIComponent(payload);
   } catch {}
-  const [version, pose, scene, backdrop, leftLeg, rightLeg] = payload.split("~");
+  const [version, pose, scene, backdrop, leftLeg, rightLeg, view] = payload.split("~");
   if (version !== "1") {
     return null;
   }
@@ -122,7 +156,12 @@ export function unpackLook(hash: string | null | undefined): SharedLook | null {
   if (unpackColor(backdrop || "", BACKDROPS)) {
     look.backdrop = unpackColor(backdrop, BACKDROPS)!;
   }
+  const camera = unpackView(view);
+  if (camera) {
+    look.view = camera;
+  }
   return look;
 }
 
-export const lookUrl = (look: Look): string => SITE_URL + "#" + packLook(look);
+/** Share link for `look` on the page at `pageUrl`; any existing hash is replaced. */
+export const lookUrl = (look: Look, pageUrl: string): string => pageUrl.split("#")[0] + "#" + packLook(look);

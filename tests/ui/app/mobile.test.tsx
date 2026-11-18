@@ -107,10 +107,9 @@ describe("mobile frame pacing", () => {
     expect(app.idle).toBe(true);
   });
 
-  it("stays idle with reduced motion even after a long time without input", () => {
-    app.idleTime = 60;
+  it("stays idle and keeps the camera still however long it goes without input", () => {
     const yaw = orbit.yaw;
-    h.frames(4, 16);
+    h.frames(250, 50);
     expect(app.idle).toBe(true);
     expect(orbit.yaw).toBe(yaw);
     app.shakeTime = 0.3;

@@ -83,5 +83,3 @@ function updateInsets() {
   rootStyle.setProperty("--inset-l", insetL + "px");
   rootStyle.setProperty("--stage-x", layout.wide ? insetL + (innerWidth - insetR - insetL) / 2 + "px" : "50%");
 }
-
-export const sheetCovers = () => !layout.roomy && document.body.classList.contains("sheet-open");

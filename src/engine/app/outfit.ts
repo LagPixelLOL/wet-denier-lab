@@ -2,6 +2,7 @@
  * Outfit per leg: wearing specs and presets, preset previews and the target leg.
  */
 import { app } from "./runtime";
+import { applyView, currentView } from "./camera";
 import { publishWardrobe } from "./sheets";
 import { setBackdrop, setPose, setScene } from "./scene";
 import { outfit, state } from "./state";
@@ -96,6 +97,7 @@ export function currentLook(): Look {
     scene: state.scene,
     backdrop: state.backdrop,
     legs: outfit.legs,
+    view: currentView(),
   };
 }
 
@@ -115,5 +117,8 @@ export function applyLook(lookData: SharedLook) {
     setScene(lookData.scene, {
       instant: true,
     });
+  }
+  if (lookData.view) {
+    applyView(lookData.view);
   }
 }

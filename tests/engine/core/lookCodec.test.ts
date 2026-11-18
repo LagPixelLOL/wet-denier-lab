@@ -6,39 +6,97 @@ import { lookUrl, unpackLook } from "../../../src/engine/share/lookCodec";
 import type { Look } from "../../../src/engine/share/lookCodec";
 import { BACKDROPS, SCENES } from "../../../src/engine/stage/scenes";
 
+const PAGE = "https://example.test/lab/";
+
 const hashOf = (url: string): string => url.slice(url.indexOf("#"));
 
-const roundTrip = (look: Look) => unpackLook(hashOf(lookUrl(look)));
+const roundTrip = (look: Look) => unpackLook(hashOf(lookUrl(look, PAGE)));
 
 const DEFAULT_LEGS: [LegSpec, LegSpec] = [withLegDefaults(), withLegDefaults()];
 
 describe("lookUrl", () => {
   it("writes a versioned, tilde-separated look hash", () => {
-    const url = lookUrl({
-      pose: "step",
-      scene: "bath",
-      backdrop: "lilac",
-      legs: [
-        withLegDefaults(),
-        withLegDefaults({ color: "#12AB56", wetColor: "sakura", garter: true, secret: "stars" }),
-      ],
-    });
-    expect(url.slice(0, url.indexOf("#"))).toMatch(/^https:\/\/[^#]+\/$/);
+    const url = lookUrl(
+      {
+        pose: "step",
+        scene: "bath",
+        backdrop: "lilac",
+        legs: [
+          withLegDefaults(),
+          withLegDefaults({ color: "#12AB56", wetColor: "sakura", garter: true, secret: "stars" }),
+        ],
+      },
+      PAGE,
+    );
+    expect(url.slice(0, url.indexOf("#"))).toBe(PAGE);
     expect(hashOf(url)).toMatchInlineSnapshot(
       `"#look=1~step~bath~lilac~thigh.lace.0.sheer.40.none.ink.none.-~thigh.lace.1.sheer.40.none.x12ab56.stars.sakura"`,
     );
   });
 
   it("packs custom backdrop and wet colors as x + lowercase hex", () => {
-    const url = lookUrl({
-      pose: "single",
-      scene: "pool",
-      backdrop: "#ABCDEF",
-      legs: [withLegDefaults({ wetColor: "#00FF00" }), withLegDefaults()],
-    });
+    const url = lookUrl(
+      {
+        pose: "single",
+        scene: "pool",
+        backdrop: "#ABCDEF",
+        legs: [withLegDefaults({ wetColor: "#00FF00" }), withLegDefaults()],
+      },
+      PAGE,
+    );
     expect(hashOf(url)).toBe(
       "#look=1~single~pool~xabcdef~thigh.lace.0.sheer.40.none.ink.none.x00ff00~thigh.lace.0.sheer.40.none.ink.none.-",
     );
+  });
+});
+
+describe("lookUrl page and camera view", () => {
+  const look: Look = { pose: "pair", scene: "studio", backdrop: "mint", legs: DEFAULT_LEGS };
+
+  it("links to the page it was given, replacing any hash already on it", () => {
+    expect(lookUrl(look, "http://localhost:12345/").startsWith("http://localhost:12345/#look=1~")).toBe(true);
+    expect(
+      lookUrl(look, "https://example.test/a/?q=1#look=1~old").startsWith("https://example.test/a/?q=1#look=1~pair~"),
+    ).toBe(true);
+  });
+
+  it("appends the camera view, rounded to 3 decimals with the yaw wrapped into [-pi, pi)", () => {
+    const view = { yaw: 0.62 + Math.PI * 4, pitch: -0.12345, dist: 1.95, target: [0, 0.43, -0.0004] as const };
+    const hash = hashOf(lookUrl({ ...look, view }, PAGE));
+    expect(hash.split("~").at(-1)).toBe("0.62,-0.123,1.95,0,0.43,0");
+    expect(unpackLook(hash)?.view).toEqual({ yaw: 0.62, pitch: -0.123, dist: 1.95, target: [0, 0.43, 0] });
+    expect(
+      hashOf(lookUrl({ ...look, view: { ...view, yaw: -Math.PI } }, PAGE))
+        .split("~")
+        .at(-1),
+    ).toMatch(/^-3.142,/);
+    expect(
+      hashOf(lookUrl({ ...look, view: { ...view, yaw: Math.PI } }, PAGE))
+        .split("~")
+        .at(-1),
+    ).toMatch(/^-3.142,/);
+  });
+
+  it("leaves the view out when the look has none, and old links decode without one", () => {
+    const hash = hashOf(lookUrl(look, PAGE));
+    expect(hash.split("~")).toHaveLength(6);
+    expect(unpackLook(hash)).not.toHaveProperty("view");
+  });
+
+  it("ignores a view that is not exactly six finite numbers", () => {
+    const base = hashOf(lookUrl(look, PAGE));
+    for (const bad of [
+      "",
+      "1,2,3,4,5",
+      "1,2,3,4,5,6,7",
+      "1,2,x,4,5,6",
+      "1,2,,4,5,6",
+      "1,2,Infinity,4,5,6",
+      "1,2, ,4,5,6",
+    ]) {
+      expect(unpackLook(base + "~" + bad)).not.toHaveProperty("view");
+    }
+    expect(unpackLook(base + "~1e-1,2,3,4,5,6")?.view?.yaw).toBe(0.1);
   });
 });
 
@@ -85,7 +143,7 @@ describe("unpackLook round trips", () => {
   });
 
   it("accepts percent-encoded payloads and the look key after other hash parameters", () => {
-    const hash = hashOf(lookUrl({ pose: "point", scene: "bath", backdrop: "dusk", legs: DEFAULT_LEGS }));
+    const hash = hashOf(lookUrl({ pose: "point", scene: "bath", backdrop: "dusk", legs: DEFAULT_LEGS }, PAGE));
     const encoded = "#look=" + hash.slice("#look=".length).replaceAll("~", "%7E").replaceAll(".", "%2E");
     expect(unpackLook(encoded)?.pose).toBe("point");
     expect(unpackLook("#tab=2&look=1~tiptoe~pool~cream&x=1")).toMatchObject({

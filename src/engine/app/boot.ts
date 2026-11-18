@@ -10,7 +10,7 @@ import { installDevHooks } from "./devHooks";
 import { $ } from "./dom";
 import { bindUi } from "./input";
 import { applyLayout, layout, setPanel } from "./layout";
-import { frame, holdPerf, resize, trackUserActivity } from "./loop";
+import { frame, holdPerf, resize } from "./loop";
 import { applyLook, currentLook, wear, wearPreset, wearRandom } from "./outfit";
 import { setBackdrop, setPose, setRain, setScene, syncFootprint } from "./scene";
 import { pick, splashAt } from "./splash";
@@ -133,7 +133,6 @@ export function startApp() {
   app.sceneTarget.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
   app.thumbCamera = new THREE.PerspectiveCamera(30, THUMB_SIZE.w / THUMB_SIZE.h, 0.02, 12);
   app.lastTime = performance.now();
-  trackUserActivity();
   if (!IS_PROD) installDevHooks();
   boot().catch((err: unknown) => {
     console.error(err);

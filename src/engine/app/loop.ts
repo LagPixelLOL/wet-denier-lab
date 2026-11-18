@@ -6,7 +6,6 @@ import { app } from "./runtime";
 import { orbit, updateCamera } from "./camera";
 import { IS_PROD } from "./config";
 import { pointers } from "./input";
-import { sheetCovers } from "./layout";
 import { takePhoto } from "./photo";
 import { frontLeg, updateAwayLeg } from "./scene";
 import { maybeIntroSplash, pick, pourAt, splashAt } from "./splash";
@@ -106,7 +105,6 @@ function isIdle() {
     app.shakeTime <= 0 &&
     app.water.drops.length === 0 &&
     !app.water.sliding &&
-    (app.idleTime < 9 || app.reducedMotionQuery.matches || sheetCovers()) &&
     Math.abs(orbit.yaw - cur.yaw) < 0.001 &&
     Math.abs(orbit.pitch - cur.pitch) < 0.001 &&
     Math.abs(orbit.dist - cur.dist) < 0.001 &&
@@ -114,23 +112,6 @@ function isIdle() {
     Math.abs(app.sheetZoomGoal - app.sheetZoom) < 0.003 &&
     app.insetShift === app.insetShiftGoal &&
     thumbJobs.length === 0
-  );
-}
-
-export function trackUserActivity() {
-  window.addEventListener(
-    "pointerdown",
-    () => {
-      app.idleTime = 0;
-    },
-    true,
-  );
-  window.addEventListener(
-    "wheel",
-    () => {
-      app.idleTime = 0;
-    },
-    true,
   );
 }
 
@@ -192,11 +173,8 @@ export function step(now: number, fixedDt?: number) {
       }
     }
   }
-  app.idleTime += dt;
   if (app.reducedMotionQuery.matches) {
     app.shakeTime = 0;
-  } else if (app.idleTime > 9 && pointers.size === 0 && !sheetCovers()) {
-    orbit.yaw += dt * 0.12 * Math.min(1, (app.idleTime - 9) / 3);
   }
   if (app.shakeTime > 0) {
     app.shakeTime = Math.max(0, app.shakeTime - dt);

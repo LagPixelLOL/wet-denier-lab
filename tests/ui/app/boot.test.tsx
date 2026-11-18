@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import * as THREE from "three";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { orbit } from "../../../src/engine/app/camera";
 import { currentLook } from "../../../src/engine/app/outfit";
 import { app } from "../../../src/engine/app/runtime";
 import { outfit, state } from "../../../src/engine/app/state";
@@ -24,12 +25,13 @@ const bootLook: Look = {
     withLegDefaults({ color: "smoke", material: "gloss", denier: 15 }),
     withLegDefaults({ color: "#123abc", length: "knee", cuff: "rib", wetColor: "sakura" }),
   ],
+  view: { yaw: 0.9, pitch: 0.2, dist: 1.5, target: [0.01, 0.4, 0.02] },
 };
 
 let h: Harness;
 
 beforeAll(async () => {
-  h = await bootApp({ hash: hashOf(lookUrl(bootLook)) });
+  h = await bootApp({ hash: hashOf(lookUrl(bootLook, location.href)) });
 });
 
 describe("startApp", () => {
@@ -138,6 +140,7 @@ describe("startApp", () => {
 describe("share links at boot", () => {
   it("applies the #look= hash present at boot", () => {
     expect(currentLook()).toEqual(bootLook);
+    expect([orbit.yaw, orbit.pitch, orbit.dist, ...orbit.target.toArray()]).toEqual([0.9, 0.2, 1.5, 0.01, 0.4, 0.02]);
     expect(state.scene).toBe("bath");
     expect(ui.get().scenes).toEqual({ scene: "bath", backdrop: "mint" });
     expect(ui.get().rainLabel).toBe("花洒");
@@ -148,9 +151,9 @@ describe("share links at boot", () => {
   });
 
   it("round-trips currentLook through lookUrl", () => {
-    const url = lookUrl(currentLook());
+    const url = lookUrl(currentLook(), location.href);
     expect(hashOf(url)).toMatchInlineSnapshot(
-      `"#look=1~crossed~bath~mint~thigh.lace.0.gloss.15.none.smoke.none.-~knee.rib.0.sheer.40.none.x123abc.none.sakura"`,
+      `"#look=1~crossed~bath~mint~thigh.lace.0.gloss.15.none.smoke.none.-~knee.rib.0.sheer.40.none.x123abc.none.sakura~0.9,0.2,1.5,0.01,0.4,0.02"`,
     );
     const parsed = unpackLook(hashOf(url));
     expect(parsed).toEqual({ ...bootLook, legs: [...bootLook.legs] });
@@ -163,9 +166,10 @@ describe("share links at boot", () => {
       backdrop: "#202020",
       legs: [withLegDefaults({ color: "ivory" }), withLegDefaults({ color: "ivory" })],
     };
-    history.replaceState(null, "", hashOf(lookUrl(next)));
+    history.replaceState(null, "", hashOf(lookUrl(next, location.href)));
     window.dispatchEvent(new HashChangeEvent("hashchange"));
-    expect(currentLook()).toEqual(next);
+    // A link without a view leaves the camera where it is.
+    expect(currentLook()).toEqual({ ...next, view: bootLook.view });
     expect(app.rig.solo).toBe(true);
     // The night street is dark and rains on its own.
     expect(document.body).toHaveClass("dim");
@@ -175,11 +179,16 @@ describe("share links at boot", () => {
 
     history.replaceState(null, "", "#about");
     window.dispatchEvent(new HashChangeEvent("hashchange"));
-    expect(currentLook()).toEqual(next);
+    // A link without a view leaves the camera where it is.
+    expect(currentLook()).toEqual({ ...next, view: bootLook.view });
   });
 
   it("turns automatic rain off again when a linked look leaves the rainy scene", () => {
-    history.replaceState(null, "", hashOf(lookUrl({ ...currentLook(), scene: "studio", backdrop: "dusk" })));
+    history.replaceState(
+      null,
+      "",
+      hashOf(lookUrl({ ...currentLook(), scene: "studio", backdrop: "dusk" }, location.href)),
+    );
     window.dispatchEvent(new HashChangeEvent("hashchange"));
     expect(state.scene).toBe("studio");
     expect(state.rain).toBe(false);
@@ -188,6 +197,19 @@ describe("share links at boot", () => {
     expect(document.body).toHaveClass("dim");
     expect(document.documentElement.style.getPropertyValue("--stage")).toBe(app.stage.backdropNow.bottom);
     expect(outfit.legs[0].color).toBe("ivory");
+  });
+
+  it("moves the camera to a linked view the short way round, within the usual limits", () => {
+    orbit.cur.yaw = 20;
+    const look = { ...currentLook(), view: { yaw: 1, pitch: 5, dist: 99, target: [9, -1, 0.1] as const } };
+    history.replaceState(null, "", hashOf(lookUrl(look, location.href)));
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(orbit.yaw).toBeCloseTo(1 + Math.PI * 6, 12);
+    expect([orbit.pitch, orbit.dist, ...orbit.target.toArray()]).toEqual([1.15, 3.2, 0.25, 0.02, 0.1]);
+    h.frames(120, 16);
+    expect(orbit.cur.yaw).toBeCloseTo(orbit.yaw, 6);
+    // The copied link carries the wrapped yaw back.
+    expect(unpackLook(hashOf(lookUrl(currentLook(), location.href)))?.view?.yaw).toBe(1);
   });
 
   it("applies only the legs of a link whose pose, scene and backdrop are unknown", () => {
