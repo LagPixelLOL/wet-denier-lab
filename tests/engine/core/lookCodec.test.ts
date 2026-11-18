@@ -129,6 +129,11 @@ describe("unpackLook round trips", () => {
     }
   });
 
+  it("restores bare legs next to a stocking", () => {
+    const legs = [withLegDefaults({ length: "bare", color: "mist" }), withLegDefaults({ length: "knee" })];
+    expect(roundTrip({ pose: "step", scene: "pool", backdrop: "lilac", legs })?.legs).toEqual(legs);
+  });
+
   it("restores custom colors in lowercase", () => {
     const legs = [
       withLegDefaults({ color: "#A1B2C3", wetColor: "#FFFFFF" }),

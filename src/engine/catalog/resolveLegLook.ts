@@ -3,7 +3,7 @@
  */
 import { accentDyeFor, hexToRgb, resolveColor } from "./colors";
 import type { Rgb } from "./colors";
-import { CUFF_STYLES, MATERIALS, PATTERNS, SECRET_DECALS, STOCKING_LENGTHS } from "./garments";
+import { BARE_SKIN_WATER, CUFF_STYLES, MATERIALS, PATTERNS, SECRET_DECALS, STOCKING_LENGTHS } from "./garments";
 import type { CatalogIdDef, CuffStyleDef, MaterialDef, MaterialWater, StockingLengthDef } from "./garments";
 import { withLegDefaults } from "./presets";
 import type { LegSpec } from "./presets";
@@ -46,7 +46,8 @@ export interface LegLook {
 export function resolveLegLook(input?: Partial<LegSpec>): LegLook {
   const spec = withLegDefaults(input);
   const lengthDef: StockingLengthDef = STOCKING_LENGTHS[spec.length] || STOCKING_LENGTHS.thigh;
-  const cuffDef: CuffStyleDef = CUFF_STYLES[spec.cuff] || CUFF_STYLES.plain;
+  const isBare = !!lengthDef.bare;
+  const cuffDef: CuffStyleDef = (!isBare && CUFF_STYLES[spec.cuff]) || CUFF_STYLES.plain;
   const materialDef: MaterialDef = MATERIALS[spec.material] || MATERIALS.sheer;
   const patternDef: CatalogIdDef = PATTERNS[spec.pattern] || PATTERNS.none;
   const colorDef = resolveColor(spec.color);
@@ -75,12 +76,12 @@ export function resolveLegLook(input?: Partial<LegSpec>): LegLook {
     mat: [materialDef.wetClear, materialDef.wetDark, materialDef.shine, materialDef.pearl],
     mat2: [materialDef.knit, materialDef.rib, materialDef.sheenPow, materialDef.knitScale],
     print: materialDef.print,
-    secret: secretDef.id,
+    secret: isBare ? 0 : secretDef.id,
     secretColor: luma > 0.55 ? "#e8456e" : "#ffd7e2",
-    wetDye: spec.wetColor ? resolveColor(spec.wetColor).dye : null,
+    wetDye: spec.wetColor && !isBare ? resolveColor(spec.wetColor).dye : null,
     skinVisible: !isTights,
     fade0: isTights ? 0.7 : 0.79,
     fade1: isTights ? 0.812 : 0.868,
-    water: materialDef.water,
+    water: isBare ? BARE_SKIN_WATER : materialDef.water,
   };
 }

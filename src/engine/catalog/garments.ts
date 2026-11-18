@@ -8,6 +8,8 @@ export interface StockingLengthDef {
   cuffY: number;
   band: number;
   tights?: boolean;
+  /** No stocking at all: the cuff sits below the foot, so the whole stocking mesh shades as bare skin. */
+  bare?: boolean;
 }
 
 export interface CuffStyleDef {
@@ -51,6 +53,12 @@ export interface CatalogIdDef {
 }
 
 export const STOCKING_LENGTHS = {
+  bare: {
+    label: "光腿",
+    cuffY: -1,
+    band: 0,
+    bare: true,
+  },
   ankle: {
     label: "短袜",
     cuffY: 0.132,
@@ -86,7 +94,7 @@ export const STOCKING_LENGTHS = {
 
 export type StockingLengthKey = keyof typeof STOCKING_LENGTHS;
 
-export const STOCKING_LENGTH_ORDER: StockingLengthKey[] = ["ankle", "crew", "knee", "over", "thigh", "tights"];
+export const STOCKING_LENGTH_ORDER: StockingLengthKey[] = ["bare", "ankle", "crew", "knee", "over", "thigh", "tights"];
 
 export const CUFF_STYLES = {
   plain: {
@@ -285,6 +293,16 @@ export const MATERIALS = {
 export type MaterialKey = keyof typeof MATERIALS;
 
 export const MATERIAL_ORDER: MaterialKey[] = ["sheer", "matte", "gloss", "pearl", "velvet", "cotton", "latex"];
+
+/** Bare skin barely soaks anything up: water beads and runs off, and the film dries quickly. */
+export const BARE_SKIN_WATER: MaterialWater = {
+  soak: 0.15,
+  wick: 0.2,
+  take: 0.2,
+  bead: 1.6,
+  slip: 1.4,
+  shed: 0.25,
+};
 
 export const DENIER_OPTIONS: number[] = [15, 40, 70, 120];
 

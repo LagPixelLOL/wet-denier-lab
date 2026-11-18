@@ -33,6 +33,8 @@ const TABS: [WardrobeTab, string][] = [
   ["fun", "彩蛋"],
 ];
 
+const BARE_HINT = "光腿没穿袜子，这些选项用不上。在款式里选个长度就能穿回来。";
+
 const isPaletteColor = (color: string) => !!(COLORS as Partial<Record<string, ColorDef>>)[color];
 
 const options = (pairs: [string, string][]): ChipOption[] => pairs.map(([value, label]) => ({ value, label }));
@@ -92,15 +94,19 @@ export function WardrobeSheet() {
   }, [tab]);
 
   const material = spec ? MATERIALS[spec.material] : null;
+  // Without stockings only the length (to put them back on) still does anything.
+  const bare = spec?.length === "bare";
   const chips = (group: string, chipOptions: ChipOption[], selected: string | undefined, idle?: boolean) => (
     <ChipGroup
       group={group}
       options={chipOptions}
       selected={selected}
       idle={idle}
+      disabled={bare && group !== "length"}
       onPick={(value) => actions.wearChip(group, value)}
     />
   );
+  const bareHint = bare && <p className={paneHintClass}>{BARE_HINT}</p>;
   const panes: Record<WardrobeTab, ReactNode> = {
     pose: (
       <>
@@ -131,22 +137,28 @@ export function WardrobeSheet() {
             !!spec && spec.length !== "thigh",
           )}
         </LabeledRow>
+        {bareHint}
       </>
     ),
     color: (
-      <ChipGroup
-        group="color"
-        options={COLOR_OPTIONS}
-        selected={spec?.color}
-        onPick={(value) => actions.wearChip("color", value)}
-        swatches
-      >
-        <CustomColorSwatch
-          label="自选颜色"
-          custom={spec && !isPaletteColor(spec.color) ? spec.color : null}
-          onInput={actions.wearColor}
-        />
-      </ChipGroup>
+      <>
+        <ChipGroup
+          group="color"
+          options={COLOR_OPTIONS}
+          selected={spec?.color}
+          disabled={bare}
+          onPick={(value) => actions.wearChip("color", value)}
+          swatches
+        >
+          <CustomColorSwatch
+            label="自选颜色"
+            custom={spec && !isPaletteColor(spec.color) ? spec.color : null}
+            disabled={bare}
+            onInput={actions.wearColor}
+          />
+        </ChipGroup>
+        {bareHint}
+      </>
     ),
     material: (
       <>
@@ -154,20 +166,27 @@ export function WardrobeSheet() {
         <LabeledRow label="厚度">
           {chips("denier", DENIER_CHIPS, spec ? String(spec.denier) : undefined, !!material && material.minDenier > 0)}
         </LabeledRow>
-        <p className={paneHintClass}>
-          {material &&
-            material.label + "：" + material.hint + (material.minDenier ? "。这种料子不透，厚度不起作用。" : "。")}
-        </p>
+        {bareHint || (
+          <p className={paneHintClass}>
+            {material &&
+              material.label + "：" + material.hint + (material.minDenier ? "。这种料子不透，厚度不起作用。" : "。")}
+          </p>
+        )}
       </>
     ),
-    pattern: chips("pattern", PATTERN_OPTIONS, spec?.pattern),
+    pattern: (
+      <>
+        {chips("pattern", PATTERN_OPTIONS, spec?.pattern)}
+        {bareHint}
+      </>
+    ),
     fun: (
       <>
         <LabeledRow label="显形">{chips("secret", SECRET_OPTIONS, spec?.secret)}</LabeledRow>
         <LabeledRow label="变色">
           {chips("wetColor", WET_COLOR_OPTIONS, spec ? spec.wetColor || "" : undefined)}
         </LabeledRow>
-        <p className={paneHintClass}>平时看不出来，泼上水才显出来。选好以后往腿上泼水试试。</p>
+        {bareHint || <p className={paneHintClass}>平时看不出来，泼上水才显出来。选好以后往腿上泼水试试。</p>}
       </>
     ),
   };

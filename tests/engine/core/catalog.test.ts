@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { accentDyeFor, COLOR_ORDER, COLORS, hexToRgb, resolveColor } from "../../../src/engine/catalog/colors";
 import type { ColorStyle } from "../../../src/engine/catalog/colors";
 import {
+  BARE_SKIN_WATER,
   CUFF_STYLE_ORDER,
   CUFF_STYLES,
   DENIER_OPTIONS,
@@ -340,6 +341,28 @@ describe("resolveLegLook", () => {
     ]);
     const bow = resolveLegLook({ length: "over", cuff: "bow" });
     expect([bow.hasCuff, bow.bow, bow.skinVisible, bow.fade0, bow.fade1]).toEqual([1, true, true, 0.79, 0.868]);
+  });
+
+  it("turns bare legs into skin with no cuff decoration, decals or fabric water", () => {
+    const bare = resolveLegLook({
+      length: "bare",
+      cuff: "bow",
+      garter: true,
+      material: "latex",
+      secret: "hearts",
+      wetColor: "sakura",
+    });
+    expect([bare.hasCuff, bare.cuff, bare.bow, bare.garter, bare.secret, bare.wetDye]).toEqual([
+      1,
+      CUFF_STYLES.plain.id,
+      false,
+      0,
+      0,
+      null,
+    ]);
+    expect([bare.skinVisible, bare.fade0, bare.fade1]).toEqual([true, 0.79, 0.868]);
+    expect(bare.water).toBe(BARE_SKIN_WATER);
+    expect(resolveLegLook({ length: "bare", material: "cotton" }).water).toBe(BARE_SKIN_WATER);
   });
 
   it("only shows a garter on thigh-high stockings", () => {

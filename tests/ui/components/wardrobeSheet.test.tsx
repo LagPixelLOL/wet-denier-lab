@@ -361,6 +361,55 @@ describe("WardrobeSheet pattern and fun panes", () => {
   });
 });
 
+describe("WardrobeSheet bare legs", () => {
+  const FABRIC_GROUPS = ["cuff", "garter", "color", "material", "denier", "pattern", "secret", "wetColor"];
+  const BARE_HINT = "光腿没穿袜子，这些选项用不上。在款式里选个长度就能穿回来。";
+  const isDisabled = (el: HTMLElement) => (el as HTMLButtonElement).disabled && el.classList.contains("opacity-35");
+
+  it("offers bare legs as the first length", () => {
+    render(<WardrobeSheet />);
+    expect(chips("length")[0].dataset.v).toBe("bare");
+    expect(chips("length")[0].textContent).toBe("光腿");
+  });
+
+  it("greys out every fabric option but keeps the lengths", () => {
+    render(<WardrobeSheet />);
+    setWardrobe({ spec: spec({ length: "bare" }) });
+    for (const group of FABRIC_GROUPS) {
+      expect(chips(group).every(isDisabled)).toBe(true);
+    }
+    expect(within(customSwatch()).getByDisplayValue("#7fb9c9")).toBeDisabled();
+    expect(customSwatch()).toHaveClass("opacity-35");
+    expect(chips("length").some((el) => (el as HTMLButtonElement).disabled)).toBe(false);
+    expect(selectedValues("length")).toEqual(["bare"]);
+  });
+
+  it("ignores clicks on the greyed-out options and still wears a length", async () => {
+    setWardrobe({ tab: "style", spec: spec({ length: "bare" }) });
+    render(<WardrobeSheet />);
+    await userEvent.click(chip("cuff", "bow"));
+    await userEvent.click(chip("garter", "1"));
+    await userEvent.click(chip("length", "knee"));
+    expect(actions.wearChip).toHaveBeenCalledExactlyOnceWith("length", "knee");
+  });
+
+  it("explains why in the affected panes and restores the usual hints with stockings", () => {
+    render(<WardrobeSheet />);
+    setWardrobe({ spec: spec({ length: "bare" }) });
+    const hintPanes = () =>
+      [...document.querySelectorAll<HTMLElement>("[data-pane] > p")]
+        .filter((p) => p.textContent === BARE_HINT)
+        .map((p) => p.closest<HTMLElement>("[data-pane]")!.dataset.pane);
+    expect(hintPanes()).toEqual(["style", "color", "material", "pattern", "fun"]);
+    setWardrobe({ spec: spec({ length: "thigh" }) });
+    expect(hintPanes()).toEqual([]);
+    expect(document.querySelector('[data-pane="material"] > p')!.textContent).toBe("薄丝：遇水变透。");
+    for (const group of FABRIC_GROUPS) {
+      expect(chips(group).some((el) => (el as HTMLButtonElement).disabled)).toBe(false);
+    }
+  });
+});
+
 describe("WardrobeSheet leg target", () => {
   // The segment is kept in the layout and hidden with a class; that class is the only signal.
   const isHidden = () => targetGroup().classList.contains("invisible");

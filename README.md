@@ -2,7 +2,7 @@
 
 An interactive WebGL toy: tap the stockings to splash water. Splashes burst, wet fabric turns see-through,
 beads cling, slide and drip onto the floor. You can switch scenes (studio, bath, street, pool), poses and
-outfits (length, cuff, material, denier, color, pattern, hidden decals), take photos and share a link that
+outfits (length, cuff, material, denier, color, pattern, hidden decals, or bare legs), take photos and share a link that
 restores the exact look.
 
 The UI text is Chinese (zh-CN).

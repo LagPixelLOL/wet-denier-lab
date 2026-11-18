@@ -17,6 +17,8 @@ interface ChipGroupProps {
   swatches?: boolean;
   /** Dims the chips that are not selected (the setting currently has no effect). */
   idle?: boolean;
+  /** Greys out every chip and ignores clicks (the setting does not apply at all). */
+  disabled?: boolean;
   children?: ReactNode;
 }
 
@@ -25,15 +27,17 @@ const swatchShape = "h-[30px] w-[30px] rounded-[50%] border-2 border-on-ink p-0"
 const swatchRing = "shadow-[0_0_0_1px_var(--hairline)]";
 const swatchRingOn = "shadow-[0_0_0_2px_var(--ink)]";
 
-function chipClass(on: boolean, swatch: boolean, idle: boolean) {
+const disabledClass = "cursor-default opacity-35";
+
+function chipClass(on: boolean, swatch: boolean, idle: boolean, disabled: boolean) {
   const look = swatch
     ? `${swatchShape} [background:var(--c)] ${on ? `text-on-ink ${swatchRingOn}` : swatchRing}`
     : `rounded-[999px] border px-[11px] py-1.5 ${on ? "border-ink bg-ink text-on-ink" : "border-hairline bg-chip"}`;
-  return `${chipBase} ${look}${idle && !on ? " opacity-45" : ""}`;
+  return `${chipBase} ${look}${disabled ? ` ${disabledClass}` : idle && !on ? " opacity-45" : ""}`;
 }
 
 /** A row of toggle chips; `selected` is the data-v of the active chip. */
-export function ChipGroup({ group, options, selected, onPick, swatches, idle, children }: ChipGroupProps) {
+export function ChipGroup({ group, options, selected, onPick, swatches, idle, disabled, children }: ChipGroupProps) {
   return (
     <div className={swatches ? "flex flex-wrap gap-[9px]" : "flex flex-wrap gap-1.5"} data-key={group}>
       {options.map(({ value, label, swatch }) => {
@@ -42,7 +46,8 @@ export function ChipGroup({ group, options, selected, onPick, swatches, idle, ch
           <button
             key={value}
             data-v={value}
-            className={chipClass(on, !!swatch, !!idle)}
+            className={chipClass(on, !!swatch, !!idle, !!disabled)}
+            disabled={disabled}
             style={swatch ? ({ "--c": swatch.color } as CSSProperties) : undefined}
             aria-label={swatch?.title}
             title={swatch?.title}
@@ -134,10 +139,11 @@ interface CustomColorSwatchProps {
   /** The current color when it is not one of the palette swatches, otherwise null. */
   custom: string | null;
   onInput: (color: string) => void;
+  disabled?: boolean;
 }
 
 /** A color input styled as a swatch. It keeps showing the last custom color after a palette pick. */
-export function CustomColorSwatch({ label, custom, onInput }: CustomColorSwatchProps) {
+export function CustomColorSwatch({ label, custom, onInput, disabled }: CustomColorSwatchProps) {
   const [last, setLast] = useState<string | null>(null);
   if (custom !== null && custom !== last) {
     setLast(custom);
@@ -145,14 +151,15 @@ export function CustomColorSwatch({ label, custom, onInput }: CustomColorSwatchP
   const on = custom !== null;
   return (
     <label
-      className={`relative inline-block cursor-pointer ${swatchShape} ${on ? `[background:var(--c)] ${swatchRingOn}` : `[background:var(--c,conic-gradient(#ff8fa8,#ffd38a,#9be0a8,#8fc4ff,#c9a3ff,#ff8fa8))] ${swatchRing}`}`}
+      className={`relative inline-block ${disabled ? disabledClass : "cursor-pointer"} ${swatchShape} ${on ? `[background:var(--c)] ${swatchRingOn}` : `[background:var(--c,conic-gradient(#ff8fa8,#ffd38a,#9be0a8,#8fc4ff,#c9a3ff,#ff8fa8))] ${swatchRing}`}`}
       title={label}
       aria-label={label}
       style={last !== null ? ({ "--c": last } as CSSProperties) : undefined}
     >
       <input
-        className="absolute inset-0 h-full w-full cursor-pointer p-0 opacity-0 [border:0]"
+        className={`absolute inset-0 h-full w-full p-0 opacity-0 [border:0] ${disabled ? "cursor-default" : "cursor-pointer"}`}
         type="color"
+        disabled={disabled}
         defaultValue="#7fb9c9"
         onInput={(ev) => onInput(ev.currentTarget.value)}
       />

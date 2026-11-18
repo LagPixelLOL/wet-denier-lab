@@ -406,6 +406,22 @@ describe("setStocking", () => {
     expect(vec(wet)).toEqual([0, 0, 0, 0]);
   });
 
+  it("puts the bare-leg cuff below every stocking vertex, so the shader draws skin everywhere", () => {
+    const { stage } = buildStage();
+    const bare = resolveLegLook({ length: "bare" });
+    stage.setStocking(0, bare);
+    expect(stage.legs[0].fabric.uHasCuff.value).toBe(1);
+    expect(stage.legs[0].bow.visible).toBe(false);
+    expect(stage.legs[0].skinParts.every((part) => part.visible)).toBe(true);
+    const positions = legModel().stocking.getAttribute("position");
+    let lowest = Infinity;
+    for (let i = 0; i < positions.count; i++) {
+      lowest = Math.min(lowest, positions.getY(i));
+    }
+    // The cuff shader decorates up to 7.5 cm below the cuff line and bulges the mesh around it.
+    expect(stage.legs[0].fabric.uCuffY.value).toBeLessThan(lowest - 0.1);
+  });
+
   it("hides every skin part for tights and shows them again for stockings", () => {
     const { stage } = buildStage();
     stage.setStocking(0, resolveLegLook({ length: "tights" }));

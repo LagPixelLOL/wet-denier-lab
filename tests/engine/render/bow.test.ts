@@ -79,9 +79,10 @@ describe("computeBowMatrix", () => {
   it("writes into the given array and pins the placement for each stocking length", () => {
     const out = new Float64Array(16);
     expect(computeBowMatrix(collision, STOCKING_LENGTHS.thigh.cuffY, out)).toBe(out);
-    const results = Object.entries(STOCKING_LENGTHS).map(
-      ([key, def]) => `${key}: ${digestRounded(computeBowMatrix(collision, def.cuffY), 6)}`,
-    );
+    // Bare legs have no cuff to tie a bow to.
+    const results = Object.entries(STOCKING_LENGTHS)
+      .filter(([key]) => key !== "bare")
+      .map(([key, def]) => `${key}: ${digestRounded(computeBowMatrix(collision, def.cuffY), 6)}`);
     expect(results).toMatchInlineSnapshot(`
       [
         "ankle: 485783aa",
