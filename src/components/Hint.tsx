@@ -1,8 +1,10 @@
 import { useStore } from "../state/useStore";
 import { ui } from "../state/ui";
+import { useT } from "../i18n";
 
 export function Hint() {
   const hint = useStore(ui, (s) => s.hint);
+  const t = useT();
   return (
     <div
       id="hint"
@@ -11,7 +13,7 @@ export function Hint() {
         (hint.hidden ? "transform-[translate(-50%,8px)] opacity-0" : "transform-[translate(-50%)]")
       }
     >
-      {hint.text}
+      {t(hint.key)}
     </div>
   );
 }

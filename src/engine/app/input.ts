@@ -159,7 +159,7 @@ export function bindUi() {
     });
   }
   setMode("water", false);
-  showHint("点丝袜任意位置泼水 · 按住拖动连续浇", 0);
+  showHint("hint.start", 0);
   addEventListener(
     "click",
     (ev) => {

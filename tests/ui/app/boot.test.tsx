@@ -114,7 +114,7 @@ describe("startApp", () => {
     expect(state.mode).toBe("water");
     expect(app.canvas.style.cursor).toBe("crosshair");
     expect(document.body).not.toHaveClass("view-mode");
-    expect(ui.get().hint).toEqual({ text: "点丝袜任意位置泼水 · 按住拖动连续浇", hidden: false });
+    expect(ui.get().hint).toEqual({ key: "hint.start", hidden: false });
     // The boot hint has no timeout.
     vi.advanceTimersByTime(10_000);
     expect(ui.get().hint.hidden).toBe(false);
@@ -134,7 +134,7 @@ describe("startApp", () => {
   });
 
   it("renders the loading text until the canvas is ready", () => {
-    expect(screen.getByText("正在准备丝袜与水…")).toBeInTheDocument();
+    expect(screen.getByText("正在准备丝袜与水...")).toBeInTheDocument();
   });
 });
 
@@ -144,7 +144,7 @@ describe("share links at boot", () => {
     expect([orbit.yaw, orbit.pitch, orbit.dist, ...orbit.target.toArray()]).toEqual([0.9, 0.2, 1.5, 0.01, 0.4, 0.02]);
     expect(state.scene).toBe("bath");
     expect(ui.get().scenes).toEqual({ scene: "bath", backdrop: "mint" });
-    expect(ui.get().rainLabel).toBe("花洒");
+    expect(ui.get().rainLabel).toBe("scene.bath.rain");
     expect(ui.get().wardrobe.pose).toBe("crossed");
     // The bath is lit, so the stage tone follows the scene fade and the body is not dim.
     expect(document.body).not.toHaveClass("dim");

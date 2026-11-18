@@ -10,7 +10,7 @@ import { lookUrl } from "../share/lookCodec";
 
 export function shareLook() {
   const url = lookUrl(currentLook(), location.href);
-  const onCopied = () => showHint("链接已复制 · 别人打开就是这一双、这个姿势、场景和视角", 3400);
+  const onCopied = () => showHint("hint.copied", 3400);
   const showCopyBox = () => ui.set({ copyBox: { url, open: true } });
   try {
     navigator.clipboard.writeText(url).then(onCopied, showCopyBox);
@@ -48,11 +48,7 @@ export function takePhoto() {
   ctx.fillText("WET DENIER LAB", margin, h - margin);
   const dataUrl = out.toDataURL("image/jpeg", 0.93);
   const inClaude = typeof window.claude !== "undefined";
-  const tip = app.isMobile
-    ? "长按图片可以保存"
-    : inClaude
-      ? "在图片上点右键，选「图片另存为」"
-      : "点「保存图片」下载，或在图片上点右键另存为";
+  const tip = app.isMobile ? "photo.tip.mobile" : inClaude ? "photo.tip.claude" : "photo.tip.desktop";
   ui.set((s) => ({ photo: { ...s.photo, src: dataUrl, saveHidden: inClaude, tip } }));
   showPhoto(true);
   buzz(12);

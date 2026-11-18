@@ -4,8 +4,8 @@
 
 import type { LegPoseSpec } from "./skinning";
 
+/** A pose; its name is the "pose.<key>" message. */
 export interface PoseDefinition {
-  label: string;
   /** Only the first leg is shown. */
   solo?: boolean;
   /** [left, right] */
@@ -14,7 +14,6 @@ export interface PoseDefinition {
 
 export const POSES = {
   single: {
-    label: "单腿",
     solo: true,
     legs: [
       {
@@ -27,7 +26,6 @@ export const POSES = {
     ],
   },
   together: {
-    label: "并立",
     legs: [
       {
         x: 0.089,
@@ -44,7 +42,6 @@ export const POSES = {
     ],
   },
   step: {
-    label: "一前一后",
     legs: [
       {
         x: 0.084,
@@ -64,7 +61,6 @@ export const POSES = {
     ],
   },
   crossed: {
-    label: "交叉",
     legs: [
       {
         x: 0.1,
@@ -82,7 +78,6 @@ export const POSES = {
     ],
   },
   tiptoe: {
-    label: "踮脚",
     legs: [
       {
         x: 0.09,
@@ -101,7 +96,6 @@ export const POSES = {
     ],
   },
   point: {
-    label: "足尖点地",
     legs: [
       {
         x: 0.087,
@@ -119,7 +113,6 @@ export const POSES = {
     ],
   },
   pigeon: {
-    label: "内八",
     legs: [
       {
         x: 0.094,

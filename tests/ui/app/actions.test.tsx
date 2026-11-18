@@ -247,7 +247,7 @@ describe("scene actions", () => {
     expect(state.scene).toBe("pool");
     expect(app.stage.sceneNow.id).toBe(3);
     expect(ui.get().scenes.scene).toBe("pool");
-    expect(ui.get().rainLabel).toBe("太阳雨");
+    expect(ui.get().rainLabel).toBe("scene.pool.rain");
     expect(document.body).toHaveClass("scene-out");
     vi.advanceTimersByTime(60);
     expect(document.body).toHaveClass("scene-in");
@@ -335,7 +335,7 @@ describe("share links", () => {
     expect(url.startsWith(location.href.split("#")[0] + "#look=1~")).toBe(true);
     expect(url.split("~").at(-1)).toMatch(/^-?[\d.]+(,-?[\d.]+){5}$/);
     await h.settle();
-    expect(ui.get().hint).toEqual({ text: "链接已复制 · 别人打开就是这一双、这个姿势、场景和视角", hidden: false });
+    expect(ui.get().hint).toEqual({ key: "hint.copied", hidden: false });
     expect(ui.get().copyBox).toBeNull();
     vi.advanceTimersByTime(3400);
     expect(ui.get().hint.hidden).toBe(true);

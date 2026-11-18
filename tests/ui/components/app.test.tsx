@@ -23,13 +23,14 @@ vi.mock("react-dom/client", async (importOriginal) => {
 // Viewport keeps a module-level "started" flag, so every test loads fresh module instances.
 async function load() {
   vi.resetModules();
-  const [{ startApp }, { App }, { Viewport }, { ui }] = await Promise.all([
+  const [{ startApp }, { App }, { Viewport }, { ui }, { actions }] = await Promise.all([
     import("../../../src/engine/app/boot"),
     import("../../../src/App"),
     import("../../../src/components/Viewport"),
     import("../../../src/state/ui"),
+    import("../../../src/engine/app/actions"),
   ]);
-  return { startApp: vi.mocked(startApp), App, Viewport, ui };
+  return { startApp: vi.mocked(startApp), App, Viewport, ui, actions };
 }
 
 beforeEach(() => {
@@ -116,7 +117,37 @@ describe("App", () => {
   });
 });
 
+describe("App locale", () => {
+  it("sets <html lang> to the locale and re-measures the layout when it changes", async () => {
+    const { App, ui, actions } = await load();
+    render(<App />);
+    expect(document.documentElement.lang).toBe("zh-CN");
+    expect(actions.relayout).toHaveBeenCalledTimes(1);
+    act(() => ui.set({ locale: "en-US" }));
+    expect(document.documentElement.lang).toBe("en-US");
+    expect(actions.relayout).toHaveBeenCalledTimes(2);
+    expect(document.querySelector("#viewReset")).toHaveTextContent("Reset");
+  });
+});
+
 describe("main entry", () => {
+  it("picks the UI language from the browser before the first render", async () => {
+    const languages = vi.spyOn(navigator, "languages", "get").mockReturnValue(["fr-FR", "en-GB"]);
+    try {
+      const root = document.body.appendChild(document.createElement("div"));
+      root.id = "root";
+      const { ui } = await load();
+      await act(async () => {
+        await import("../../../src/main");
+      });
+      expect(ui.get().locale).toBe("en-US");
+      expect(root.querySelector("#dock, .dock")).toHaveTextContent("Wardrobe");
+    } finally {
+      languages.mockRestore();
+      document.documentElement.lang = "";
+    }
+  });
+
   it("renders the app into #root under StrictMode and starts the engine once", async () => {
     const root = document.createElement("div");
     root.id = "root";

@@ -70,7 +70,7 @@ describe("Dock tools", () => {
     render(<Dock />);
     const rain = document.querySelector("#rainBtn")!;
     expect(rain).toHaveAttribute("aria-pressed", "false");
-    setUi({ rain: true, rainLabel: "花洒" });
+    setUi({ rain: true, rainLabel: "scene.bath.rain" });
     expect(rain).toHaveAttribute("aria-pressed", "true");
     expect(rain).toHaveTextContent("花洒");
   });

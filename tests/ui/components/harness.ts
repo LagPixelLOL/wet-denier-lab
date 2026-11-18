@@ -37,6 +37,7 @@ const ACTION_KEYS = {
   random: true,
   scene: true,
   backdrop: true,
+  relayout: true,
 } satisfies Record<keyof Actions, true>;
 
 /** Factory for vi.mock of src/engine/app/actions: every action is a bare vi.fn(). */

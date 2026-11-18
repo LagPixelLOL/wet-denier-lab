@@ -2,6 +2,8 @@
  * View state for the React UI. The engine writes it; components render it and call engine actions.
  */
 import type { LegSpec } from "../engine/catalog/presets";
+import type { MessageKey } from "../i18n";
+import { DEFAULT_LOCALE, type Locale } from "../i18n/locales";
 import { createStore } from "./createStore";
 
 export type TouchMode = "water" | "view";
@@ -14,14 +16,16 @@ export type WardrobeSpec = Pick<
 >;
 
 export interface UiState {
+  locale: Locale;
   mode: TouchMode;
-  hint: { text: string; hidden: boolean };
+  /** Text shown as message keys, so it follows locale changes. */
+  hint: { key: MessageKey; hidden: boolean };
   panels: { mat: boolean; scene: boolean; about: boolean };
   rain: boolean;
-  rainLabel: string;
+  rainLabel: MessageKey;
   slow: boolean;
   soundOn: boolean;
-  photo: { open: boolean; src: string | null; tip: string; saveHidden: boolean };
+  photo: { open: boolean; src: string | null; tip: MessageKey; saveHidden: boolean };
   /** Fallback when the clipboard is unavailable; null until first needed. */
   copyBox: { url: string; open: boolean } | null;
   bootError: string | null;
@@ -30,14 +34,15 @@ export interface UiState {
 }
 
 export const initialUiState: UiState = {
+  locale: DEFAULT_LOCALE,
   mode: "water",
-  hint: { text: "点丝袜任意位置泼水 · 按住拖动连续浇", hidden: false },
+  hint: { key: "hint.start", hidden: false },
   panels: { mat: false, scene: false, about: false },
   rain: false,
-  rainLabel: "细雨",
+  rainLabel: "scene.studio.rain",
   slow: false,
   soundOn: true,
-  photo: { open: false, src: null, tip: "长按图片可以保存", saveHidden: false },
+  photo: { open: false, src: null, tip: "photo.tip.mobile", saveHidden: false },
   copyBox: null,
   bootError: null,
   wardrobe: { tab: "pose", spec: null, pose: "", target: -1, solo: false },

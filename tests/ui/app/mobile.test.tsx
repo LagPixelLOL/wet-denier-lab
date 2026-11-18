@@ -153,7 +153,7 @@ describe("mobile water", () => {
   it("tells phone users to long-press the photo", () => {
     actions.requestPhoto();
     h.frame(20);
-    expect(ui.get().photo).toMatchObject({ open: true, tip: "长按图片可以保存", saveHidden: false });
+    expect(ui.get().photo).toMatchObject({ open: true, tip: "photo.tip.mobile", saveHidden: false });
     actions.closePhoto();
   });
 });

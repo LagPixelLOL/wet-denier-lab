@@ -34,7 +34,7 @@ describe("boot failure", () => {
 
   it("shows the failure in the loading overlay", async () => {
     await h.settle();
-    expect(screen.getByText(/三维画面启动失败：network down/)).toBeInTheDocument();
+    expect(screen.getByText(/三维画面启动失败: network down/)).toBeInTheDocument();
   });
 
   it("created the renderer and camera but never bound the UI or started frames", () => {

@@ -64,7 +64,10 @@ export function ChipGroup({ group, options, selected, onPick, swatches, idle, di
 
 export function LabeledRow({ label, hidden, children }: { label: string; hidden?: boolean; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[38px_minmax(0,1fr)] items-center gap-2 hidden-attr:hidden" hidden={hidden}>
+    <div
+      className="grid grid-cols-[38px_minmax(0,1fr)] items-center gap-2 en:grid-cols-[62px_minmax(0,1fr)] hidden-attr:hidden"
+      hidden={hidden}
+    >
       <span className="text-[12px] tracking-[0.06em] text-ink-soft">{label}</span>
       {children}
     </div>
@@ -91,6 +94,8 @@ const cardsGrid = `grid grid-cols-4 gap-2 overflow-visible overscroll-contain ${
 const canvasBase =
   "block aspect-[3/4] rounded-xl bg-well [transition:box-shadow_0.2s,transform_0.12s] group-active:[transform:scale(0.96)]";
 const canvasRow = "w-[78px] short:w-[66px] roomy:w-full";
+// Row cards are as wide as their thumbnail, so longer captions wrap instead of widening the card.
+const cardRow = "w-min roomy:w-auto";
 
 /** Cards with an offscreen-rendered thumbnail and a caption. */
 export function CardGrid({ group, items, layout, selected, onPick, canvasRef, onCardHover, onLeave }: CardGridProps) {
@@ -115,7 +120,7 @@ export function CardGrid({ group, items, layout, selected, onPick, canvasRef, on
         return (
           <button
             key={value}
-            className={`card group grid flex-none justify-items-center gap-[5px] p-0 text-[11.5px] whitespace-nowrap ${on ? "font-semibold text-ink-strong" : "text-ink-soft"}`}
+            className={`card group grid min-w-0 flex-none content-start justify-items-center gap-[5px] p-0 text-[11.5px] ${layout === "row" ? cardRow : ""} ${on ? "font-semibold text-ink-strong" : "text-ink-soft"}`}
             data-v={value}
             onClick={() => onPick(value)}
           >
@@ -126,7 +131,7 @@ export function CardGrid({ group, items, layout, selected, onPick, canvasRef, on
               aria-hidden="true"
               ref={(canvas) => canvasRef(value, canvas)}
             />
-            <span>{label}</span>
+            <span className="w-full text-center leading-[1.3] text-balance">{label}</span>
           </button>
         );
       })}

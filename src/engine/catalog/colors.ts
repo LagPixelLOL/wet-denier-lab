@@ -16,14 +16,11 @@ export interface ColorStyle {
   stripe: number;
 }
 
-/** A named palette color. */
-export interface ColorDef extends ColorStyle {
-  label: string;
-}
+/** A palette color; its name is the "color.<key>" message. */
+export type ColorDef = ColorStyle;
 
 export const COLORS = {
   ink: {
-    label: "墨黑",
     dye: "#141318",
     shade: [0.62, 0.6, 0.72],
     through: 0.1,
@@ -33,7 +30,6 @@ export const COLORS = {
     stripe: 1,
   },
   smoke: {
-    label: "烟灰",
     dye: "#6c7381",
     shade: [0.6, 0.65, 0.78],
     through: 0.14,
@@ -43,7 +39,6 @@ export const COLORS = {
     stripe: 0.9,
   },
   ivory: {
-    label: "雪白",
     dye: "#f4f1f3",
     shade: [0.84, 0.8, 0.92],
     through: 0,
@@ -53,7 +48,6 @@ export const COLORS = {
     stripe: 0.4,
   },
   nude: {
-    label: "肤色",
     dye: "#dba585",
     shade: [0.82, 0.62, 0.5],
     through: 0.42,
@@ -63,7 +57,6 @@ export const COLORS = {
     stripe: 0.8,
   },
   coffee: {
-    label: "咖啡",
     dye: "#5a3a2c",
     shade: [0.7, 0.58, 0.56],
     through: 0.3,
@@ -73,7 +66,6 @@ export const COLORS = {
     stripe: 0.95,
   },
   wine: {
-    label: "酒红",
     dye: "#6e1b2e",
     shade: [0.66, 0.52, 0.66],
     through: 0.26,
@@ -83,7 +75,6 @@ export const COLORS = {
     stripe: 0.95,
   },
   sakura: {
-    label: "樱粉",
     dye: "#f3b3c6",
     shade: [0.86, 0.7, 0.8],
     through: 0.3,
@@ -93,7 +84,6 @@ export const COLORS = {
     stripe: 0.6,
   },
   taro: {
-    label: "香芋紫",
     dye: "#b49ad6",
     shade: [0.76, 0.7, 0.9],
     through: 0.24,
@@ -103,7 +93,6 @@ export const COLORS = {
     stripe: 0.7,
   },
   mist: {
-    label: "雾蓝",
     dye: "#8fb4de",
     shade: [0.7, 0.76, 0.92],
     through: 0.2,
@@ -113,7 +102,6 @@ export const COLORS = {
     stripe: 0.7,
   },
   navy: {
-    label: "藏青",
     dye: "#1f2a4d",
     shade: [0.6, 0.62, 0.8],
     through: 0.14,
@@ -123,7 +111,6 @@ export const COLORS = {
     stripe: 1,
   },
   forest: {
-    label: "墨绿",
     dye: "#254a3c",
     shade: [0.6, 0.7, 0.7],
     through: 0.18,
@@ -133,7 +120,6 @@ export const COLORS = {
     stripe: 0.95,
   },
   cherry: {
-    label: "正红",
     dye: "#c22a3a",
     shade: [0.72, 0.52, 0.6],
     through: 0.3,

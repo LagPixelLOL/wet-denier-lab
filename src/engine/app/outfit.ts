@@ -68,7 +68,7 @@ export function setTargetLeg(leg: number) {
   }
 }
 
-export function wearPreset(preset: Omit<OutfitPreset, "name">) {
+export function wearPreset(preset: Omit<OutfitPreset, "id">) {
   app.previewBackup = null;
   const specs = preset.legs || [preset.both, preset.both];
   for (let i = 0; i < 2; i++) {

@@ -83,7 +83,7 @@ describe("photos", () => {
       open: true,
       src: "data:image/jpeg;fake,canvas:2560x1600@0.93",
       saveHidden: false,
-      tip: "点「保存图片」下载，或在图片上点右键另存为",
+      tip: "photo.tip.desktop",
     });
     expect(document.body).toHaveClass("photo-open");
     actions.closePhoto();
@@ -138,7 +138,7 @@ describe("photos", () => {
   it("hides the save button and suggests right-click inside an embedding host", () => {
     window.claude = {};
     takePhoto();
-    expect(ui.get().photo).toMatchObject({ saveHidden: true, tip: "在图片上点右键，选「图片另存为」" });
+    expect(ui.get().photo).toMatchObject({ saveHidden: true, tip: "photo.tip.claude" });
     actions.closePhoto();
     delete window.claude;
   });

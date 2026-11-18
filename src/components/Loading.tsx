@@ -1,8 +1,10 @@
 import { useStore } from "../state/useStore";
 import { ui } from "../state/ui";
+import { useT } from "../i18n";
 
 export function Loading() {
   const error = useStore(ui, (s) => s.bootError);
+  const t = useT();
   return (
     <div
       id="loading"
@@ -11,13 +13,13 @@ export function Loading() {
       {error === null ? (
         <>
           <span className="size-7.5 animate-spin rounded-[50%] border-2 border-accent-soft border-t-accent motion-reduce:[animation-duration:2.4s]"></span>
-          正在准备丝袜与水…
+          {t("loading.text")}
         </>
       ) : (
         <>
-          三维画面启动失败：{error}
+          {t("loading.failed", { error })}
           <br />
-          请用最新版 Chrome / Safari / Edge 打开
+          {t("loading.browsers")}
         </>
       )}
     </div>

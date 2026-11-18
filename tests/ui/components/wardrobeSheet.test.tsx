@@ -8,6 +8,7 @@ import { COLOR_ORDER, COLORS } from "../../../src/engine/catalog/colors";
 import { PATTERN_ORDER, SECRET_DECAL_ORDER } from "../../../src/engine/catalog/garments";
 import { DEFAULT_LEG_SPEC, PRESETS } from "../../../src/engine/catalog/presets";
 import { POSE_ORDER } from "../../../src/engine/rig/poses";
+import { zhCN } from "../../../src/i18n/messages/zh-CN";
 import type { WardrobeSpec, WardrobeTab } from "../../../src/state/ui";
 import { chip, chips, isChipDimmed, resetUiTest, selectedValues, setWardrobe } from "./harness";
 
@@ -108,8 +109,8 @@ describe("WardrobeSheet preset pane", () => {
 
   it("renders one card per preset and wears the clicked one by index", async () => {
     render(<WardrobeSheet />);
-    expect(chips("preset").map((el) => el.textContent)).toEqual(PRESETS.map((preset) => preset.name));
-    await userEvent.click(screen.getByRole("button", { name: PRESETS[3].name }));
+    expect(chips("preset").map((el) => el.textContent)).toEqual(PRESETS.map((preset) => zhCN[`preset.${preset.id}`]));
+    await userEvent.click(screen.getByRole("button", { name: "蓝白条纹" }));
     expect(actions.preset).toHaveBeenCalledExactlyOnceWith(3);
   });
 
@@ -214,7 +215,7 @@ describe("WardrobeSheet style pane", () => {
   it.each([
     ["length", "knee", "及膝袜"],
     ["cuff", "stripes", "双条纹"],
-    ["garter", "1", "要（大腿袜）"],
+    ["garter", "1", "要 (大腿袜)"],
     ["garter", "0", "不要"],
   ])("wears %s=%s from the %s chip", async (group, value, label) => {
     render(<WardrobeSheet />);
@@ -230,7 +231,7 @@ describe("WardrobeSheet color pane", () => {
     render(<WardrobeSheet />);
     const swatches = chips("color");
     expect(swatches.map((el) => el.dataset.v)).toEqual(COLOR_ORDER);
-    expect(swatches.map((el) => el.getAttribute("aria-label"))).toEqual(COLOR_ORDER.map((key) => COLORS[key].label));
+    expect(swatches.map((el) => el.getAttribute("aria-label"))).toEqual(COLOR_ORDER.map((key) => zhCN[`color.${key}`]));
     expect(swatches[0].style.getPropertyValue("--c")).toBe(COLORS.ink.dye);
   });
 
@@ -305,9 +306,9 @@ describe("WardrobeSheet material pane", () => {
     render(<WardrobeSheet />);
     expect(hint()).toHaveTextContent(/^$/);
     setWardrobe({ spec: spec({ material: "sheer" }) });
-    expect(hint().textContent).toBe("薄丝：遇水变透。");
+    expect(hint().textContent).toBe("薄丝: 遇水变透。");
     setWardrobe({ spec: spec({ material: "velvet" }) });
-    expect(hint().textContent).toBe("天鹅绒：遇水变深。这种料子不透，厚度不起作用。");
+    expect(hint().textContent).toBe("天鹅绒: 遇水变深。这种料子不透, 厚度不起作用。");
   });
 
   it("wears material and denier chips as strings", async () => {
@@ -363,7 +364,7 @@ describe("WardrobeSheet pattern and fun panes", () => {
 
 describe("WardrobeSheet bare legs", () => {
   const FABRIC_GROUPS = ["cuff", "garter", "color", "material", "denier", "pattern", "secret", "wetColor"];
-  const BARE_HINT = "光腿没穿袜子，这些选项用不上。";
+  const BARE_HINT = "光腿没穿袜子, 这些选项用不上。";
   const isDisabled = (el: HTMLElement) => (el as HTMLButtonElement).disabled && el.classList.contains("opacity-35");
 
   it("offers bare legs as the first length", () => {
@@ -403,7 +404,7 @@ describe("WardrobeSheet bare legs", () => {
     expect(hintPanes()).toEqual(["style", "color", "material", "pattern", "fun"]);
     setWardrobe({ spec: spec({ length: "thigh" }) });
     expect(hintPanes()).toEqual([]);
-    expect(document.querySelector('[data-pane="material"] > p')!.textContent).toBe("薄丝：遇水变透。");
+    expect(document.querySelector('[data-pane="material"] > p')!.textContent).toBe("薄丝: 遇水变透。");
     for (const group of FABRIC_GROUPS) {
       expect(chips(group).some((el) => (el as HTMLButtonElement).disabled)).toBe(false);
     }

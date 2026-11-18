@@ -55,11 +55,10 @@ describe("makeCustomBackdrop", () => {
         "dark": false,
         "floor": "#ffac4d",
         "glow": "#34323a",
-        "label": "自选",
         "shadow": "#944f00",
         "top": "#ffc98c",
       }
-    `);
+`);
   });
 
   it("accepts 3-digit hex without '#' and gives a dark color the dark glow", () => {

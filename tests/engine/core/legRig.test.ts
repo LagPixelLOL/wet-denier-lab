@@ -101,7 +101,6 @@ describe("LegRig construction", () => {
   it("copies every pose and solves the reaching knee without touching the catalog", () => {
     const { rig } = sharedRig();
     expect(Object.keys(rig.poses).sort()).toEqual(Object.keys(POSES).sort());
-    expect(rig.poses.point.label).toBe(POSES.point.label);
     expect(rig.poses.point.legs[0].knee).toBeGreaterThan(0);
     expect("knee" in POSES.point.legs[0]).toBe(false);
     expect(rig.poses.step.legs[0]).not.toBe(POSES.step.legs[0]);

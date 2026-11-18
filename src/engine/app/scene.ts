@@ -8,7 +8,7 @@ import { publishScenes, publishWardrobe } from "./sheets";
 import { homeView, orbit } from "./camera";
 import { holdPerf } from "./loop";
 import { state } from "./state";
-import { SCENES } from "../stage/scenes";
+import { SCENES, type SceneId } from "../stage/scenes";
 
 function applyScene(id: string) {
   holdPerf(1.5);
@@ -27,7 +27,7 @@ function applyScene(id: string) {
     setRain(false);
     app.autoRain = false;
   }
-  ui.set({ rainLabel: sceneDef.rainLabel });
+  ui.set({ rainLabel: `scene.${state.scene as SceneId}.rain` });
   publishScenes();
 }
 

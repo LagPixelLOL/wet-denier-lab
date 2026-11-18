@@ -2,8 +2,9 @@
  * Wardrobe catalog: stocking lengths, cuff styles, materials, denier options, patterns and secret decals.
  */
 
+// Names and hints are messages keyed by catalog key ("length.<key>", "material.<key>.hint", ...).
+
 export interface StockingLengthDef {
-  label: string;
   /** Rest-space height of the cuff. */
   cuffY: number;
   band: number;
@@ -13,7 +14,6 @@ export interface StockingLengthDef {
 }
 
 export interface CuffStyleDef {
-  label: string;
   id: number;
   bow?: boolean;
 }
@@ -29,8 +29,6 @@ export interface MaterialWater {
 }
 
 export interface MaterialDef {
-  label: string;
-  hint: string;
   gloss: number;
   sheen: number;
   sheenPow: number;
@@ -46,46 +44,38 @@ export interface MaterialDef {
   water: MaterialWater;
 }
 
-/** Labeled catalog entry with a shader id (patterns, secret decals). */
+/** Catalog entry with a shader id (patterns, secret decals). */
 export interface CatalogIdDef {
-  label: string;
   id: number;
 }
 
 export const STOCKING_LENGTHS = {
   bare: {
-    label: "光腿",
     cuffY: -1,
     band: 0,
     bare: true,
   },
   ankle: {
-    label: "短袜",
     cuffY: 0.132,
     band: 0.022,
   },
   crew: {
-    label: "中筒袜",
     cuffY: 0.285,
     band: 0.034,
   },
   knee: {
-    label: "及膝袜",
     cuffY: 0.425,
     band: 0.04,
   },
   over: {
-    label: "过膝袜",
     cuffY: 0.545,
     band: 0.05,
   },
   thigh: {
-    label: "大腿袜",
     cuffY: 0.7,
     band: 0.05,
   },
   tights: {
-    label: "连裤袜",
     cuffY: 0.7,
     band: 0.05,
     tights: true,
@@ -98,23 +88,18 @@ export const STOCKING_LENGTH_ORDER: StockingLengthKey[] = ["bare", "ankle", "cre
 
 export const CUFF_STYLES = {
   plain: {
-    label: "纯色宽边",
     id: 0,
   },
   lace: {
-    label: "蕾丝花边",
     id: 1,
   },
   stripes: {
-    label: "双条纹",
     id: 2,
   },
   rib: {
-    label: "罗纹口",
     id: 3,
   },
   bow: {
-    label: "蝴蝶结",
     id: 0,
     bow: true,
   },
@@ -126,8 +111,6 @@ export const CUFF_STYLE_ORDER: CuffStyleKey[] = ["lace", "plain", "stripes", "ri
 
 export const MATERIALS = {
   sheer: {
-    label: "薄丝",
-    hint: "遇水变透",
     gloss: 1,
     sheen: 1,
     sheenPow: 2,
@@ -149,8 +132,6 @@ export const MATERIALS = {
     },
   },
   matte: {
-    label: "哑光丝",
-    hint: "柔雾质感",
     gloss: 0.25,
     sheen: 0.8,
     sheenPow: 2,
@@ -172,8 +153,6 @@ export const MATERIALS = {
     },
   },
   gloss: {
-    label: "油亮",
-    hint: "水珠更圆更滑",
     gloss: 2.2,
     sheen: 1.5,
     sheenPow: 2.4,
@@ -196,8 +175,6 @@ export const MATERIALS = {
     },
   },
   pearl: {
-    label: "珠光",
-    hint: "沾水更闪",
     gloss: 1.4,
     sheen: 1.3,
     sheenPow: 2,
@@ -219,8 +196,6 @@ export const MATERIALS = {
     },
   },
   velvet: {
-    label: "天鹅绒",
-    hint: "遇水变深",
     gloss: 0.1,
     sheen: 2.3,
     sheenPow: 1.3,
@@ -242,8 +217,6 @@ export const MATERIALS = {
     },
   },
   cotton: {
-    label: "棉袜",
-    hint: "吸水很快",
     gloss: 0,
     sheen: 0.5,
     sheenPow: 2,
@@ -265,8 +238,6 @@ export const MATERIALS = {
     },
   },
   latex: {
-    label: "漆皮",
-    hint: "完全不吸水",
     gloss: 0.7,
     sheen: 0.5,
     sheenPow: 3,
@@ -308,51 +279,39 @@ export const DENIER_OPTIONS: number[] = [15, 40, 70, 120];
 
 export const PATTERNS = {
   none: {
-    label: "素面",
     id: 0,
   },
   dots: {
-    label: "波点",
     id: 1,
   },
   argyle: {
-    label: "菱格",
     id: 2,
   },
   net: {
-    label: "网袜",
     id: 3,
   },
   hoops: {
-    label: "横条纹",
     id: 4,
   },
   pins: {
-    label: "竖条纹",
     id: 5,
   },
   seam: {
-    label: "后中缝",
     id: 6,
   },
   hearts: {
-    label: "爱心",
     id: 7,
   },
   stars: {
-    label: "星星",
     id: 8,
   },
   lace: {
-    label: "全蕾丝",
     id: 9,
   },
   fade: {
-    label: "渐变",
     id: 10,
   },
   paws: {
-    label: "猫爪",
     id: 11,
   },
 } satisfies Record<string, CatalogIdDef>;
@@ -376,23 +335,18 @@ export const PATTERN_ORDER: PatternKey[] = [
 
 export const SECRET_DECALS = {
   none: {
-    label: "无",
     id: 0,
   },
   hearts: {
-    label: "爱心",
     id: 1,
   },
   stars: {
-    label: "星星",
     id: 2,
   },
   paws: {
-    label: "猫爪",
     id: 3,
   },
   words: {
-    label: "雨丝",
     id: 4,
   },
 } satisfies Record<string, CatalogIdDef>;

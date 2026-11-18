@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SceneSheet } from "../../../src/components/sheets/SceneSheet";
 import { actions } from "../../../src/engine/app/actions";
 import { thumbCanvases, THUMB_SIZE } from "../../../src/engine/app/thumbnails";
-import { BACKDROP_ORDER, BACKDROPS, SCENE_ORDER, SCENES } from "../../../src/engine/stage/scenes";
+import { BACKDROP_ORDER, BACKDROPS, SCENE_ORDER } from "../../../src/engine/stage/scenes";
 import { chip, chips, resetUiTest, selectedValues, setUi } from "./harness";
 
 vi.mock("../../../src/engine/app/actions", async () => (await import("./harness")).mockActionsModule());
@@ -24,7 +24,7 @@ describe("SceneSheet cards", () => {
     render(<SceneSheet />);
     expect(screen.getByRole("region", { name: "场景" })).toHaveAttribute("id", "scenes");
     expect(chips("scene").map((card) => card.dataset.v)).toEqual(SCENE_ORDER);
-    expect(chips("scene").map((card) => card.textContent)).toEqual(SCENE_ORDER.map((id) => SCENES[id].label));
+    expect(chips("scene").map((card) => card.textContent)).toEqual(["影棚", "浴室", "夜雨街头", "泳池边"]);
   });
 
   it("marks the current scene's card as selected", () => {
@@ -74,9 +74,14 @@ describe("SceneSheet backdrop row", () => {
   it("offers the backdrops as labeled swatches with the current one selected", () => {
     render(<SceneSheet />);
     expect(chips("backdrop").map((el) => el.dataset.v)).toEqual(BACKDROP_ORDER);
-    expect(chips("backdrop").map((el) => el.getAttribute("aria-label"))).toEqual(
-      BACKDROP_ORDER.map((id) => BACKDROPS[id].label),
-    );
+    expect(chips("backdrop").map((el) => el.getAttribute("aria-label"))).toEqual([
+      "浅紫",
+      "樱粉",
+      "薄荷",
+      "奶油",
+      "天蓝",
+      "夜蓝",
+    ]);
     expect(chip("backdrop", "mint").style.getPropertyValue("--c")).toBe(BACKDROPS.mint.bottom);
     expect(selectedValues("backdrop")).toEqual(["lilac"]);
     setScenes("studio", "dusk");
@@ -110,10 +115,10 @@ describe("SceneSheet backdrop row", () => {
 
 describe("SceneSheet hint", () => {
   it.each([
-    ["studio", "影棚：干净的纸背景，底色可以换，适合拍照。"],
-    ["bath", "浴室：「细雨」在这里是头顶的花洒，湿地砖会映出腿的倒影。"],
-    ["street", "夜雨街头：这里一直下着雨，霓虹的光勾在丝袜上，也映在路面上。"],
-    ["pool", "泳池边：太阳底下，水面的波光会晃到腿上。"],
+    ["studio", "影棚: 干净的纸背景, 底色可以换, 适合拍照。"],
+    ["bath", "浴室: 「细雨」在这里是头顶的花洒, 湿地砖会映出腿的倒影。"],
+    ["street", "夜雨街头: 这里一直下着雨, 霓虹的光勾在丝袜上, 也映在路面上。"],
+    ["pool", "泳池边: 太阳底下, 水面的波光会晃到腿上。"],
   ])("describes the %s scene", (scene, text) => {
     render(<SceneSheet />);
     setScenes(scene);

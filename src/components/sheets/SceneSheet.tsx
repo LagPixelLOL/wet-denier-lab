@@ -1,24 +1,11 @@
 import { actions } from "../../engine/app/actions";
 import { thumbCanvases } from "../../engine/app/thumbnails";
-import { BACKDROPS, BACKDROP_ORDER, SCENES, SCENE_ORDER } from "../../engine/stage/scenes";
+import { BACKDROPS, BACKDROP_ORDER, SCENES, SCENE_ORDER, type SceneId } from "../../engine/stage/scenes";
+import { useT } from "../../i18n";
 import { useStore } from "../../state/useStore";
 import { ui } from "../../state/ui";
 import { CardGrid, ChipGroup, CustomColorSwatch, LabeledRow } from "./primitives";
 import { paneHintClass, sceneSheetClass } from "./styles";
-
-const SCENE_HINTS: Record<string, string> = {
-  studio: "影棚：干净的纸背景，底色可以换，适合拍照。",
-  bath: "浴室：「细雨」在这里是头顶的花洒，湿地砖会映出腿的倒影。",
-  street: "夜雨街头：这里一直下着雨，霓虹的光勾在丝袜上，也映在路面上。",
-  pool: "泳池边：太阳底下，水面的波光会晃到腿上。",
-};
-
-const sceneItems = SCENE_ORDER.map((id) => ({ value: id, label: SCENES[id].label }));
-const backdropOptions = BACKDROP_ORDER.map((id) => ({
-  value: id,
-  label: "",
-  swatch: { color: BACKDROPS[id].bottom, title: BACKDROPS[id].label },
-}));
 
 const registerCanvas = (id: string, canvas: HTMLCanvasElement | null) => {
   if (canvas) {
@@ -29,9 +16,16 @@ const registerCanvas = (id: string, canvas: HTMLCanvasElement | null) => {
 /** Scene cards and, in the studio, the backdrop color row. */
 export function SceneSheet() {
   const { scene, backdrop } = useStore(ui, (s) => s.scenes);
+  const t = useT();
   const customBackdrop = BACKDROPS[backdrop] ? null : backdrop;
+  const sceneItems = SCENE_ORDER.map((id) => ({ value: id, label: t(`scene.${id}`) }));
+  const backdropOptions = BACKDROP_ORDER.map((id) => ({
+    value: id,
+    label: "",
+    swatch: { color: BACKDROPS[id].bottom, title: t(`backdrop.${id}`) },
+  }));
   return (
-    <section id="scenes" className={sceneSheetClass} aria-label="场景">
+    <section id="scenes" className={sceneSheetClass} aria-label={t("scenes.label")}>
       <CardGrid
         group="scene"
         layout="grid"
@@ -40,12 +34,12 @@ export function SceneSheet() {
         onPick={actions.scene}
         canvasRef={registerCanvas}
       />
-      <LabeledRow label="底色" hidden={scene !== "studio"}>
+      <LabeledRow label={t("scenes.backdrop")} hidden={scene !== "studio"}>
         <ChipGroup group="backdrop" options={backdropOptions} selected={backdrop} onPick={actions.backdrop} swatches>
-          <CustomColorSwatch label="自选底色" custom={customBackdrop} onInput={actions.backdrop} />
+          <CustomColorSwatch label={t("scenes.customBackdrop")} custom={customBackdrop} onInput={actions.backdrop} />
         </ChipGroup>
       </LabeledRow>
-      <p className={paneHintClass}>{SCENE_HINTS[scene] || ""}</p>
+      <p className={paneHintClass}>{SCENES[scene] ? t(`scene.${scene as SceneId}.hint`) : ""}</p>
     </section>
   );
 }

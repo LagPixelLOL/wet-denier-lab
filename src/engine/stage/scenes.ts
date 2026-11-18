@@ -40,11 +40,10 @@ export interface SceneWater {
   rain: [number, number, number, number];
 }
 
+/** A scene; its name, rain button label and hint are the "scene.<key>" messages. */
 export interface SceneDef {
-  label: string;
   /** Value of the SCENE shader define. */
   id: number;
-  rainLabel: string;
   rainOn?: boolean;
   dark?: boolean;
   light: SceneLight;
@@ -61,9 +60,7 @@ export const SCENE_ORDER: SceneId[] = ["studio", "bath", "street", "pool"];
 
 export const SCENES: SceneTable = {
   studio: {
-    label: "影棚",
     id: 0,
-    rainLabel: "细雨",
     light: {
       key: "#fffaf4",
       rim: "#d8e4ff",
@@ -93,9 +90,7 @@ export const SCENES: SceneTable = {
     fade: "#efe9f1",
   },
   bath: {
-    label: "浴室",
     id: 1,
-    rainLabel: "花洒",
     light: {
       key: "#fff3e2",
       rim: "#e6f2ff",
@@ -127,9 +122,7 @@ export const SCENES: SceneTable = {
     fade: "#eef1f2",
   },
   street: {
-    label: "夜雨街头",
     id: 2,
-    rainLabel: "夜雨",
     rainOn: true,
     dark: true,
     light: {
@@ -163,9 +156,7 @@ export const SCENES: SceneTable = {
     fade: "#141224",
   },
   pool: {
-    label: "泳池边",
     id: 3,
-    rainLabel: "太阳雨",
     light: {
       key: "#fffdf6",
       rim: "#dff6ff",
@@ -202,7 +193,6 @@ export type BackdropId = "lilac" | "sakura" | "mint" | "cream" | "sky" | "dusk";
 
 /** Studio backdrop and floor colors (hex strings). */
 export interface BackdropDef {
-  label: string;
   top: string;
   bottom: string;
   glow: string;
@@ -220,7 +210,6 @@ export const BACKDROP_ORDER: BackdropId[] = ["lilac", "sakura", "mint", "cream",
 
 export const BACKDROPS: BackdropTable = {
   lilac: {
-    label: "浅紫",
     top: "#f6f2f6",
     bottom: "#e4dce8",
     glow: "#3a3438",
@@ -228,7 +217,6 @@ export const BACKDROPS: BackdropTable = {
     shadow: "#b7a6c4",
   },
   sakura: {
-    label: "樱粉",
     top: "#fbf1f3",
     bottom: "#f3d6dd",
     glow: "#3a3032",
@@ -236,7 +224,6 @@ export const BACKDROPS: BackdropTable = {
     shadow: "#cf9fb0",
   },
   mint: {
-    label: "薄荷",
     top: "#f1f8f5",
     bottom: "#cfe7df",
     glow: "#303a36",
@@ -244,7 +231,6 @@ export const BACKDROPS: BackdropTable = {
     shadow: "#8fb7ab",
   },
   cream: {
-    label: "奶油",
     top: "#fbf7ee",
     bottom: "#f0e3c8",
     glow: "#3a3628",
@@ -252,7 +238,6 @@ export const BACKDROPS: BackdropTable = {
     shadow: "#c8ac80",
   },
   sky: {
-    label: "天蓝",
     top: "#f0f6fc",
     bottom: "#cbdff3",
     glow: "#30363c",
@@ -260,7 +245,6 @@ export const BACKDROPS: BackdropTable = {
     shadow: "#8fa9cc",
   },
   dusk: {
-    label: "夜蓝",
     top: "#4a4868",
     bottom: "#2a2944",
     glow: "#201c2c",
@@ -286,7 +270,6 @@ export function makeCustomBackdrop(hex: string): BackdropDef {
       .join("");
   const luma = (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722) / 255;
   return {
-    label: "自选",
     top: mixTo(255, 0.55),
     bottom: mixTo(255, 0.12),
     glow: luma > 0.4 ? "#34323a" : "#1c1a24",

@@ -13,7 +13,7 @@ afterEach(resetUiTest);
 
 const PHOTO_URL = "blob:http://localhost/photo-1";
 const openPhoto = (patch: Partial<typeof initialUiState.photo> = {}) =>
-  setUi({ photo: { open: true, src: PHOTO_URL, tip: "长按图片可以保存", saveHidden: false, ...patch } });
+  setUi({ photo: { open: true, src: PHOTO_URL, tip: "photo.tip.mobile", saveHidden: false, ...patch } });
 
 // aria-hidden removes the name from the accessibility tree, so look the dialog up by id.
 const dialog = () => document.querySelector<HTMLElement>("#photo")!;
@@ -30,11 +30,11 @@ describe("PhotoDialog", () => {
 
   it("shows the photo, its tip and a download link when open", () => {
     render(<PhotoDialog />);
-    openPhoto({ tip: "点保存图片" });
+    openPhoto({ tip: "photo.tip.desktop" });
     expect(dialog()).toHaveAttribute("aria-hidden", "false");
     expect(screen.getByRole("dialog", { name: "照片" })).toBe(dialog());
     expect(screen.getByAltText("雨丝截图")).toHaveAttribute("src", PHOTO_URL);
-    expect(screen.getByText("点保存图片")).toHaveAttribute("id", "photoTip");
+    expect(screen.getByText("点「保存图片」下载, 或在图片上点右键另存为")).toHaveAttribute("id", "photoTip");
     const save = screen.getByRole("link", { name: "保存图片" });
     expect(save).toHaveAttribute("href", PHOTO_URL);
     expect(save).toHaveAttribute("download", "yusi.jpg");
@@ -104,7 +104,7 @@ describe("CopyBox", () => {
   it("says what the link restores", () => {
     render(<CopyBox />);
     setUi({ copyBox: { url: URL_TEXT, open: true } });
-    expect(screen.getByText("复制下面的链接，别人打开就是这一双、这个姿势、场景和视角：")).toBeInTheDocument();
+    expect(screen.getByText("复制下面的链接, 别人打开就是这一双、这个姿势、场景和视角:")).toBeInTheDocument();
   });
 
   it("stays mounted but hidden, without stealing focus, when closed", () => {

@@ -20,9 +20,23 @@ export interface LegSpec {
   wetColor: string | null;
 }
 
-/** A named outfit: either the same spec on both legs or one spec per leg. */
+export type PresetId =
+  | "classicBlack"
+  | "glossyNude"
+  | "whiteOverKnee"
+  | "blueStripes"
+  | "schoolKnee"
+  | "garterNet"
+  | "sakuraHearts"
+  | "retroSeam"
+  | "mismatched"
+  | "latexHigh"
+  | "wetReveal"
+  | "wetColor";
+
+/** An outfit, named by the "preset.<id>" message: either the same spec on both legs or one spec per leg. */
 export interface OutfitPreset {
-  name: string;
+  id: PresetId;
   both?: Partial<LegSpec>;
   legs?: [Partial<LegSpec>, Partial<LegSpec>];
 }
@@ -46,7 +60,7 @@ export const withLegDefaults = (spec?: Partial<LegSpec>): LegSpec => ({
 
 export const PRESETS: OutfitPreset[] = [
   {
-    name: "经典黑丝",
+    id: "classicBlack",
     both: {
       length: "thigh",
       cuff: "lace",
@@ -56,7 +70,7 @@ export const PRESETS: OutfitPreset[] = [
     },
   },
   {
-    name: "油亮肉丝",
+    id: "glossyNude",
     both: {
       length: "tights",
       material: "gloss",
@@ -65,7 +79,7 @@ export const PRESETS: OutfitPreset[] = [
     },
   },
   {
-    name: "纯白过膝",
+    id: "whiteOverKnee",
     both: {
       length: "over",
       cuff: "plain",
@@ -75,7 +89,7 @@ export const PRESETS: OutfitPreset[] = [
     },
   },
   {
-    name: "蓝白条纹",
+    id: "blueStripes",
     both: {
       length: "over",
       cuff: "plain",
@@ -85,7 +99,7 @@ export const PRESETS: OutfitPreset[] = [
     },
   },
   {
-    name: "学院及膝",
+    id: "schoolKnee",
     both: {
       length: "knee",
       cuff: "stripes",
@@ -94,7 +108,7 @@ export const PRESETS: OutfitPreset[] = [
     },
   },
   {
-    name: "吊带网袜",
+    id: "garterNet",
     both: {
       length: "thigh",
       cuff: "lace",
@@ -106,7 +120,7 @@ export const PRESETS: OutfitPreset[] = [
     },
   },
   {
-    name: "樱粉爱心",
+    id: "sakuraHearts",
     both: {
       length: "thigh",
       cuff: "bow",
@@ -117,7 +131,7 @@ export const PRESETS: OutfitPreset[] = [
     },
   },
   {
-    name: "复古后缝",
+    id: "retroSeam",
     both: {
       length: "thigh",
       cuff: "plain",
@@ -129,7 +143,7 @@ export const PRESETS: OutfitPreset[] = [
     },
   },
   {
-    name: "黑白不对称",
+    id: "mismatched",
     legs: [
       {
         length: "thigh",
@@ -148,7 +162,7 @@ export const PRESETS: OutfitPreset[] = [
     ],
   },
   {
-    name: "漆皮长筒",
+    id: "latexHigh",
     both: {
       length: "thigh",
       cuff: "plain",
@@ -157,7 +171,7 @@ export const PRESETS: OutfitPreset[] = [
     },
   },
   {
-    name: "遇水显形",
+    id: "wetReveal",
     both: {
       length: "thigh",
       cuff: "plain",
@@ -168,7 +182,7 @@ export const PRESETS: OutfitPreset[] = [
     },
   },
   {
-    name: "遇水变色",
+    id: "wetColor",
     both: {
       length: "over",
       cuff: "rib",

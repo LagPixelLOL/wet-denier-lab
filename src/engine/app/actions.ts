@@ -5,7 +5,7 @@ import { ui, type TouchMode, type WardrobeTab } from "../../state/ui";
 import { PRESETS } from "../catalog/presets";
 import { resetView, zoomBy } from "./camera";
 import { setMode, showHint } from "./hud";
-import { isPanelOpen, setPanel, togglePanel } from "./layout";
+import { applyLayout, isPanelOpen, setPanel, togglePanel } from "./layout";
 import { previewPreset, setTargetLeg, wear, wearPreset, wearRandom } from "./outfit";
 import { closeCopyBox, shareLook, showPhoto } from "./photo";
 import { app } from "./runtime";
@@ -26,7 +26,7 @@ export function toggleSlow() {
   state.slow = !state.slow;
   ui.set({ slow: state.slow });
   if (state.slow) {
-    showHint("慢动作 0.2× · 再泼一次看看水花", 2600);
+    showHint("hint.slow", 2600);
   }
 }
 
@@ -75,6 +75,8 @@ export const actions = {
     setRain(!state.rain);
   }),
   toggleSlow: bound(toggleSlow),
+  /** Re-measures the layout after the UI text changed size (e.g. a new locale). */
+  relayout: bound(applyLayout),
   toggleSound: bound(() => {
     app.sound.unlock();
     const on = !ui.get().soundOn;

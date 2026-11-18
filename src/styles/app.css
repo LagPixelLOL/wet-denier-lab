@@ -23,6 +23,8 @@
 @custom-variant roomy (body.roomy &);
 @custom-variant roomy-scene-open (body.roomy.scene-open &);
 @custom-variant roomy-mat-open (body.roomy.mat-open &);
+/* Elements whose language (inherited from <html lang>) is English, for labels that need more room. */
+@custom-variant en (&:lang(en));
 /* Matches elements carrying the HTML hidden attribute (needed where a utility sets display). */
 @custom-variant hidden-attr (&[hidden]);
 

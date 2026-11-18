@@ -101,7 +101,7 @@ describe("keyboard shortcuts", () => {
     key("s");
     expect(state.slow).toBe(true);
     expect(ui.get().slow).toBe(true);
-    expect(ui.get().hint).toEqual({ text: "慢动作 0.2× · 再泼一次看看水花", hidden: false });
+    expect(ui.get().hint).toEqual({ key: "hint.slow", hidden: false });
     vi.advanceTimersByTime(2600);
     expect(ui.get().hint.hidden).toBe(true);
     key("s");
@@ -151,11 +151,11 @@ describe("keyboard shortcuts", () => {
     expect(ui.get().mode).toBe("view");
     expect(document.body).toHaveClass("view-mode");
     expect(app.canvas.style.cursor).toBe("grab");
-    expect(ui.get().hint.text).toBe("视角模式：拖动旋转 · 双指或滚轮缩放 · 轻点放大");
+    expect(ui.get().hint.key).toBe("hint.viewMode");
     key("v");
     expect(state.mode).toBe("water");
     expect(app.canvas.style.cursor).toBe("crosshair");
-    expect(ui.get().hint.text).toBe("泼水模式：点丝袜泼水 · 按住拖动连续浇");
+    expect(ui.get().hint.key).toBe("hint.splashMode");
   });
 
   it("toggles the scene sheet with C and the wardrobe with W", () => {

@@ -5,7 +5,8 @@ beads cling, slide and drip onto the floor. You can switch scenes (studio, bath,
 outfits (length, cuff, material, denier, color, pattern, hidden decals, or bare legs), take photos and share a link that
 restores the exact look.
 
-The UI text is Chinese (zh-CN).
+The UI is available in Simplified Chinese (zh-CN) and US English (en-US). It follows the browser's language, and
+the globe button in the top corner switches it.
 
 ## Stack
 
@@ -76,6 +77,7 @@ src/
   App.tsx               page layout
   components/           React UI (dock, corner buttons, dialogs, sheets)
   state/                tiny observable store shared by the engine and React
+  i18n/                 locales, browser language detection and the message tables (messages/zh-CN.ts, en-US.ts)
   styles/               Tailwind setup, theme and base styles; the @font-face for the logo font
   assets/               leg model (glTF binary) and the logo font subset
   engine/               everything that is not React
@@ -130,6 +132,29 @@ base mesh.
 **Debugging.** In development builds (`import.meta.env.DEV`), `window.__app` exposes the runtime, and
 `window.__advance(seconds)` steps the simulation deterministically.
 
+## Languages
+
+All UI text lives in `src/i18n/messages/`, one table per locale. `zh-CN.ts` is the reference: its keys define
+`MessageKey`, and every other table must have exactly the same keys (the type checker enforces this, and a test
+checks that the `{name}` placeholders match). Catalog entries (poses, lengths, colors, scenes, presets, ...) have no
+labels of their own; their names are messages keyed by catalog key, such as `color.ink` or `preset.classicBlack`.
+
+- Components translate with `const t = useT()` and re-render when the locale changes.
+- Engine code never translates. It stores message keys in the UI store (the hint, the rain button label, the photo
+  tip) and components translate them while rendering, so text already on screen follows a language switch.
+- At startup `main.tsx` picks the first of `navigator.languages` that matches a supported language (any `zh-*` gets
+  `zh-CN`, any `en-*` gets `en-US`) and falls back to `en-US`. The choice is not stored anywhere.
+- `<html lang>` follows the current locale, and the `en:` variant (`:lang(en)`) gives English labels more room where
+  needed.
+- The page metadata in `index.html` cannot be translated, so the description has English first, then Chinese.
+
+To add a locale, add its table under `messages/`, register it in `LOCALES` (`src/i18n/locales.ts`) and in `MESSAGES`
+(`src/i18n/index.ts`).
+
+Text uses ASCII punctuation wherever an ASCII equivalent exists: straight quotes, `-`, `...`, and `,` `:` `;` `(` `)`
+instead of their full-width forms, in Chinese too. Characters without one, such as `·`, `。`, `、` and `「」`, are fine. A
+test scans every text file in the repository for the rest.
+
 ## Styling
 
 Tailwind is imported without its preflight (`tailwindcss/theme.css` and `tailwindcss/utilities.css` only), so
@@ -167,6 +192,7 @@ Tests run in Node without a browser or GPU and take a few seconds. Vitest has tw
 - Deterministic algorithms (subdivision, sculpting, skinning, water simulation with a seeded `Math.random`) are
   pinned with golden digests, so changes in numeric output are caught.
 - Fake 2D canvas and `AudioContext` implementations cover textures, the photo watermark and sound.
+- A repository-wide check rejects typographic punctuation that has an ASCII equivalent (see Languages).
 - The app controller is booted in jsdom with these fakes, and driven through the React UI, keyboard and pointer
   events.
 
@@ -183,7 +209,7 @@ npx playwright install --with-deps chromium   # once per machine
 npm run render:check -- --size 1920x1080 --hash '#look=1~...'
 ```
 
-Options: `--url` (render an existing page instead), `--no-build`, `--hash`, `--size WxH`, `--dpr`,
+Options: `--url` (render an existing page instead), `--no-build`, `--hash`, `--size WxH`, `--dpr`, `--locale <tag>` (the browser language, default `en-US`),
 `--click <selector>` (repeatable, clicked in order once the page is ready), `--settle <ms>`, `--angle vulkan|gl-egl|swiftshader` (default `vulkan`), `--out <file.png>` and
 `--allow-software`. It needs a machine with a GPU. Without one, it fails unless you pass `--allow-software`, and
 software rendering is slow (about 9 s to boot and 2-3 fps).

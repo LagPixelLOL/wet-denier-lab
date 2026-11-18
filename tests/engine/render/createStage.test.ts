@@ -348,8 +348,8 @@ describe("warmScene", () => {
 describe("setStocking", () => {
   const presetSpecs: [string, Partial<LegSpec>][] = PRESETS.flatMap((preset) =>
     preset.legs
-      ? preset.legs.map((spec, i): [string, Partial<LegSpec>] => [`${preset.name} #${i}`, spec])
-      : [[preset.name, preset.both ?? {}] satisfies [string, Partial<LegSpec>]],
+      ? preset.legs.map((spec, i): [string, Partial<LegSpec>] => [`${preset.id} #${i}`, spec])
+      : [[preset.id, preset.both ?? {}] satisfies [string, Partial<LegSpec>]],
   );
 
   it("applies every preset leg spec to both legs", () => {

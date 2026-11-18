@@ -94,8 +94,8 @@ describe("Hint", () => {
     const { container } = render(<Hint />);
     const hint = container.querySelector("#hint")!;
     expect(hint).toHaveTextContent("点丝袜任意位置泼水");
-    setUi({ hint: { text: "慢动作 0.2×", hidden: false } });
-    expect(hint).toHaveTextContent("慢动作 0.2×");
+    setUi({ hint: { key: "hint.slow", hidden: false } });
+    expect(hint).toHaveTextContent("慢动作 0.2× · 再泼一次看看水花");
   });
 
   it("fades out when hidden but keeps its text", () => {
@@ -103,10 +103,10 @@ describe("Hint", () => {
     const hint = container.querySelector("#hint")!;
     // The hidden state is only expressed through the fade classes.
     expect(hint).not.toHaveClass("opacity-0");
-    setUi({ hint: { text: "bye", hidden: true } });
+    setUi({ hint: { key: "hint.copied", hidden: true } });
     expect(hint).toHaveClass("opacity-0");
-    expect(hint).toHaveTextContent("bye");
-    setUi({ hint: { text: "back", hidden: false } });
+    expect(hint).toHaveTextContent("链接已复制");
+    setUi({ hint: { key: "hint.start", hidden: false } });
     expect(hint).not.toHaveClass("opacity-0");
   });
 });
@@ -115,7 +115,7 @@ describe("Loading", () => {
   it("shows a spinner and the preparing message before any error", () => {
     const { container } = render(<Loading />);
     const loading = container.querySelector("#loading")!;
-    expect(loading).toHaveTextContent("正在准备丝袜与水…");
+    expect(loading).toHaveTextContent("正在准备丝袜与水...");
     expect(loading.querySelector(".animate-spin")).not.toBeNull();
   });
 
@@ -123,7 +123,7 @@ describe("Loading", () => {
     const { container } = render(<Loading />);
     setUi({ bootError: "WebGL is not available" });
     const loading = container.querySelector("#loading")!;
-    expect(loading).toHaveTextContent("三维画面启动失败：WebGL is not available");
+    expect(loading).toHaveTextContent("三维画面启动失败: WebGL is not available");
     expect(loading).toHaveTextContent("请用最新版 Chrome / Safari / Edge 打开");
     expect(loading).not.toHaveTextContent("正在准备丝袜与水");
     expect(loading.querySelector(".animate-spin")).toBeNull();
@@ -132,7 +132,7 @@ describe("Loading", () => {
   it("renders an empty error message as an error, not as loading", () => {
     const { container } = render(<Loading />);
     setUi({ bootError: "" });
-    expect(container.querySelector("#loading")).toHaveTextContent("三维画面启动失败：");
+    expect(container.querySelector("#loading")).toHaveTextContent("三维画面启动失败:");
   });
 });
 
