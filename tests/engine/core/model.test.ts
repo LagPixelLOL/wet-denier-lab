@@ -4,8 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyAnatomyBumps,
   computeLegAxisProfile,
+  HEEL,
   inflateThigh,
   INSTEP,
+  shapeHeel,
   slimInstep,
 } from "../../../src/engine/model/anatomy";
 import { parseModelGlb } from "../../../src/engine/model/glb";
@@ -294,6 +296,57 @@ describe("slimInstep", () => {
   });
 });
 
+describe("shapeHeel", () => {
+  const moved = (rest: number[]): number[] => {
+    const positions = Float32Array.from(rest);
+    expect(shapeHeel(positions)).toBe(positions);
+    return rest.map((v, i) => positions[i] - v);
+  };
+  const [cx, cy, cz] = HEEL.center;
+
+  it("grows the heel backward and to both sides, most at the height of its middle", () => {
+    const back = moved([cx, cy, cz - 0.034]);
+    expect(back[0]).toBeCloseTo(0, 8);
+    expect(back[1]).toBeCloseTo(0, 4);
+    expect(back[2]).toBeCloseTo(-0.034 * HEEL.grow[1], 6);
+    const sides = moved([cx + 0.035, cy, cz, cx - 0.035, cy, cz]);
+    expect(sides[0]).toBeCloseTo(0.035 * HEEL.grow[0], 6);
+    expect(sides[3]).toBeCloseTo(-0.035 * HEEL.grow[0], 6);
+    // More in length than in width.
+    expect(HEEL.grow[1]).toBeGreaterThan(HEEL.grow[0]);
+    expect(sides[2]).toBeCloseTo(0, 8);
+    // Less toward the Achilles tendon above it.
+    const above = moved([cx, cy + 0.04, cz - 0.03]);
+    expect(-above[2]).toBeGreaterThan(0.0003);
+    expect(-above[2]).toBeLessThan(-back[2] * 0.4);
+  });
+
+  it("rounds the heel underneath: the skin on the floor rises around the middle, which stays down", () => {
+    const [, middle] = moved([cx, 0.002, cz]);
+    expect(middle).toBeCloseTo(0, 8);
+    const [, rim] = moved([cx, 0.002, cz - HEEL.rim]);
+    expect(rim).toBeGreaterThan(HEEL.lift * 0.9);
+    expect(rim).toBeLessThan(HEEL.lift);
+    const [, halfway] = moved([cx + HEEL.rim / 2, 0.002, cz]);
+    expect(halfway).toBeGreaterThan(rim * 0.2);
+    expect(halfway).toBeLessThan(rim * 0.3);
+    // Only the skin near the floor is lifted.
+    expect(moved([cx, 0.04, cz - HEEL.rim])[1]).toBeLessThan(0.0001);
+  });
+
+  it("leaves the rest of the foot and the leg where they are", () => {
+    for (const offset of moved([0.03, 0.01, 0.04, 0, 0.05, 0.12, 0.02, 0.2, -0.04, 0, 0.5, 0])) {
+      expect(Math.abs(offset)).toBeLessThan(0.00005);
+    }
+    // Along the foot the change fades out, from the heel to the arch.
+    const fading = [-0.02, 0, 0.02, 0.034].map((z) => moved([cx + 0.03, cy, z])[0]);
+    expect(fading[0]).toBeCloseTo(0.03 * HEEL.grow[0], 6);
+    expect(fading[1]).toBeLessThan(fading[0]);
+    expect(fading[2]).toBeLessThan(fading[1]);
+    expect(fading[3]).toBeLessThan(0.00002);
+  });
+});
+
 describe("applyAnatomyBumps", () => {
   // A tiny +z facing triangle centred on the kneecap blob, a duplicate of its first vertex and a far triangle.
   const knee = [-0.003, 0.497, 0.08];
@@ -534,10 +587,10 @@ describe("buildLegModel on the shipped model", () => {
       ],
     }).toMatchInlineSnapshot(`
       {
-        "circumference": "0434eb84",
+        "circumference": "0653da83",
         "collision": [
-          "60b09810",
-          "f5b276f1",
+          "070bceed",
+          "77aaa757",
           "617bdd01",
           "1ed66ba3",
         ],
@@ -552,11 +605,11 @@ describe("buildLegModel on the shipped model", () => {
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "legTangent": "5e97a893",
-          "normal": "8a681ea5",
-          "position": "908def5b",
-          "skinFx": "4e043927",
-          "stretch": "11bcbb19",
+          "legTangent": "709f9cbf",
+          "normal": "0c3e2188",
+          "position": "18c6a985",
+          "skinFx": "b4a189bd",
+          "stretch": "9438b2f3",
           "toeShade": "8ec92b05",
           "uv": "736679e6",
         },
@@ -615,9 +668,13 @@ describe("buildLegModel options and sources", () => {
     const source = tinyModelData().stocking.positions;
     const glbPositions = fromGlb.stocking.attributes.position.array;
     const jsonPositions = fromJson.stocking.attributes.position.array;
-    expect([...glbPositions.slice(0, 3)]).toEqual(Array.from(source).slice(0, 3));
+    // A vertex on the calf, which nothing sculpts: the foot, the knee and the thigh are shaped after loading.
+    const calf = 24 * 3;
+    expect(source[calf + 1]).toBeGreaterThan(0.2);
+    expect(source[calf + 1]).toBeLessThan(0.4);
+    expect([...glbPositions.slice(calf, calf + 3)]).toEqual(Array.from(source).slice(calf, calf + 3));
     // Wrap value 16: the vertices the wrap data covers move 0.16 mm along each axis.
-    for (let c = 0; c < 3; c++) {
+    for (let c = calf; c < calf + 3; c++) {
       expect(jsonPositions[c] - glbPositions[c]).toBeCloseTo(0.00016, 7);
     }
   });

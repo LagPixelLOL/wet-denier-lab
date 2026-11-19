@@ -279,9 +279,10 @@ function skinRestPoint(pose: LegPose, x: number, y: number, z: number, withJacob
     const end = joints.ankleY[1] + moveEnd * back;
     const at = Math.min(1, Math.max(0, (y - start) / (end - start)));
     const dAnkle = smoothstepDeriv(start, end, y);
-    const ease = joints.ankleHoldEase;
-    const eased = Math.min(ease, Math.max(0, y - joints.ankleHoldY));
-    const above = (eased * eased) / (2 * ease) + Math.max(y - joints.ankleHoldY - ease, 0);
+    const holdY = joints.ankleHoldY[0] + (joints.ankleHoldY[1] - joints.ankleHoldY[0]) * back;
+    const ease = joints.ankleHoldEase[0] + (joints.ankleHoldEase[1] - joints.ankleHoldEase[0]) * back;
+    const eased = Math.min(ease, Math.max(0, y - holdY)) / ease;
+    const above = 0.5 * ease * eased * eased + Math.max(y - holdY - ease, 0);
     applyJointTurn(
       pose.ankleTurn,
       joints.ankle,
@@ -290,8 +291,10 @@ function skinRestPoint(pose: LegPose, x: number, y: number, z: number, withJacob
       -dAnkle * dBack * (moveStart + (moveEnd - moveStart) * at),
       withJacobian,
       above,
-      eased / ease,
-      0,
+      eased,
+      dBack *
+        (eased * (joints.ankleHoldY[1] - joints.ankleHoldY[0]) +
+          0.5 * eased * eased * (joints.ankleHoldEase[1] - joints.ankleHoldEase[0])),
     );
   }
   if (pose.knee && y < joints.kneeY[1]) {

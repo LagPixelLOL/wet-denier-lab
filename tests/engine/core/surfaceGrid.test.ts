@@ -419,7 +419,7 @@ describe("SurfaceGrid on the real collision mesh", () => {
       }
     }
     expect(results.filter((v) => v !== -1).length).toBeGreaterThan(24);
-    expect(digestRounded(results, 7)).toMatchInlineSnapshot(`"d6df2814"`);
+    expect(digestRounded(results, 7)).toMatchInlineSnapshot(`"91ba7e97"`);
   });
 
   it("agrees with brute force on raycasts", () => {
@@ -444,7 +444,7 @@ describe("SurfaceGrid on the real collision mesh", () => {
       }
     }
     expect(hits.length).toBeGreaterThan(20);
-    expect(digestRounded(hits, 7)).toMatchInlineSnapshot(`"1e0b4c55"`);
+    expect(digestRounded(hits, 7)).toMatchInlineSnapshot(`"efe397b0"`);
   });
 
   it("returns UV rectangles that cover every triangle the sphere touches", () => {

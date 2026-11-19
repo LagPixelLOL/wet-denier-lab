@@ -66,7 +66,7 @@ describe("joint constants and the GLSL skinning chunk", () => {
       `uToeRot, ${vec(LEG_JOINTS.toe)}`,
       `smoothstepD(${f(LEG_JOINTS.ankleBackZ[0])}, ${f(LEG_JOINTS.ankleBackZ[1])}, rest.z, dAnkleBack)`,
       `mix(${vec(LEG_JOINTS.ankleY)}, ${vec(LEG_JOINTS.ankleBackY)}, ankleBack)`,
-      `clamp(rest.y - ${f(LEG_JOINTS.ankleHoldY)}, 0.0, ${f(LEG_JOINTS.ankleHoldEase)})`,
+      `mix(${vec([LEG_JOINTS.ankleHoldY[0], LEG_JOINTS.ankleHoldEase[0]])}, ${vec([LEG_JOINTS.ankleHoldY[1], LEG_JOINTS.ankleHoldEase[1]])}, ankleBack)`,
       `uAnkleRot, ${vec(LEG_JOINTS.ankle)}`,
       `smoothstepD(${f(LEG_JOINTS.kneeY[0])}, ${f(LEG_JOINTS.kneeY[1])}, rest.y, dKnee)`,
       `uKneeRot, ${vec(LEG_JOINTS.knee)}`,
@@ -246,8 +246,10 @@ describe("skinLegPoint", () => {
     let last = skinLegPoint(pose, 1, 0, 0, 0.07, z);
     for (let y = 0.08; y < LEG_JOINTS.ankleBackY[1]; y += 0.01) {
       const out = skinLegPoint(pose, 1, 0, 0, y, z);
-      // It stays in line with the leg above it, and keeps its order up the leg.
-      expect(Math.abs(out[2] - z)).toBeLessThan(0.006);
+      // It follows the heel back, less and less up the leg and never forward, and keeps its order up the leg.
+      expect(out[2]).toBeLessThanOrEqual(z);
+      expect(out[2]).toBeGreaterThan(z - 0.016);
+      expect(out[2]).toBeGreaterThan(last[2] - 0.0005);
       expect(out[1]).toBeGreaterThan(last[1]);
       expect(out[1]).toBeGreaterThanOrEqual(y);
       last = out;

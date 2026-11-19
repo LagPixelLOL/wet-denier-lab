@@ -16,7 +16,10 @@ export type Vec3 = [number, number, number];
  * the Achilles tendon behind, the extensors in front. So everything above ankleHoldY moves as if it were at about
  * that height: it follows the foot under it up or down the leg instead of swinging around the ankle. Without
  * that, standing on tiptoe hollows the leg out above the heel and pushes the top of the instep forward into a
- * hump. The hold sets in gradually over ankleHoldEase, which rounds the heel into the tendon.
+ * hump. The hold sets in gradually over ankleHoldEase, which rounds the heel into the tendon. Both are given
+ * for the front of the leg and for the back: behind, the hold sets in over a much longer stretch (ending at
+ * the same height), so the skin just above the heel still follows it back a little and the heel runs into the
+ * tendon's line in one curve instead of a corner.
  */
 export interface LegJoints {
   hip: Vec3;
@@ -26,8 +29,8 @@ export interface LegJoints {
   ankleY: [number, number];
   ankleBackY: [number, number];
   ankleBackZ: [number, number];
-  ankleHoldY: number;
-  ankleHoldEase: number;
+  ankleHoldY: [number, number];
+  ankleHoldEase: [number, number];
   toe: Vec3;
   toeZ: [number, number];
   toeY: [number, number];
@@ -41,8 +44,8 @@ export const LEG_JOINTS: LegJoints = {
   ankleY: [0.06, 0.115],
   ankleBackY: [0.05, 0.2],
   ankleBackZ: [-0.03, 0.02],
-  ankleHoldY: 0.043,
-  ankleHoldEase: 0.03,
+  ankleHoldY: [0.043, 0.01],
+  ankleHoldEase: [0.03, 0.096],
   toe: [0, 0.03, 0.135],
   toeZ: [0.09, 0.18],
   toeY: [0.085, 0.11],
@@ -96,9 +99,11 @@ vec3 skinPosition(vec3 rest, out mat3 jac) {
   vec2 ankleY = mix(${glslVec2(LEG_JOINTS.ankleY)}, ${glslVec2(LEG_JOINTS.ankleBackY)}, ankleBack), ankleMove = ${glslVec2(LEG_JOINTS.ankleBackY)} - ${glslVec2(LEG_JOINTS.ankleY)};
   float ankleW = 1.0 - smoothstepD(ankleY.x, ankleY.y, rest.y, dAnkle);
   float ankleAt = clamp((rest.y - ankleY.x) / (ankleY.y - ankleY.x), 0.0, 1.0);
-  float ankleEased = clamp(rest.y - ${glslFloat(LEG_JOINTS.ankleHoldY)}, 0.0, ${glslFloat(LEG_JOINTS.ankleHoldEase)});
-  float ankleAbove = ankleEased * ankleEased / ${glslFloat(2 * LEG_JOINTS.ankleHoldEase)} + max(rest.y - ${glslFloat(LEG_JOINTS.ankleHoldY + LEG_JOINTS.ankleHoldEase)}, 0.0);
-  turnJoint(p, jac, uAnkleRot, ${glslVec3(LEG_JOINTS.ankle)}, ankleW, vec3(0.0, -dAnkle, -dAnkle * dAnkleBack * mix(ankleMove.x, ankleMove.y, ankleAt)), ankleAbove, vec3(0.0, ankleEased / ${glslFloat(LEG_JOINTS.ankleHoldEase)}, 0.0));
+  vec2 ankleHold = mix(${glslVec2([LEG_JOINTS.ankleHoldY[0], LEG_JOINTS.ankleHoldEase[0]])}, ${glslVec2([LEG_JOINTS.ankleHoldY[1], LEG_JOINTS.ankleHoldEase[1]])}, ankleBack);
+  float ankleEased = clamp(rest.y - ankleHold.x, 0.0, ankleHold.y) / ankleHold.y;
+  float ankleAbove = 0.5 * ankleHold.y * ankleEased * ankleEased + max(rest.y - ankleHold.x - ankleHold.y, 0.0);
+  float ankleHoldDz = dAnkleBack * (ankleEased * ${glslFloat(LEG_JOINTS.ankleHoldY[1] - LEG_JOINTS.ankleHoldY[0])} + 0.5 * ankleEased * ankleEased * ${glslFloat(LEG_JOINTS.ankleHoldEase[1] - LEG_JOINTS.ankleHoldEase[0])});
+  turnJoint(p, jac, uAnkleRot, ${glslVec3(LEG_JOINTS.ankle)}, ankleW, vec3(0.0, -dAnkle, -dAnkle * dAnkleBack * mix(ankleMove.x, ankleMove.y, ankleAt)), ankleAbove, vec3(0.0, ankleEased, ankleHoldDz));
   float kneeW = 1.0 - smoothstepD(${glslFloat(LEG_JOINTS.kneeY[0])}, ${glslFloat(LEG_JOINTS.kneeY[1])}, rest.y, dKnee);
   applyJoint(p, jac, uKneeRot, ${glslVec3(LEG_JOINTS.knee)}, kneeW, vec3(0.0, -dKnee, 0.0));
   return p;

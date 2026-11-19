@@ -111,6 +111,46 @@ export function slimInstep(positions: Float32Array): Float32Array {
   return positions;
 }
 
+/**
+ * The heel: a little bigger, and rounder underneath.
+ * `center` (x, y, z) is the middle of the heel and `grow` how much further out its surface lies, to the sides
+ * and backward (the heel gains more length than width), fading out over `reach` in height and from `fade[0]`
+ * to `fade[1]` along the foot.
+ * Underneath, the skin up to about `sole` above the floor is lifted around the middle of the heel: by `lift` at
+ * `rim` from that middle, growing with the square of the distance. The lowest point stays on the floor.
+ */
+export const HEEL = {
+  center: [0.004, 0.028, -0.022],
+  grow: [0.045, 0.11],
+  reach: 0.035,
+  fade: [-0.02, 0.035],
+  sole: 0.012,
+  lift: 0.003,
+  rim: 0.034,
+};
+
+/** Shapes the heel (see HEEL), in place. Returns `positions`. */
+export function shapeHeel(positions: Float32Array): Float32Array {
+  const [cx, cy, cz] = HEEL.center;
+  for (let i = 0; i < positions.length; i += 3) {
+    const y = positions[i + 1];
+    const z = positions[i + 2];
+    if (z >= HEEL.fade[1] || y > cy + HEEL.reach * 3) {
+      continue;
+    }
+    const t = Math.min(1, Math.max(0, (z - HEEL.fade[0]) / (HEEL.fade[1] - HEEL.fade[0])));
+    const along = 1 - t * t * (3 - t * 2);
+    const dx = positions[i] - cx;
+    const dz = z - cz;
+    const grow = along * Math.exp(-(((y - cy) / HEEL.reach) ** 2));
+    const out = Math.min(1.5, (dx * dx + dz * dz) / (HEEL.rim * HEEL.rim));
+    positions[i] += dx * grow * HEEL.grow[0];
+    positions[i + 1] += HEEL.lift * out * along * Math.exp(-((y / HEEL.sole) ** 2));
+    positions[i + 2] += Math.min(dz, 0) * grow * HEEL.grow[1];
+  }
+  return positions;
+}
+
 /** Anisotropic Gaussian: center, radii, amplitude, facing direction and optional flattening exponent. */
 interface GaussianBlob {
   c: readonly number[];

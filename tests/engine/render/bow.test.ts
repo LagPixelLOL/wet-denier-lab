@@ -85,7 +85,7 @@ describe("computeBowMatrix", () => {
       .map(([key, def]) => `${key}: ${digestRounded(computeBowMatrix(collision, def.cuffY), 6)}`);
     expect(results).toMatchInlineSnapshot(`
       [
-        "ankle: 3286107a",
+        "ankle: 207c21aa",
         "crew: e98b6f0f",
         "knee: 861ab584",
         "over: 42499e44",

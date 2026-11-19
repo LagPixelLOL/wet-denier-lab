@@ -6,7 +6,7 @@ import { buildAdaptiveIndex, subdivideSmooth } from "../geometry/subdivide";
 import type { SubdividedMesh } from "../geometry/subdivide";
 import { buildGeometry, computeWeldedNormals, weldVertices } from "../geometry/weld";
 import type { SurfaceMesh } from "../surface/SurfaceGrid";
-import { applyAnatomyBumps, computeLegAxisProfile, inflateThigh, slimInstep } from "./anatomy";
+import { applyAnatomyBumps, computeLegAxisProfile, inflateThigh, shapeHeel, slimInstep } from "./anatomy";
 import { buildForefoot, buildForefootCollision } from "./forefoot";
 import type { ForefootCollision, ToeNail } from "./forefoot";
 import { parseModelGlb } from "./glb";
@@ -68,6 +68,7 @@ export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions =
   const coarseWeld = weldVertices(coarseWrapped.pos);
   inflateThigh(coarseWrapped.pos, axisProfile);
   slimInstep(coarseWrapped.pos);
+  shapeHeel(coarseWrapped.pos);
   const coarseSkinFx = applyAnatomyBumps(coarseWrapped.pos, mesh.idx, coarseWeld);
   const collision: CollisionMesh = {
     pos: coarseWrapped.pos,
@@ -84,6 +85,7 @@ export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions =
   if (levels >= 2) {
     inflateThigh(fineWrapped.pos, axisProfile);
     slimInstep(fineWrapped.pos);
+    shapeHeel(fineWrapped.pos);
     skinFx = applyAnatomyBumps(fineWrapped.pos, mesh.idx, fineWeld);
   }
   const stocking = buildGeometry(fineWrapped.pos, mesh.uv, mesh.idx, fineWeld);
