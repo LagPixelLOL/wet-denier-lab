@@ -18,13 +18,16 @@ export const FADE_HEIGHT_GLSL = "position.y - 0.3346 * (position.x - 0.066) + 0.
 export const forefootClipGlsl = (restPos: string): string =>
   `if (uClip * (${restPos}.z - ${FOREFOOT_JOIN.cut.toFixed(4)}) > 0.0003 && ${restPos}.y < ${FOREFOOT_JOIN.maxY.toFixed(4)}) discard;`;
 
+/** How far inside its surface the skin under a stocking is drawn (m). */
+const UNDER_INSET = 0.0004;
+
 export const LEG_VERTEX_SHADER = `
 invariant gl_Position;
 ${LEG_SKINNING_GLSL}attribute vec3 legTangent;
 attribute float stretch;
 attribute vec2 skinFx;
 attribute float toeShade;
-uniform float uCuffY, uCuffBulge, uIsSkin;
+uniform float uCuffY, uCuffBulge, uIsSkin, uUnder;
 varying vec3 vWorldPos, vNormal, vTangent, vRestPos, vRestNormal;
 varying vec2 vUv, vSkinFx;
 varying float vStretch, vTangentShift, vFadeHeight, vBetweenToes;
@@ -38,6 +41,9 @@ void main() {
   vec3 p = skinPosition(position, jac);
   vec3 n = skinNormal(jac, normal), tang = normalize(jac * legTangent);
   vec3 rest = position;
+  // Skin under a stocking is drawn a little inside its own surface: where the fabric lies right on it, the
+  // fabric must always cover it.
+  p -= n * (${UNDER_INSET.toFixed(4)} * uUnder);
   if (uIsSkin < 0.5) {
     float dy = position.y - uCuffY;
     float off = cuffProfile(dy);
@@ -332,8 +338,9 @@ void main() {
   float denier = uDenier * pow(max(vStretch, 0.3), -0.65) * patMul;
   if (isNet) denier = mix(uDenier * 4.0, 0.0, open);
   if (cuffDen >= 0.0) denier = cuffDen;
-  // Reinforced toe: a denser knit over the toes, closed by a seam across their tops.
-  float toeKnit = (isNet ? 0.0 : clamp(uMatKnit.x * 5.0, 0.0, 1.0)) * step(height, 0.07);
+  // Reinforced toe: a denser knit over the toes, closed by a seam across their tops. Hosiery has one; fabrics
+  // too thick to see through do not.
+  float toeKnit = (isNet ? 0.0 : clamp(uMatKnit.x * 5.0, 0.0, 1.0)) * step(height, 0.07) * (1.0 - smoothstep(130.0, 220.0, uDenier));
   float capEdge = toeCap(vRestPos), seamAt = toeSeam(vRestPos);
   float seam = (1.0 - aaStep(0.0007, abs(seamAt))) * smoothstep(-0.35, 0.1, restNy) * (0.85 + 0.15 * sin(vRestPos.x * 7800.0)) * toeKnit;
   denier *= 1.0 + toeKnit * (0.6 * smoothstep(-0.0012, 0.0012, capEdge) + 0.4 * (1.0 - aaStep(0.0007, abs(capEdge)))) + 1.3 * seam;
