@@ -265,9 +265,8 @@ void main() {
   float sole = smoothstep(0.1, 0.55, -restNy) * (1.0 - smoothstep(0.03, 0.05, height));
   float contact = sole * (1.0 - smoothstep(0.0035, 0.0115, height));
   skinTint *= mix(vec3(1.0), vec3(1.0, 0.82, 0.80), contact) * mix(vec3(1.0), vec3(1.05, 1.03, 0.99), sole - contact);
-  // Veins show faintly through the skin on top of the foot.
-  float vein = restNy > -0.1 ? (1.0 - smoothstep(0.0000002, 0.000008, footVeins(vRestPos))) * smoothstep(-0.1, 0.3, restNy) * smoothstep(0.162, 0.146, vRestPos.z) : 0.0;
-  skinTint *= mix(vec3(1.0), vec3(0.905, 0.955, 0.985), vein * (0.7 + 0.3 * sin(vRestPos.z * 130.0 + vRestPos.x * 90.0)));
+  // Veins show faintly through the skin, where it is bare or behind fabric sheer enough to tell.
+  if (uIsSkin > 0.5 || uCuffY < 0.0 || uUnder > 0.5 || uDenier < 30.0) skinTint *= mix(vec3(1.0), vec3(0.90, 0.95, 0.985), skinVeins(vRestPos, normalize(vRestNormal)) * 0.8);
   // The sides of the toes sink into the shade between them.
   float betweenToes = vBetweenToes;
   bareSkin *= skinTint * mix(vec3(1.0), vec3(0.80, 0.62, 0.62), betweenToes);
