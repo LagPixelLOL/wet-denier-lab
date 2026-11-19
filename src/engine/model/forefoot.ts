@@ -365,25 +365,23 @@ function splitUvSeams(
 }
 
 /**
- * How the skin lies under a stocking (m). The model's fabric rests a little off the skin it is pulled over, and
- * further off where the foot is slimmer than the stocking was made. Skin that faces fabric at most `tight`
- * away is pressed against it, `margin` under its surface, and by `loose` the skin keeps its own shape: between
- * the toes and in the creases under them the fabric spans the gap. `facing` is the range of the cosine between
- * the skin's normal and the fabric's over which that fades, so the walls of a toe stay clear of the fabric that
- * bridges the cleft beside it. On a toe (see `onToe` below) the skin only meets fabric at most `toes.tight` away, so the toes keep the shape they have bare; the fabric
- * around them is roomier than they are. The skin keeps its shape on the way: it takes the `broad` part of the move (its
- * mean over that distance) and at most `local` of the rest. Skin that ends up less than `worn` under the fabric
- * counts as wearing it, in full `edge` away from skin that does not.
+ * How the skin lies under a stocking (m). The fabric is fitted to the skin in the model file (tools/fit_toes.py),
+ * so the skin keeps the shape it has bare: it only moves where the fabric would otherwise touch it or come
+ * through, to `margin` under the fabric's surface. `tight` and `loose` are the range of distances under the
+ * fabric over which that fades out, for skin that faces the fabric (`facing`, the range of the cosine between
+ * the two normals; the wall of a toe beside fabric that bridges the cleft is left alone), `toes` the same for
+ * the toes. The move is evened out over `broad`, up to `local` of each vertex's own. Skin that ends up less
+ * than `worn` under the fabric counts as wearing it, in full `edge` away from skin that does not.
  */
 export const UNDER_FIT = {
   margin: 0.0001,
-  worn: 0.00028,
+  worn: 0.0006,
   edge: 0.003,
   broad: 0.002,
   local: 0.0003,
   toes: { tight: 0.0001, beside: 0.004, behind: 0.008, crease: 0.007 },
-  tight: 0.004,
-  loose: 0.006,
+  tight: 0.0001,
+  loose: 0.00015,
   facing: [0.45, 0.75],
 };
 

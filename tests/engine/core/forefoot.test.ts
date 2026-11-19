@@ -488,13 +488,18 @@ describe("buildForefoot on the shipped model", () => {
       expect(Array.from(under.subarray(weld[i] * 4, weld[i] * 4 + 4))).toEqual([dx, dy, dz, cover]);
       expect(cover).toBeGreaterThanOrEqual(0);
       expect(cover).toBeLessThanOrEqual(1);
-      longest = Math.max(longest, Math.hypot(dx, dy, dz));
       worn += cover > 0.5 ? 1 : 0;
       // Under a stocking the skin is drawn from 3 mm behind the join on (uClip -0.1).
       if (positions[i * 3 + 2] < FOREFOOT_JOIN.cut - 0.004) {
         continue;
       }
-      const hit = fabric.closest(positions[i * 3] + dx, positions[i * 3 + 1] + dy, positions[i * 3 + 2] + dz, 0.0005);
+      longest = Math.max(longest, Math.hypot(dx, dy, dz));
+      const hit = fabric.closest(
+        positions[i * 3] + dx,
+        positions[i * 3 + 1] + dy,
+        positions[i * 3 + 2] + dz,
+        UNDER_FIT.worn,
+      );
       if (
         !hit ||
         normals[i * 3] * hit.nx + normals[i * 3 + 1] * hit.ny + normals[i * 3 + 2] * hit.nz < UNDER_FIT.facing[0]
@@ -509,11 +514,11 @@ describe("buildForefoot on the shipped model", () => {
       pressed += hit.dist < UNDER_FIT.margin * 1.5 ? 1 : 0;
     }
     expect(nearest).toBeGreaterThan(UNDER_FIT.margin * 0.97);
-    // Behind the toes the skin is pressed against the fabric (the toes keep their shape, and the fabric is
-    // fitted to them instead), and it never has to move further than the fit allows.
-    expect(pressed).toBeGreaterThan(positions.length / 3 / 5);
-    expect(worn).toBeGreaterThan(2000);
-    expect(longest).toBeLessThan(UNDER_FIT.loose);
+    // The model's fabric is fitted to the skin, so a good part of the skin lies right under it without having
+    // to move: the foot has the same shape with and without a stocking.
+    expect(pressed).toBeGreaterThan(1500);
+    expect(worn).toBeGreaterThan(1500);
+    expect(longest).toBeLessThan(0.0004);
   });
 
   it("builds a geometry with the attributes the leg shader reads, one value per vertex", () => {
@@ -959,7 +964,16 @@ describe("buildForefootCollision on the shipped model", () => {
         // In front of it, the skin as it is drawn, to within the roundness one more subdivision adds.
         const hit = skin.closest(x, y, z, 0.01);
         if (!hit || hit.dist > 0.0008 || dot([hit.nx, hit.ny, hit.nz], normal) < 0.95) {
-          throw new Error("vertex " + v + " is off the skin: " + hit?.dist);
+          throw new Error(
+            "vertex " +
+              v +
+              " at " +
+              [x, y, z].map((c) => c.toFixed(4)) +
+              " is off the skin: " +
+              hit?.dist +
+              ", normals " +
+              (hit ? dot([hit.nx, hit.ny, hit.nz], normal).toFixed(3) : ""),
+          );
         }
       }
     }

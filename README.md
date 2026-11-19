@@ -141,16 +141,23 @@ on the skin, which the leg shader draws as raised plates.
   shaders (`forefootClipGlsl`), and behind the cut the forefoot lies exactly on the stocking mesh, so they meet
   without a seam.
 - Under a stocking the forefoot is drawn first and the fabric over it lets it show through by its sheerness, so
-  the toes are seen through the fabric with real depth. The fabric around the toes is fitted as a membrane
-  pulled taut over the skin: it touches the toes' tops and pads and bridges the gaps and creases between them.
-  Around the toes the fabric is free to draw in onto the skin (the stocking's toe was roomier than the toes
-  are), so it hugs their tops, tips, pads and outer sides. Behind them the fit only lifts the fabric off its old
-  shape, and it starts in front of the join, so the rest of the foot keeps its shape.
-- Under a stocking the skin is fitted to the fabric (`fitUnderStocking` in `model/forefoot.ts`, the `under`
-  vertex attribute): skin that faces fabric a few millimeters away is pressed against it, 0.1 mm under its
-  surface, so no gap shows where the fabric is pulled tight and the skin never comes through it. Between the
-  toes and in the creases under them the skin keeps its own shape and the fabric spans the gap, and the toes
-  themselves only meet fabric that is nearly on them already, so they keep the shape they have bare.
+  the toes are seen through the fabric with real depth.
+- The fabric is fitted to the skin, not the skin to the fabric, so the foot has the same shape with and without
+  a stocking. `tools/fit_toes.py` first smooths the foot between the ankle and the toes, in the stocking's own
+  shape and in the MakeHuman skin: it takes out lumps of up to a centimeter and fills the dents that ran along
+  the top of the foot and between the balls (each slice across the foot is filled out to its convex outline),
+  which read as grooves on a smoothly shaded foot. All of that stops short of the clefts between the toes,
+  which the tool finds on the skin, and fades out slowly on the way there, so nothing bulges behind them. The
+  skin's top lies just inside the stocking at the join (the stocking was made for a slightly fuller foot) and
+  leaves it gradually toward the clefts. A test measures what is left of the dents on the built model.
+- Then the tool fits the stocking around the toes as a membrane pulled taut over the skin, 0.15 mm off it: the
+  fabric lies on the skin where the foot is rounded out (the toes' tops, tips and pads, the balls, the top of
+  the foot) and spans its hollows (the clefts between the toes, the creases under them, the dents along a toe).
+  The stitches keep their lay while it draws in, so patterns are not bunched up. The fabric goes over from its
+  old shape to the fitted one across the same band as the skin does at the join, so the two stay together.
+- In the app the skin under a stocking only moves where the fabric would otherwise touch it, to 0.1 mm under
+  the fabric's surface (`fitUnderStocking` in `model/forefoot.ts`, the `under` vertex attribute), so it never
+  comes through.
 - What shows through the fabric over the toes is drawn before it: the stocking behind the forefoot's join, then
   the skin, then the stocking in front of the join (`showForefoot` in `stage/createStage.ts`). So the rest of
   the leg is seen between the toes too. Only the nearest surface of that front part is drawn, so the skin is

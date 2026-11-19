@@ -19,6 +19,8 @@ import struct
 import sys
 
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator, griddata
+from scipy.ndimage import gaussian_filter, grey_closing, minimum_filter1d
 from scipy.spatial import cKDTree
 
 WRAP_UNIT = 1e-5
@@ -399,31 +401,237 @@ def nail_frames(points, normals, quads, levels, toes):
 # ---------------------------------------------------------------------------------------------------------------
 
 # The stocking is refitted in front of FABRIC_Z (fading in over that band) and below FABRIC_Y (fading out). The
-# band starts in front of the plane where the app joins the forefoot to a bare leg (FOREFOOT_JOIN.cut), so the
-# stocking keeps its smooth shape there, and ends about where the app's forefoot skin has left the stocking's
-# surface for its own shape (FOREFOOT_JOIN.to), so the fabric is clear of the skin by then.
-FABRIC_Z = (0.116, 0.132)
+# band is the one over which the app's forefoot skin leaves the stocking's surface for its own shape (from just
+# in front of FOREFOOT_JOIN.cut to FOREFOOT_JOIN.to), so the fabric and the skin go over together.
+FABRIC_Z = (0.113, 0.130)
 FABRIC_Y = (0.075, 0.090)
 # The fabric's middle lies this far off the skin where it touches it.
 FABRIC_THICKNESS = 0.00015
-FABRIC_STEPS = 400
-# Around the toes the fabric is free to draw in onto the skin. A toe begins FABRIC_TOE_ROOT behind where it
-# comes free of the foot (further back under the foot by FABRIC_TOE_CREASE, to take in the crease behind its
-# pad), and the freedom fades out over FABRIC_TOE_FADE behind that.
+FABRIC_STEPS = 800
+# The toes keep their own shape, and the foot behind them is laid just inside the stocking (see onto_stocking).
+# A toe begins FABRIC_TOE_ROOT behind where it comes free of the foot (further back under the foot by
+# FABRIC_TOE_CREASE, to take in the crease behind its pad), and the one goes over to the other over
+# FABRIC_TOE_FADE behind that.
 FABRIC_TOE_ROOT = 0.004
-FABRIC_TOE_CREASE = 0.007
+FABRIC_TOE_CREASE = 0.003
 FABRIC_TOE_FADE = 0.008
+# How far the fabric is pressed toward the skin on top of the foot each step (m, where the mesh's edges are 1 mm
+# long): the more, the deeper it sags into the hollows it spans. Over the toes it is that times
+# FABRIC_PRESSURE_TOES.
+FABRIC_PRESSURE_TOES = 0.25
+FABRIC_PRESSURE = 0.000005
+# The skin between the join and the toes is smoothed (see smooth_foot): in front of SMOOTH_Z, fading in over
+# that band, this many rounds.
+SMOOTH_Z = (0.100, 0.118)
+# ...and up to the clefts between the toes (see cleft_line): it fades out over this range before them.
+SMOOTH_TOES = (-0.010, -0.003)
+SMOOTH_ROUNDS = 10
+# Dents across the foot are filled (see dents_across) in front of FILL_Z on top (key 1) and under the foot (key
+# -1, from the balls on: the arch behind them is hollow as it should be), fading in over those bands, and up to
+# the clefts between the toes: it fades out over FILL_TOES before them (earlier under the foot, where the
+# crease behind the toes' pads lies), slowly, so the valleys that run into the clefts stay and nothing bulges
+# behind them. The filling is blurred by FILL_BLUR.
+FILL_Z = {1: (0.055, 0.075), -1: (0.092, 0.105)}
+FILL_TOES = {1: (-0.024, -0.006), -1: (-0.032, -0.014)}
+FILL_BLUR = 0.0015
+# Lumps are taken out of the same parts of the foot (see lumps): those up to about twice SMOOTH_BLUR across.
+SMOOTH_BLUR = 0.004
+SMOOTH_TOES_AT = {1: (-0.016, -0.004), -1: (-0.024, -0.012)}
+# The skin's top lies just inside the stocking at the join (see onto_stocking) and has left it this far before
+# the clefts.
+ONTO_TOES = -0.006
+# A cleft between two toes begins where the skin lies CLEFT_DEPTH under a line laid across CLEFT_WIDTH of the
+# foot's top, in front of CLEFT_FROM; the toes' roots up to CLEFT_BESIDE to its sides count as being at it.
+CLEFT_DEPTH = 0.002
+CLEFT_WIDTH = 0.014
+CLEFT_FROM = 0.125
+CLEFT_BESIDE = 0.008
+
+
+def over_toes(points, normals, toes):
+    """How much each point is over a toe, 0 to 1 (see FABRIC_TOE_ROOT)."""
+    toe_of = np.argmin([distance_to_path(points[:, [0, 2]], toe[:, [0, 2]]) for toe in toes], axis=0)
+    begins = np.array([toe[1, 2] for toe in toes])[toe_of] - FABRIC_TOE_ROOT
+    begins -= FABRIC_TOE_CREASE * smoothstep(-0.2, 0.3, -normals[:, 1])
+    return smoothstep(begins - FABRIC_TOE_FADE, begins, points[:, 2])
+
+
+def foot_height(points, normals, sign):
+    """
+    The foot's top (sign 1) or sole (sign -1) as a height field over a 1 mm grid: sign * y where the surface
+    faces up (or down). Returns the grid's xs and zs, the heights (NaN outside the foot) and how much each
+    point faces that way (0 to 1).
+    """
+    cell = 0.001
+    facing = smoothstep(0.2, 0.6, sign * normals[:, 1])
+    used = (facing > 0) & (points[:, 2] > 0.03) & (points[:, 1] < 0.13)
+    xs = np.arange(points[used, 0].min(), points[used, 0].max() + cell, cell)
+    zs = np.arange(points[used, 2].min(), points[used, 2].max() + cell, cell)
+    height = griddata(points[used][:, [0, 2]], sign * points[used, 1], tuple(np.meshgrid(xs, zs)), method="linear")
+    return xs, zs, height, facing
+
+
+def cleft_line(points, normals):
+    """
+    Where the clefts between the toes begin, as z per x (two arrays): seen from above, the first place along
+    the foot where the skin lies CLEFT_DEPTH under a line laid across its neighbourhood (a closing of the top's
+    height field over CLEFT_WIDTH). Beside a cleft the toes' own roots count as being at it, and the line is
+    smoothed across the foot.
+    """
+    xs, zs, height, _ = foot_height(points, normals, 1)
+    have = np.isfinite(height)
+    low = np.where(have, height, np.nanmin(height))
+    depth = np.where(have, grey_closing(low, size=(1, int(CLEFT_WIDTH / 0.001) | 1)) - low, 0)
+    depth[zs < CLEFT_FROM] = 0
+    begins = np.array([zs[column.argmax()] if column.any() else np.nan for column in (depth > CLEFT_DEPTH).T])
+    found = np.isfinite(begins)
+    begins = np.interp(xs, xs[found], begins[found])
+    begins = minimum_filter1d(begins, int(CLEFT_BESIDE / 0.001) | 1, mode="nearest")
+    return xs, gaussian_filter(begins, CLEFT_BESIDE / 0.002, mode="nearest")
+
+
+def before_toes(points, clefts, begin, end):
+    """
+    1 between the z band `begin` (fading in) and the clefts (fading out over `end`, relative to where the cleft
+    nearest across the foot begins, see cleft_line).
+    """
+    at = np.interp(points[:, 0], *clefts)
+    return smoothstep(*begin, points[:, 2]) * (1 - smoothstep(at + end[0], at + end[1], points[:, 2]))
+
+
+def lumps(points, normals, clefts, sign):
+    """
+    How far each point of the foot's top (sign 1) or sole (sign -1) lies above the same surface with its lumps
+    of up to about a centimeter taken out (m, signed along sign * y). The surface is blurred twice over
+    (2 G - G G), which leaves its broad roundness as it is, so the foot keeps its size.
+    """
+    xs, zs, height, facing = foot_height(points, normals, sign)
+    have = np.isfinite(height)
+    filled = np.where(have, height, 0)
+    cells = SMOOTH_BLUR / 0.001
+
+    def blur(field):
+        return gaussian_filter(field * have, cells) / np.maximum(gaussian_filter(have.astype(float), cells), 1e-6)
+
+    once = blur(filled)
+    smooth = 2 * once - blur(once)
+    excess = np.where(have, filled - smooth, 0)
+    at = RegularGridInterpolator((zs, xs), excess, bounds_error=False, fill_value=0)(points[:, [2, 0]])
+    return at * facing * before_toes(points, clefts, FILL_Z[sign], SMOOTH_TOES_AT[sign])
+
+
+def dents_across(points, normals, clefts, sign):
+    """
+    How far each point of the foot's top (sign 1) or sole (sign -1) lies inside the foot's outline across it:
+    the foot is cut into slices across, and each slice's top (or sole) outline is compared with its convex
+    hull. A foot that is rounded across has none of it; a dent that runs along the foot does. Only between
+    FILL_Z (per side) and the toes, and only where the surface faces up (or down).
+    Returns the depth per point (m, 0 or more).
+    """
+    cell = 0.001
+    xs, zs, height, facing = foot_height(points, normals, sign)
+    depth = np.zeros_like(height)
+    for row in range(len(zs)):
+        have = np.isfinite(height[row])
+        if have.sum() < 3:
+            continue
+        px, py = xs[have], height[row, have]
+        hull = []
+        for x, y in zip(px, py):
+            while len(hull) >= 2 and (hull[-1][0] - hull[-2][0]) * (y - hull[-2][1]) >= (hull[-1][1] - hull[-2][1]) * (x - hull[-2][0]):
+                hull.pop()
+            hull.append((x, y))
+        hull = np.array(hull)
+        depth[row, have] = np.interp(px, hull[:, 0], hull[:, 1]) - py
+    depth = gaussian_filter(depth, FILL_BLUR / cell)
+    at = RegularGridInterpolator((zs, xs), depth, bounds_error=False, fill_value=0)(points[:, [2, 0]])
+    return np.maximum(at, 0) * facing * before_toes(points, clefts, FILL_Z[sign], FILL_TOES[sign])
+
+
+def fill_foot(cage, cage_quads, clefts):
+    """
+    The skin's cage with its lumps taken out (see lumps) and the dents across the foot filled (see
+    dents_across), on top and under the balls: the MakeHuman foot dips between the big toe's side and the outer
+    side, which reads as a groove along the foot. It is the skin's surface that is measured, and the cage's
+    vertices that are moved.
+    """
+    for measure in (lumps, lumps, lumps, dents_across, dents_across, dents_across, dents_across):
+        surface, quads = cage, cage_quads
+        for _ in range(3):
+            surface, quads = catmull_clark(surface, quads)
+        normals = vertex_normals(surface, quads)
+        for sign in (1, -1):
+            move = measure(surface, normals, clefts, sign)[: len(cage)]
+            cage = cage + np.array([0, sign if measure is dents_across else -sign, 0]) * move[:, None]
+    return cage
+
+
+def smooth_foot(cage, cage_quads, clefts):
+    """
+    The skin's cage with the foot between the join and the toes smoothed: the MakeHuman foot has dents between
+    the balls and between the tendons on top that read as lumps on a smoothly shaded foot. Each round moves
+    every vertex toward the middle of its neighbours and then a little further back out (Taubin smoothing), so
+    the dents go and the foot keeps its size. The toes and the clefts between them are left alone.
+    """
+    edges = np.concatenate([cage_quads[:, [k, (k + 1) % 4]] for k in range(4)])
+    edges = np.concatenate([edges, edges[:, ::-1]])
+    degree = np.maximum(np.bincount(edges[:, 0], minlength=len(cage)), 1)[:, None]
+    amount = before_toes(cage, clefts, SMOOTH_Z, SMOOTH_TOES) * (1 - smoothstep(*FABRIC_Y, cage[:, 1]))
+    for _ in range(SMOOTH_ROUNDS):
+        for step in (0.5, -0.52):
+            total = np.zeros_like(cage)
+            np.add.at(total, edges[:, 0], cage[edges[:, 1]])
+            cage = cage + (step * amount)[:, None] * (total / degree - cage)
+    return cage
+
+
+def onto_stocking(cage, cage_quads, stocking, stocking_normals, clefts):
+    """
+    The skin's cage with the top of the foot laid just inside the stocking at the join, leaving it gradually
+    on the way to the clefts between the toes. The stocking was made for a slightly fuller foot than the
+    MakeHuman one, so the skin stepped down in front of the join, where the app lays it onto the stocking. The
+    toes keep their own shape (the fabric is fitted to them instead), and so does the sole, which matched the
+    stocking's already.
+    It is the skin's surface that is laid there, not the cage: each round moves the cage's vertices by what
+    their points of the subdivided surface are still short of, evened out over their neighbours so that the
+    skin stays as smooth as it was.
+    """
+    tree = cKDTree(stocking)
+    start = cage
+    edges = np.concatenate([cage_quads[:, [k, (k + 1) % 4]] for k in range(4)])
+    edges = np.concatenate([edges, edges[:, ::-1]])
+    degree = np.maximum(np.bincount(edges[:, 0], minlength=len(cage)), 1)[:, None]
+    for _ in range(8):
+        surface, quads = cage, cage_quads
+        for _ in range(3):
+            surface, quads = catmull_clark(surface, quads)
+        # Subdividing keeps the cage's vertices first, each moved onto the surface.
+        points = surface[: len(cage)]
+        apart, nearest = tree.query(points)
+        normals = stocking_normals[nearest]
+        outside = np.einsum("ij,ij->i", points - stocking[nearest], normals)
+        leaves = np.interp(start[:, 0], *clefts) + ONTO_TOES
+        follow = 1 - smoothstep(FABRIC_Z[0], np.maximum(leaves, FABRIC_Z[1]), start[:, 2])
+        follow = follow * (apart < 0.008) * (start[:, 1] < FABRIC_Y[1])
+        follow = follow * smoothstep(-0.1, 0.5, normals[:, 1])
+        move = -((outside + FABRIC_THICKNESS) * follow)[:, None] * normals
+        for _ in range(2):
+            total = np.zeros_like(move)
+            np.add.at(total, edges[:, 0], move[edges[:, 1]])
+            move = 0.5 * move + 0.5 * total / degree
+        cage = cage + move
+    return cage
 
 
 def fit_fabric(stocking, triangles, weld, skin, skin_normals, toes):
     """
     The stocking around the toes as a membrane pulled taut over the skin: each round every vertex moves toward
-    the middle of its neighbours (tension), then out of the skin if it sank in. What is left touches the skin on the toes' tops, tips, pads and
-    outer sides and spans the clefts between the toes and the creases under them.
-    Behind the toes the membrane also stays outside the stocking's own shape as it was: that shape is the
-    fabric at rest over the foot, so the fit only lifts it there, and tension cannot draw it in (which left a
-    waist across the foot where the fit begins). Around the toes it is free to draw in: the stocking's toe was
-    roomier than the toes are.
+    the middle of its neighbours across the membrane (tension), is pressed toward the skin on top of the foot
+    (see FABRIC_PRESSURE), then moves out of the skin if it sank in. What is left lies on the skin where the
+    foot is rounded out (the toes' tops, tips and pads, the balls, the top of the foot) and spans its hollows:
+    the clefts between the toes, the creases under them, the dents along a toe.
+    The stocking's toe was roomier than the toes are, so the membrane draws in a good deal; the skin behind
+    the toes lies just inside the stocking as it was (see onto_stocking), so there it stays where it was.
     Returns the new positions and each vertex's distance from the skin.
     """
     weight = smoothstep(*FABRIC_Z, stocking[:, 2]) * (1 - smoothstep(*FABRIC_Y, stocking[:, 1]))
@@ -444,23 +652,44 @@ def fit_fabric(stocking, triangles, weld, skin, skin_normals, toes):
         _, nearest = tree.query(points)
         return np.einsum("ij,ij->i", points - skin[nearest], skin_normals[nearest]), nearest
 
+    def normals_of(points):
+        corners = points[faces]
+        face = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+        total = np.zeros_like(points)
+        for k in range(3):
+            np.add.at(total, faces[:, k], face)
+        return total / np.maximum(np.linalg.norm(total, axis=1, keepdims=True), 1e-12)
+
     rest = stocking[part].copy()
     rest_normals = welded_normals(stocking, triangles, weld).astype(np.float64)[part]
-    rest_tree = cKDTree(rest)
-    # How much each vertex is over a toe, where the membrane may draw in.
-    toe_of = np.argmin([distance_to_path(rest[:, [0, 2]], toe[:, [0, 2]]) for toe in toes], axis=0)
-    begins = np.array([toe[1, 2] for toe in toes])[toe_of] - FABRIC_TOE_ROOT
-    begins -= FABRIC_TOE_CREASE * smoothstep(-0.2, 0.3, -rest_normals[:, 1])
-    held = 1 - smoothstep(begins - FABRIC_TOE_FADE, begins, rest[:, 2])
+    # The membrane may draw in wherever the skin has a shape of its own: over the toes and where the foot
+    # goes over to them.
+    over = over_toes(rest, rest_normals, toes)
+    # The knit's own stretch around the foot presses it onto the top of the foot, like a slight vacuum under
+    # it, so it follows the skin down to the toes instead of spanning from the instep to their knuckles. Under
+    # the foot and around the toes it is left taut, and spans the hollows between the balls and the toes.
+    pressure = FABRIC_PRESSURE * smoothstep(0.2, 0.7, rest_normals[:, 1])
+    pressure *= 1 - (1 - FABRIC_PRESSURE_TOES) * smoothstep(0.5, 1, over)
+    # Tension is a move toward the neighbours' middle, which is weaker the finer the mesh is: the pressure that
+    # balances it goes by the square of the distance to them, so the sag does not depend on the mesh.
+    reach = np.zeros(len(rest))
+    np.add.at(reach, pairs[:, 0], np.linalg.norm(rest[pairs[:, 1]] - rest[pairs[:, 0]], axis=1))
+    pressure *= (reach / degree[:, 0] / 0.001) ** 2
+    print(f"fabric mesh around the toes: edges {np.percentile(reach / degree[:, 0], [5, 50, 95]).round(5)} m")
     position = stocking[part].copy()
     for _ in range(FABRIC_STEPS):
         total = np.zeros_like(position)
         np.add.at(total, pairs[:, 0], position[pairs[:, 1]])
-        position[free] += 0.5 * (total[free] / degree[free] - position[free])
-        _, at = rest_tree.query(position)
-        inside = np.einsum("ij,ij->i", position - rest[at], rest_normals[at])
-        drawn_in = free & (inside < 0)
-        position[drawn_in] -= (inside * held)[drawn_in, None] * rest_normals[at[drawn_in]]
+        # Tension acts across the membrane. Along it the knit keeps its lay: there each vertex only follows its
+        # neighbours' move from where they were, or the stitches would bunch up in the hollows.
+        along = normals_of(position)
+        pull = total / degree - position
+        np.add.at(total, pairs[:, 0], -rest[pairs[:, 1]])
+        drift = total / degree - (position - rest)
+        across = np.einsum("ij,ij->i", pull, along)[:, None] * along
+        slide = drift - np.einsum("ij,ij->i", drift, along)[:, None] * along
+        position[free] += 0.5 * (across + slide)[free]
+        position[free] -= (pressure[:, None] * along)[free]
         off, nearest = distance(position)
         sunk = free & (off < FABRIC_THICKNESS)
         position[sunk] += (FABRIC_THICKNESS - off[sunk])[:, None] * skin_normals[nearest[sunk]]
@@ -542,6 +771,26 @@ def main():
         }
     cage = cage * scale + shift
     toes = [toe * scale + shift for toe in toes]
+    # Where the clefts between the toes begin: everything done to the foot behind them stops short of there.
+    surface, surface_quads = cage, cage_quads
+    for _ in range(3):
+        surface, surface_quads = catmull_clark(surface, surface_quads)
+    clefts = cleft_line(surface, vertex_normals(surface, surface_quads))
+    print("clefts begin at z (mm) for x -40 to 50 mm:", np.interp(np.arange(-0.04, 0.051, 0.01), *clefts).round(3) * 1000)
+    # The foot behind the toes without its dents: the stocking's own shape there, and the skin's.
+    filled = stocking.copy()
+    stocking_normals = welded_normals(stocking, triangles, weld).astype(np.float64)
+    for sign in (1, -1):
+        filled[:, 1] -= sign * lumps(stocking, stocking_normals, clefts, sign)
+    filled = filled[weld]
+    for sign in (1, -1):
+        filled[:, 1] += sign * dents_across(filled, welded_normals(filled, triangles, weld).astype(np.float64), clefts, sign)
+    filled = filled[weld]
+    print(f"stocking: lumps taken out and dents across the foot filled, by up to {np.abs(filled - stocking).max() * 1000:.2f} mm")
+    stocking = filled
+    cage = smooth_foot(cage, cage_quads, clefts)
+    cage = fill_foot(cage, cage_quads, clefts)
+    cage = onto_stocking(cage, cage_quads, stocking, welded_normals(stocking, triangles, weld).astype(np.float64), clefts)
     print(f"MakeHuman leg placed at scale {scale:.5f} m/dm, shift {np.round(shift, 5)}")
 
     # The skin's surface, for the nails and the shade between the toes.
@@ -563,6 +812,9 @@ def main():
         print(f"stocking refitted over the toes: {int(changed.sum())} vertices, moved up to {moved.max() * 1000:.1f} mm")
         offsets = np.rint((fitted - positions.astype(np.float64)) / WRAP_UNIT)
         packed_gap = np.minimum(np.rint(off / (2 * WRAP_UNIT)), 4095).astype(np.int64)
+        # Behind the fit the stocking only moved where a dent was filled; its distance to the skin stays.
+        filled_only = ~changed & (np.linalg.norm(fitted - stocking32, axis=1) > WRAP_UNIT / 2)
+        wrap[filled_only, :3] = offsets[filled_only]
         wrap[changed, :3] = offsets[changed]
         wrap[changed, 3] = ((packed_gap[changed] << 4) | (wrap[changed, 3] & 15)).astype(np.uint16).view(np.int16)
         glb.replace(wrap_info["accessor"], wrap)

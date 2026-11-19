@@ -381,7 +381,7 @@ describe("computeFootLift", () => {
         expect(lowest).toBeCloseTo(floorY, 12);
       });
     }
-    expect(digestRounded(lifts, 9)).toMatchInlineSnapshot(`"9eb71148"`);
+    expect(digestRounded(lifts, 9)).toMatchInlineSnapshot(`"5dc92922"`);
   });
 });
 
@@ -395,7 +395,7 @@ describe("solveReachKnees", () => {
     expect(knee).toBeGreaterThan(0);
     const lift = (spec: LegPoseSpec): number => computeFootLift(rest.pos, foot, buildLegPose(spec), floorY);
     expect(lift(legs[0])).toBeCloseTo(lift(legs[1]), 5);
-    expect(Math.round(knee * 1e5) / 1e5).toMatchInlineSnapshot(`46.30644`);
+    expect(Math.round(knee * 1e5) / 1e5).toMatchInlineSnapshot(`46.28482`);
   });
 
   it("leaves the knee straight when the foot already reaches the floor", () => {

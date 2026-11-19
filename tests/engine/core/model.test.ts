@@ -10,6 +10,7 @@ import {
   shapeHeel,
   slimInstep,
 } from "../../../src/engine/model/anatomy";
+import { FOREFOOT_JOIN } from "../../../src/engine/model/forefoot";
 import { parseModelGlb } from "../../../src/engine/model/glb";
 import type { ModelData } from "../../../src/engine/model/glb";
 import { buildLegModel, loadLegModel } from "../../../src/engine/model/legModel";
@@ -103,7 +104,7 @@ describe("parseModelGlb", () => {
         "e7ecf9f5",
         "6f7a6d70",
         "0c6f6798",
-        "8f5f40d6",
+        "0757317e",
       ]
     `);
   });
@@ -633,10 +634,10 @@ describe("buildLegModel on the shipped model", () => {
       ],
     }).toMatchInlineSnapshot(`
       {
-        "circumference": "0653da83",
+        "circumference": "fffc42ed",
         "collision": [
-          "12f0b5f1",
-          "a5a95ad3",
+          "47a2f321",
+          "f1853cf7",
           "617bdd01",
           "1ed66ba3",
         ],
@@ -652,11 +653,11 @@ describe("buildLegModel on the shipped model", () => {
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "legTangent": "aee48363",
-          "normal": "ac9ed1c8",
-          "position": "3c0e55f9",
-          "skinFx": "9557b141",
-          "stretch": "9d9226c7",
+          "legTangent": "403b63f7",
+          "normal": "33bba35f",
+          "position": "44fca6a4",
+          "skinFx": "df3e36f7",
+          "stretch": "4b5490b1",
           "toeShade": "8ec92b05",
           "under": "477cb2c5",
           "uv": "736679e6",
@@ -732,3 +733,89 @@ describe("buildLegModel options and sources", () => {
 function jsonArrays(_key: string, value: unknown): unknown {
   return ArrayBuffer.isView(value) ? Array.from(value as Float32Array) : value;
 }
+
+describe("the bare foot's shape", () => {
+  /**
+   * The area (cm2) of the foot's top (side 1) or sole (side -1) that lies more than `depth` inside the foot's
+   * outline across it, between the given z: the bare foot as it is drawn (the stocking mesh behind the forefoot's
+   * join, the forefoot in front of it) is cut into slices across, and each slice's top (or sole) outline is
+   * compared with its convex hull. A foot that is rounded across has none; a dent that runs along it does.
+   */
+  function dentedArea(side: 1 | -1, zFrom: number, zTo: number, depth: number): number {
+    const cell = 0.0005;
+    const x0 = -0.07;
+    const columns = Math.round(0.14 / cell);
+    const rows = Math.round((zTo - zFrom) / cell);
+    const height = new Float32Array(rows * columns).fill(-Infinity);
+    const model = legModel();
+    const parts: [THREE.BufferGeometry, (z: number) => boolean][] = [
+      [model.stocking, (z) => z < FOREFOOT_JOIN.cut + cell],
+      [model.forefoot!, (z) => z >= FOREFOOT_JOIN.cut - cell],
+    ];
+    for (const [geometry, drawn] of parts) {
+      const positions = geometry.attributes.position.array;
+      const index = geometry.index!.array;
+      for (let t = 0; t < index.length; t += 3) {
+        const [a, b, c] = [0, 1, 2].map((k) => Array.from(positions.subarray(index[t + k] * 3, index[t + k] * 3 + 3)));
+        const z = (a[2] + b[2] + c[2]) / 3;
+        if (z < zFrom - 0.005 || z > zTo + 0.005 || !drawn(z) || Math.max(a[1], b[1], c[1]) > 0.12) {
+          continue;
+        }
+        // Facing up (or down): the y of the triangle's normal.
+        if (side * ((b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2])) <= 0) {
+          continue;
+        }
+        const size = Math.max(Math.hypot(b[0] - a[0], b[2] - a[2]), Math.hypot(c[0] - a[0], c[2] - a[2]));
+        const steps = Math.min(24, Math.ceil((size / cell) * 1.5) + 1);
+        for (let i = 0; i <= steps; i++) {
+          for (let j = 0; j <= steps - i; j++) {
+            const [u, v] = [i / steps, j / steps];
+            const at = [0, 1, 2].map((k) => a[k] * u + b[k] * v + c[k] * (1 - u - v));
+            const column = Math.floor((at[0] - x0) / cell);
+            const row = Math.floor((at[2] - zFrom) / cell);
+            if (column >= 0 && column < columns && row >= 0 && row < rows) {
+              height[row * columns + column] = Math.max(height[row * columns + column], side * at[1]);
+            }
+          }
+        }
+      }
+    }
+    let dented = 0;
+    for (let row = 0; row < rows; row++) {
+      const hull: number[] = [];
+      for (let column = 0; column < columns; column++) {
+        const y = height[row * columns + column];
+        if (y === -Infinity) {
+          continue;
+        }
+        while (hull.length >= 2) {
+          const [p, q] = [hull[hull.length - 2], hull[hull.length - 1]];
+          const [yp, yq] = [height[row * columns + p], height[row * columns + q]];
+          if ((q - p) * (y - yp) >= (yq - yp) * (column - p)) {
+            hull.pop();
+          } else {
+            break;
+          }
+        }
+        hull.push(column);
+      }
+      for (let k = 0; k + 1 < hull.length; k++) {
+        const [p, q] = [hull[k], hull[k + 1]];
+        const [yp, yq] = [height[row * columns + p], height[row * columns + q]];
+        for (let column = p + 1; column < q; column++) {
+          const y = height[row * columns + column];
+          if (y !== -Infinity && yp + ((yq - yp) * (column - p)) / (q - p) - y > depth) {
+            dented++;
+          }
+        }
+      }
+    }
+    return dented * cell * cell * 1e4;
+  }
+
+  it("has no dent running along the top of the foot or between its balls", () => {
+    // Before the dents were filled (tools/fit_toes.py) these were 6.8 and 7.7 cm2.
+    expect(dentedArea(1, 0.06, 0.122, 0.0003)).toBeLessThan(0.3);
+    expect(dentedArea(-1, 0.1, 0.118, 0.0003)).toBeLessThan(0.3);
+  });
+});
