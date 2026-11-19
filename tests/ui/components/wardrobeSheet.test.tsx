@@ -348,7 +348,6 @@ describe("WardrobeSheet pattern and fun panes", () => {
   });
 
   it("greys the back seam out on thick fabrics and latex, which have none", async () => {
-    const SEAM_HINT = "后中缝只有丝袜才有, 这种料子用不上。";
     const greyed = () =>
       chips("pattern")
         .filter((el) => (el as HTMLButtonElement).disabled)
@@ -356,13 +355,11 @@ describe("WardrobeSheet pattern and fun panes", () => {
     setWardrobe({ tab: "pattern", spec: spec({ pattern: "seam", material: "gloss" }) });
     render(<WardrobeSheet />);
     expect(greyed()).toEqual([]);
-    expect(screen.queryByText(SEAM_HINT)).toBeNull();
     for (const material of ["velvet", "cotton", "latex"] as const) {
       setWardrobe({ spec: spec({ pattern: "seam", material: material }) });
       expect(greyed()).toEqual(["seam"]);
       expect(chip("pattern", "seam")).toHaveClass("opacity-35");
       expect(selectedValues("pattern")).toEqual(["seam"]);
-      expect(screen.getByText(SEAM_HINT)).toBeInTheDocument();
     }
     await userEvent.click(chip("pattern", "seam"));
     expect(actions.wearChip).not.toHaveBeenCalled();

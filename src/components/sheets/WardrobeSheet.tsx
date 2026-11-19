@@ -200,7 +200,7 @@ export function WardrobeSheet() {
     pattern: (
       <>
         {chips("pattern", patternOptions, spec?.pattern)}
-        {bareHint || (seamless && <p className={paneHintClass}>{t("wardrobe.seamHint")}</p>)}
+        {bareHint}
       </>
     ),
     fun: (
