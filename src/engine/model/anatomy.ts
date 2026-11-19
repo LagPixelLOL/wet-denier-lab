@@ -78,6 +78,35 @@ export function inflateThigh(positions: Float32Array, axisProfile: ArrayLike<num
   return positions;
 }
 
+/**
+ * The top of the instep where it rises to the ankle: the model's is higher than a slender foot's, which makes
+ * the foot look thick from the side. `amount` (m) is how far it is taken down at (y, z), fading out over the
+ * radii (ry, rz) toward the shin, the toes and the sole; `dir` points into the foot there.
+ */
+const INSTEP = {
+  y: 0.088,
+  z: 0.068,
+  ry: 0.022,
+  rz: 0.03,
+  amount: 0.007,
+  dir: [-0.85, -0.53],
+};
+
+/** Lowers the top of the instep, in place. Returns `positions`. */
+export function slimInstep(positions: Float32Array): Float32Array {
+  for (let i = 0; i < positions.length; i += 3) {
+    const dy = (positions[i + 1] - INSTEP.y) / INSTEP.ry;
+    const dz = (positions[i + 2] - INSTEP.z) / INSTEP.rz;
+    const d2 = dy * dy + dz * dz;
+    if (d2 < 9) {
+      const amount = INSTEP.amount * Math.exp(-d2);
+      positions[i + 1] += INSTEP.dir[0] * amount;
+      positions[i + 2] += INSTEP.dir[1] * amount;
+    }
+  }
+  return positions;
+}
+
 /** Anisotropic Gaussian: center, radii, amplitude, facing direction and optional flattening exponent. */
 interface GaussianBlob {
   c: readonly number[];

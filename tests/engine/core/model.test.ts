@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyAnatomyBumps, computeLegAxisProfile, inflateThigh } from "../../../src/engine/model/anatomy";
+import { applyAnatomyBumps, computeLegAxisProfile, inflateThigh, slimInstep } from "../../../src/engine/model/anatomy";
 import { parseModelGlb } from "../../../src/engine/model/glb";
 import type { ModelData } from "../../../src/engine/model/glb";
 import { buildLegModel, loadLegModel } from "../../../src/engine/model/legModel";
@@ -237,6 +237,31 @@ describe("inflateThigh", () => {
     inflateThigh(positions, shifted);
     // The axis at y = 0.9 sits at x = 0.0895, so the point is on the inner side.
     expect(positions[0]).toBeCloseTo(0.0895 - 0.019 * (1 + 0.095 * 0.97), 6);
+  });
+});
+
+describe("slimInstep", () => {
+  it("takes the top of the instep down and into the foot, most where it rises to the ankle", () => {
+    const positions = Float32Array.of(0.01, 0.088, 0.068, -0.02, 0.08, 0.08, 0, 0.067, 0.1);
+    expect(slimInstep(positions)).toBe(positions);
+    // 7 mm at the center, along (0, -0.85, -0.53).
+    expect(positions[0]).toBe(Math.fround(0.01));
+    expect(positions[1]).toBeCloseTo(0.088 - 0.85 * 0.007, 6);
+    expect(positions[2]).toBeCloseTo(0.068 - 0.53 * 0.007, 6);
+    const lowered = [0.08 - positions[4], 0.067 - positions[7]];
+    expect(lowered[0]).toBeGreaterThan(0.004);
+    expect(lowered[0]).toBeLessThan(0.85 * 0.007);
+    expect(lowered[1]).toBeGreaterThan(0.0005);
+    expect(lowered[1]).toBeLessThan(lowered[0]);
+  });
+
+  it("leaves the shin, the toes, the sole and the heel where they are", () => {
+    const rest = [0, 0.2, 0.04, 0, 0.05, 0.16, 0, 0.002, 0.07, 0, 0.04, -0.05, 0.03, 0.5, 0.02];
+    const positions = Float32Array.from(rest);
+    slimInstep(positions);
+    for (let i = 0; i < rest.length; i++) {
+      expect(Math.abs(positions[i] - rest[i])).toBeLessThan(0.0001);
+    }
   });
 });
 
@@ -480,10 +505,10 @@ describe("buildLegModel on the shipped model", () => {
       ],
     }).toMatchInlineSnapshot(`
       {
-        "circumference": "8e50a5c5",
+        "circumference": "970aaf53",
         "collision": [
-          "331d3712",
-          "93e9af59",
+          "cc215239",
+          "391a3d9e",
           "617bdd01",
           "1ed66ba3",
         ],
@@ -498,11 +523,11 @@ describe("buildLegModel on the shipped model", () => {
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "legTangent": "a8a4df33",
-          "normal": "bf1ef33e",
-          "position": "cb70d0d5",
-          "skinFx": "465a72ca",
-          "stretch": "d320a494",
+          "legTangent": "8e42f585",
+          "normal": "502bc673",
+          "position": "17176a8d",
+          "skinFx": "5d0a4614",
+          "stretch": "35b96f23",
           "toeShade": "8ec92b05",
           "uv": "736679e6",
         },
