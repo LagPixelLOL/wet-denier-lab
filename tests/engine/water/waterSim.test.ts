@@ -271,7 +271,7 @@ describe("a splash on the leg", () => {
         water.beads.flatMap((b) => [b.x, b.y, b.z, b.r]),
         7,
       ),
-    ).toMatchInlineSnapshot(`"9829def3"`);
+    ).toMatchInlineSnapshot(`"aa174513"`);
     expect(digest(water.puddleBytes)).toMatchInlineSnapshot(`"8a7df191"`);
     expect(
       digestRounded(

@@ -244,10 +244,10 @@ describe("slimInstep", () => {
   it("takes the corner between the instep and the shin in, most at its middle", () => {
     const positions = Float32Array.of(0.01, 0.105, 0.054, -0.02, 0.092, 0.065, 0, 0.127, 0.045, 0, 0.077, 0.084);
     expect(slimInstep(positions)).toBe(positions);
-    // 7.5 mm at the middle, along (0, -0.62, -0.78).
+    // 6 mm at the middle, along (0, -0.62, -0.78).
     expect(positions[0]).toBe(Math.fround(0.01));
-    expect(positions[1]).toBeCloseTo(0.105 - 0.62 * 0.0075, 6);
-    expect(positions[2]).toBeCloseTo(0.054 - 0.78 * 0.0075, 6);
+    expect(positions[1]).toBeCloseTo(0.105 - 0.62 * 0.006, 6);
+    expect(positions[2]).toBeCloseTo(0.054 - 0.78 * 0.006, 6);
     const moved = [1, 2, 3].map((k) =>
       Math.hypot(
         positions[k * 3 + 1] - [0.092, 0.127, 0.077][k - 1],
@@ -255,9 +255,9 @@ describe("slimInstep", () => {
       ),
     );
     // Less down the instep and up the shin, and little by the middle of the foot.
-    expect(moved[0]).toBeGreaterThan(0.004);
-    expect(moved[0]).toBeLessThan(0.0075);
-    expect(moved[1]).toBeGreaterThan(0.002);
+    expect(moved[0]).toBeGreaterThan(0.003);
+    expect(moved[0]).toBeLessThan(0.006);
+    expect(moved[1]).toBeGreaterThan(0.0015);
     expect(moved[1]).toBeLessThan(moved[0]);
     expect(moved[2]).toBeGreaterThan(0.0003);
     expect(moved[2]).toBeLessThan(0.0015);
@@ -513,10 +513,10 @@ describe("buildLegModel on the shipped model", () => {
       ],
     }).toMatchInlineSnapshot(`
       {
-        "circumference": "d2fc0aef",
+        "circumference": "96f7c233",
         "collision": [
-          "5625ee45",
-          "4605d6ba",
+          "ce75ab12",
+          "f7c8d04d",
           "617bdd01",
           "1ed66ba3",
         ],
@@ -531,11 +531,11 @@ describe("buildLegModel on the shipped model", () => {
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "legTangent": "e4eabb11",
-          "normal": "08a4cf33",
-          "position": "7cf20df6",
-          "skinFx": "f14d710e",
-          "stretch": "c40be472",
+          "legTangent": "45fa1d40",
+          "normal": "ffac0576",
+          "position": "9dee999b",
+          "skinFx": "79303ced",
+          "stretch": "047c0983",
           "toeShade": "8ec92b05",
           "uv": "736679e6",
         },

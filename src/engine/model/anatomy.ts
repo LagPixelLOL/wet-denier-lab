@@ -89,7 +89,7 @@ const INSTEP = {
   y: 0.105,
   z: 0.054,
   radius: 0.028,
-  amount: 0.0075,
+  amount: 0.006,
   dir: [-0.62, -0.78],
 };
 

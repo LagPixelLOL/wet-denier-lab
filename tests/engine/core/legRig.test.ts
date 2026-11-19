@@ -160,7 +160,7 @@ describe("LegRig construction", () => {
       front: Math.round(rig.front * 1e6) / 1e6,
     }).toMatchInlineSnapshot(`
       {
-        "cast": "ec2667b3",
+        "cast": "46c0f944",
         "footprint": [
           -0.002492,
           0.102641,
@@ -168,8 +168,8 @@ describe("LegRig construction", () => {
           0.470608,
         ],
         "front": 0.307945,
-        "nrm": "92f852cb",
-        "pos": "6fe479af",
+        "nrm": "f1a3a771",
+        "pos": "89d19288",
       }
     `);
   });

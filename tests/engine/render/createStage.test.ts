@@ -664,7 +664,7 @@ describe("bakeShadow", () => {
     const [a, b] = stage.legs;
     expect(a.fabric.uCastShadowStrength.value).toBe(1);
     expect(b.fabric.uCastShadowStrength.value).toBe(1);
-    expect(digestRounded(a.fabric.uCastShadowMatrix.value.elements, 7)).toMatchInlineSnapshot(`"93e2247d"`);
+    expect(digestRounded(a.fabric.uCastShadowMatrix.value.elements, 7)).toMatchInlineSnapshot(`"d427deba"`);
   });
 
   it("weights each leg's received shadow by the other leg's opacity", () => {

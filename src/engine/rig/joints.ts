@@ -38,7 +38,7 @@ export const LEG_JOINTS: LegJoints = {
   knee: [0, 0.49, 0.015],
   kneeY: [0.415, 0.565],
   ankle: [0.005, 0.075, 0.005],
-  ankleY: [0.06, 0.125],
+  ankleY: [0.06, 0.115],
   ankleBackY: [0.05, 0.2],
   ankleBackZ: [-0.03, 0.02],
   ankleHoldY: 0.043,
