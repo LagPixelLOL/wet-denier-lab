@@ -414,7 +414,9 @@ void main() {
   float side = smoothstep(0.86, 0.97, sqrt(max(0.0, 1.0 - restNy * restNy))) * smoothstep(0.07, 0.14, height);
   vec3 hPerp = h - fiber * tdh;
   float hdn = max(dot(n, hPerp) / max(length(hPerp), 1e-4), 0.0);
-  float lobe = mix(mix(1.0, pow(hdn, 5.0), uHighlightFalloff), pow(hdn, 30.0) * 0.6, smoothstep(0.004, 0.05, vTangentShift));
+  // The long highlight along the fibers belongs to the leg, where they run straight. Where a pose bends them,
+  // and on the foot and around the ankle where they turn, it is kept to where the surface faces the light.
+  float lobe = mix(mix(1.0, pow(hdn, 5.0), uHighlightFalloff), pow(hdn, 30.0) * 0.6, max(smoothstep(0.004, 0.05, vTangentShift), 1.0 - smoothstep(0.10, 0.18, height)));
   float knitMod = mix(1.0, knit / uKnitMean, isNet ? 0.0 : uMatKnit.x);
   float sheenStripe = (smoothstep(0.42, 0.78, aniso) * 0.7 + aniso * 0.3) * side * lobe * knitMod;
   col += uKeyColor * sheenStripe * uStripe * uGloss * 0.85 * fabric * (1.0 - 0.35 * sheer);

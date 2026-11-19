@@ -1,10 +1,19 @@
 /**
- * "Up the leg" tangents and fabric stretch (circumference relative to a reference).
+ * Tangents along the leg and foot, and fabric stretch (circumference relative to a reference).
  */
 import * as THREE from "three";
 
-/** Adds a "legTangent" attribute pointing up the leg (or forward on near-horizontal faces). */
+/** The crook of the ankle (y, z), outside the leg: the fabric's wales turn around it from the leg onto the foot. */
+const ANKLE_CROOK = [0.13, 0.09];
+
+/**
+ * Adds a "legTangent" attribute: the direction the fabric's wales run in, on the surface. That is up the leg
+ * above the ankle and forward along the foot in front of it, turning from one to the other around the crook of
+ * the ankle. The direction depends on where a vertex is and not on which way it faces, so it only turns
+ * quickly at the tips of the toes, where the foot's direction meets the surface head on.
+ */
 export function computeLegTangents(geometry: THREE.BufferGeometry): void {
+  const positions = geometry.attributes.position.array;
   const normals = geometry.attributes.normal.array;
   const count = normals.length / 3;
   const tangents = new Float32Array(count * 3);
@@ -12,19 +21,23 @@ export function computeLegTangents(geometry: THREE.BufferGeometry): void {
     const nx = normals[i * 3];
     const ny = normals[i * 3 + 1];
     const nz = normals[i * 3 + 2];
-    const ux = -ny * nx;
-    const uy = 1 - ny * ny;
-    const uz = -ny * nz;
-    const upLen = Math.hypot(ux, uy, uz);
-    const fx = -nz * nx;
-    const fy = -nz * ny;
-    const fz = 1 - nz * nz;
-    const fwdLen = Math.hypot(fx, fy, fz) || 1;
-    const blend = THREE.MathUtils.smoothstep(upLen, 0.35, 0.75);
-    const tx = (fx / fwdLen) * (1 - blend) + (upLen > 0.000001 ? ux / upLen : 0) * blend;
-    const ty = (fy / fwdLen) * (1 - blend) + (upLen > 0.000001 ? uy / upLen : 0) * blend;
-    const tz = (fz / fwdLen) * (1 - blend) + (upLen > 0.000001 ? uz / upLen : 0) * blend;
-    const len = Math.hypot(tx, ty, tz) || 1;
+    const below = Math.min(positions[i * 3 + 1] - ANKLE_CROOK[0], 0);
+    const behind = Math.min(positions[i * 3 + 2] - ANKLE_CROOK[1], 0);
+    const turn = Math.hypot(below, behind);
+    const dy = below < 0 ? -behind / turn : 1;
+    const dz = below < 0 ? -below / turn : 0;
+    const along = dy * ny + dz * nz;
+    let tx = -along * nx;
+    let ty = dy - along * ny;
+    let tz = dz - along * nz;
+    let len = Math.hypot(tx, ty, tz);
+    if (len < 1e-4) {
+      // Head on: any direction on the surface will do. Take the other of the two (up for forward, and back).
+      tx = -(dz * ny - dy * nz) * nx;
+      ty = dz - (dz * ny - dy * nz) * ny;
+      tz = -dy - (dz * ny - dy * nz) * nz;
+      len = Math.hypot(tx, ty, tz) || 1;
+    }
     tangents[i * 3] = tx / len;
     tangents[i * 3 + 1] = ty / len;
     tangents[i * 3 + 2] = tz / len;

@@ -308,21 +308,36 @@ describe("applyAnatomyBumps", () => {
 });
 
 describe("computeLegTangents", () => {
-  it("points up the leg on vertical surfaces and forward on horizontal ones", () => {
-    const geometry = geometryWith([1, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1]);
+  const tangentsOf = (geometry: THREE.BufferGeometry) =>
+    [...geometry.attributes.legTangent.array].map((v) => Math.round(v * 1e6) / 1e6 + 0);
+
+  it("points up the leg above the ankle and forward along the foot, whichever way the surface faces", () => {
+    const leg = [0, 0.5, 0];
+    const foot = [0.01, 0.03, 0.15];
+    const geometry = geometryWith(
+      [1, 0, 0, 0, 0, 1, 0, 0, -1, 0, 1, 0, 0, -1, 0, 1, 0, 0],
+      [...leg, ...leg, ...leg, ...foot, ...foot, ...foot],
+    );
     computeLegTangents(geometry);
-    expect([...geometry.attributes.legTangent.array].map((v) => Math.round(v * 1e6) / 1e6 + 0)).toEqual([
-      0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0,
-    ]);
+    expect(tangentsOf(geometry)).toEqual([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1]);
   });
 
-  it("flips direction where the forward and up-the-leg tangents cancel on up-and-forward facing surfaces", () => {
-    // For n = (0, sqrt(1 - c^2), c) the two candidates are opposite and the blend crosses 0.5 at c = 0.55.
-    const normals = [0.549, 0.551].flatMap((c) => [0, Math.sqrt(1 - c * c), c]);
-    const geometry = geometryWith(normals);
+  it("turns from up to forward around the crook of the ankle", () => {
+    // As far below the crook (y 0.13) as behind it (z 0.09): halfway through the turn. Then nearer the leg,
+    // and nearer the foot.
+    const geometry = geometryWith([1, 0, 0, 1, 0, 0, 1, 0, 0], [0, 0.03, -0.01, 0, 0.1, -0.01, 0, 0.03, 0.06]);
     computeLegTangents(geometry);
-    const t = geometry.attributes.legTangent.array;
-    expect(t[1] * t[4] + t[2] * t[5]).toBeLessThan(-0.99);
+    const t = tangentsOf(geometry);
+    expect(t.slice(0, 3)).toEqual([0, 0.707107, 0.707107]);
+    expect(t[4]).toBeGreaterThan(0.95);
+    expect(t[8]).toBeGreaterThan(0.95);
+  });
+
+  it("takes another direction on the surface where the wales meet it head on", () => {
+    // The tip of a toe faces forward, and the top of the thigh faces up.
+    const geometry = geometryWith([0, 0, 1, 0, 1, 0], [0, 0.02, 0.2, 0, 0.88, 0]);
+    computeLegTangents(geometry);
+    expect(tangentsOf(geometry)).toEqual([0, 1, 0, 0, 0, -1]);
   });
 
   it("always yields unit tangents perpendicular to the normal", () => {
@@ -473,7 +488,7 @@ describe("buildLegModel on the shipped model", () => {
           "1ed66ba3",
         ],
         "skin": {
-          "legTangent": "e24426b5",
+          "legTangent": "712cc72e",
           "normal": "cf1f1e86",
           "position": "fc033ce3",
           "skinFx": "03a706c5",
@@ -483,7 +498,7 @@ describe("buildLegModel on the shipped model", () => {
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "legTangent": "90b5841e",
+          "legTangent": "1b7e7d11",
           "normal": "44898b0e",
           "position": "36a7837a",
           "skinFx": "9e1a2361",
