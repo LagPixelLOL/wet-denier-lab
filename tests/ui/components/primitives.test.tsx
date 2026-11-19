@@ -51,6 +51,19 @@ describe("ChipGroup", () => {
     expect(chips("g").filter(isChipDimmed)).toEqual([]);
   });
 
+  it("greys out a single disabled option and ignores clicks on it", async () => {
+    const onPick = vi.fn();
+    const options = OPTIONS.map((option) => (option.value === "b" ? { ...option, disabled: true } : option));
+    render(<ChipGroup group="g" options={options} selected="b" onPick={onPick} />);
+    const greyed = chips("g").filter((el) => (el as HTMLButtonElement).disabled);
+    expect(greyed.map((el) => el.dataset.v)).toEqual(["b"]);
+    expect(greyed[0]).toHaveClass("opacity-35");
+    await userEvent.click(greyed[0]);
+    expect(onPick).not.toHaveBeenCalled();
+    await userEvent.click(chips("g")[2]);
+    expect(onPick).toHaveBeenCalledExactlyOnceWith("c");
+  });
+
   it("renders swatch options with their color, title and accessible name", () => {
     render(
       <ChipGroup

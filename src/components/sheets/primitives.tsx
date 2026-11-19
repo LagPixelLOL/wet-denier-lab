@@ -7,6 +7,8 @@ export interface ChipOption {
   label: string;
   /** Renders the chip as a color swatch. */
   swatch?: { color: string; title: string };
+  /** Greys this chip out and ignores clicks on it (the choice does not apply right now). */
+  disabled?: boolean;
 }
 
 interface ChipGroupProps {
@@ -40,14 +42,15 @@ function chipClass(on: boolean, swatch: boolean, idle: boolean, disabled: boolea
 export function ChipGroup({ group, options, selected, onPick, swatches, idle, disabled, children }: ChipGroupProps) {
   return (
     <div className={swatches ? "flex flex-wrap gap-[9px]" : "flex flex-wrap gap-1.5"} data-key={group}>
-      {options.map(({ value, label, swatch }) => {
+      {options.map(({ value, label, swatch, disabled: chipDisabled }) => {
         const on = selected !== undefined && value === selected;
+        const off = !!disabled || !!chipDisabled;
         return (
           <button
             key={value}
             data-v={value}
-            className={chipClass(on, !!swatch, !!idle, !!disabled)}
-            disabled={disabled}
+            className={chipClass(on, !!swatch, !!idle, off)}
+            disabled={off}
             style={swatch ? ({ "--c": swatch.color } as CSSProperties) : undefined}
             aria-label={swatch?.title}
             title={swatch?.title}

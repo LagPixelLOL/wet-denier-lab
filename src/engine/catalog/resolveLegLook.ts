@@ -3,7 +3,15 @@
  */
 import { accentDyeFor, hexToRgb, resolveColor } from "./colors";
 import type { Rgb } from "./colors";
-import { BARE_SKIN_WATER, CUFF_STYLES, MATERIALS, PATTERNS, SECRET_DECALS, STOCKING_LENGTHS } from "./garments";
+import {
+  BARE_SKIN_WATER,
+  CUFF_STYLES,
+  MATERIALS,
+  PATTERNS,
+  SECRET_DECALS,
+  STOCKING_LENGTHS,
+  hasBackSeam,
+} from "./garments";
 import type { CatalogIdDef, CuffStyleDef, MaterialDef, MaterialWater, StockingLengthDef } from "./garments";
 import { withLegDefaults } from "./presets";
 import type { LegSpec } from "./presets";
@@ -53,7 +61,8 @@ export function resolveLegLook(input?: Partial<LegSpec>): LegLook {
   const isBare = !!lengthDef.bare;
   const cuffDef: CuffStyleDef = (!isBare && CUFF_STYLES[spec.cuff]) || CUFF_STYLES.plain;
   const materialDef: MaterialDef = MATERIALS[spec.material] || MATERIALS.sheer;
-  const patternDef: CatalogIdDef = PATTERNS[spec.pattern] || PATTERNS.none;
+  const patternDef: CatalogIdDef =
+    (!(spec.pattern === "seam" && !hasBackSeam(materialDef)) && PATTERNS[spec.pattern]) || PATTERNS.none;
   const colorDef = resolveColor(spec.color);
   const isTights = !!lengthDef.tights;
   const secretDef: CatalogIdDef = SECRET_DECALS[spec.secret] || SECRET_DECALS.none;

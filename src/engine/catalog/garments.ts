@@ -265,6 +265,9 @@ export type MaterialKey = keyof typeof MATERIALS;
 
 export const MATERIAL_ORDER: MaterialKey[] = ["sheer", "matte", "gloss", "pearl", "velvet", "cotton", "latex"];
 
+/** A back seam and its heel are a nylon stocking's: thick fabrics and latex are made without them. */
+export const hasBackSeam = (material: MaterialDef): boolean => material.minDenier === 0;
+
 /** Bare skin barely soaks anything up: water beads and runs off, and the film dries quickly. */
 export const BARE_SKIN_WATER: MaterialWater = {
   soak: 0.15,

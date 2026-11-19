@@ -347,6 +347,29 @@ describe("WardrobeSheet pattern and fun panes", () => {
     expect(actions.wearChip).toHaveBeenCalledExactlyOnceWith("pattern", "paws");
   });
 
+  it("greys the back seam out on thick fabrics and latex, which have none", async () => {
+    const SEAM_HINT = "后中缝只有丝袜才有, 这种料子用不上。";
+    const greyed = () =>
+      chips("pattern")
+        .filter((el) => (el as HTMLButtonElement).disabled)
+        .map((el) => el.dataset.v);
+    setWardrobe({ tab: "pattern", spec: spec({ pattern: "seam", material: "gloss" }) });
+    render(<WardrobeSheet />);
+    expect(greyed()).toEqual([]);
+    expect(screen.queryByText(SEAM_HINT)).toBeNull();
+    for (const material of ["velvet", "cotton", "latex"] as const) {
+      setWardrobe({ spec: spec({ pattern: "seam", material: material }) });
+      expect(greyed()).toEqual(["seam"]);
+      expect(chip("pattern", "seam")).toHaveClass("opacity-35");
+      expect(selectedValues("pattern")).toEqual(["seam"]);
+      expect(screen.getByText(SEAM_HINT)).toBeInTheDocument();
+    }
+    await userEvent.click(chip("pattern", "seam"));
+    expect(actions.wearChip).not.toHaveBeenCalled();
+    await userEvent.click(chip("pattern", "dots"));
+    expect(actions.wearChip).toHaveBeenCalledExactlyOnceWith("pattern", "dots");
+  });
+
   it("labels the secret decals and selects the current one", () => {
     setWardrobe({ tab: "fun", spec: spec({ secret: "stars" }) });
     render(<WardrobeSheet />);

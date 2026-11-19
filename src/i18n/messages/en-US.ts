@@ -91,6 +91,7 @@ export const enUS: Messages = {
   "wardrobe.poseHint": "Number keys 1 to 7 switch poses too.",
   "wardrobe.funHint": "Invisible when dry, revealed by water. Pick one, then splash the legs.",
   "wardrobe.bareHint": "Bare legs have no stockings, so these options don't apply.",
+  "wardrobe.seamHint": "Only nylon stockings have a back seam, so it is off for this fabric.",
   "wardrobe.customColor": "Custom color",
   "wardrobe.materialHint": "{label}: {hint}.",
   "wardrobe.materialHintOpaque": "{label}: {hint}. This fabric is opaque, so denier has no effect.",

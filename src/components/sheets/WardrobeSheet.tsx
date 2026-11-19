@@ -11,6 +11,7 @@ import {
   PATTERN_ORDER,
   SECRET_DECAL_ORDER,
   STOCKING_LENGTH_ORDER,
+  hasBackSeam,
 } from "../../engine/catalog/garments";
 import { PRESETS } from "../../engine/catalog/presets";
 import { POSE_ORDER } from "../../engine/rig/poses";
@@ -109,6 +110,11 @@ export function WardrobeSheet() {
     />
   );
   const bareHint = bare && <p className={paneHintClass}>{t("wardrobe.bareHint")}</p>;
+  // Only nylon stockings have a back seam.
+  const seamless = !!material && !hasBackSeam(material);
+  const patternOptions = options(PATTERN_CHOICES).map((option) =>
+    option.value === "seam" ? { ...option, disabled: seamless } : option,
+  );
   const panes: Record<WardrobeTab, ReactNode> = {
     pose: (
       <>
@@ -193,8 +199,8 @@ export function WardrobeSheet() {
     ),
     pattern: (
       <>
-        {chips("pattern", options(PATTERN_CHOICES), spec?.pattern)}
-        {bareHint}
+        {chips("pattern", patternOptions, spec?.pattern)}
+        {bareHint || (seamless && <p className={paneHintClass}>{t("wardrobe.seamHint")}</p>)}
       </>
     ),
     fun: (

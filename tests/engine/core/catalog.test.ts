@@ -381,6 +381,18 @@ describe("resolveLegLook", () => {
     expect(resolveLegLook({ length: "bare", toe: true }).toe).toBe(0);
   });
 
+  it("gives a back seam to nylon only", () => {
+    for (const material of ["sheer", "matte", "gloss", "pearl"] as const) {
+      expect(resolveLegLook({ pattern: "seam", material: material }).pattern).toBe(PATTERNS.seam.id);
+    }
+    for (const material of ["velvet", "cotton", "latex"] as const) {
+      const look = resolveLegLook({ pattern: "seam", material: material });
+      expect(look.pattern).toBe(PATTERNS.none.id);
+      expect(look.spec.pattern).toBe("seam");
+      expect(resolveLegLook({ pattern: "dots", material: material }).pattern).toBe(PATTERNS.dots.id);
+    }
+  });
+
   it("picks a secret decal color that contrasts with the dye", () => {
     expect(resolveLegLook({ color: "ivory" }).secretColor).toBe("#e8456e");
     expect(resolveLegLook({ color: "ink" }).secretColor).toBe("#ffd7e2");

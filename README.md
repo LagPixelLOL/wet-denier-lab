@@ -150,6 +150,9 @@ on the skin, which the leg shader draws as raised plates.
   nearest surface is drawn.
 - Hosiery has a reinforced toe by default: a denser knit over the toes, closed by a seam along their tips. The
   wardrobe's "Toe" row turns both off together; thick fabrics and fishnets never have them.
+- The back seam pattern comes with a pointed reinforced heel: the patch wraps the heel from the sole up to a point
+  on the Achilles tendon, and the seam runs down through it to its edge under the heel. Only nylon has them: on
+  velvet, cotton and latex the pattern is greyed out in the wardrobe and not drawn.
 - Picking and water follow the same switch: a bare leg collides with the forefoot's skin (a coarser build of it,
   `LegRig.setBare`), so beads sit on the toes and run between them, while a stocking keeps its own shape. The
   skin borrows the stocking's UVs for the wet map, with the stocking's UV seams carried over.

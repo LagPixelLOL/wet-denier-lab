@@ -91,6 +91,7 @@ export const zhCN = {
   "wardrobe.poseHint": "键盘数字键 1 到 7 也能换姿势。",
   "wardrobe.funHint": "平时看不出来, 泼上水才显出来。选好以后往腿上泼水试试。",
   "wardrobe.bareHint": "光腿没穿袜子, 这些选项用不上。",
+  "wardrobe.seamHint": "后中缝只有丝袜才有, 这种料子用不上。",
   "wardrobe.customColor": "自选颜色",
   "wardrobe.materialHint": "{label}: {hint}。",
   "wardrobe.materialHintOpaque": "{label}: {hint}。这种料子不透, 厚度不起作用。",
