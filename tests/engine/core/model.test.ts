@@ -302,36 +302,80 @@ describe("shapeHeel", () => {
     expect(shapeHeel(positions)).toBe(positions);
     return rest.map((v, i) => positions[i] - v);
   };
+  /** Runs with the heel's growth and lift only, without the rounding of its back. */
+  const withoutRounding = <T>(run: () => T): T => {
+    const round = HEEL.round;
+    HEEL.round = [];
+    try {
+      return run();
+    } finally {
+      HEEL.round = round;
+    }
+  };
   const [cx, cy, cz] = HEEL.center;
 
   it("grows the heel backward and to both sides, most at the height of its middle", () => {
-    const back = moved([cx, cy, cz - 0.034]);
-    expect(back[0]).toBeCloseTo(0, 8);
-    expect(back[1]).toBeCloseTo(0, 4);
-    expect(back[2]).toBeCloseTo(-0.034 * HEEL.grow[1], 6);
-    const sides = moved([cx + 0.035, cy, cz, cx - 0.035, cy, cz]);
-    expect(sides[0]).toBeCloseTo(0.035 * HEEL.grow[0], 6);
-    expect(sides[3]).toBeCloseTo(-0.035 * HEEL.grow[0], 6);
-    // More in length than in width.
-    expect(HEEL.grow[1]).toBeGreaterThan(HEEL.grow[0]);
-    expect(sides[2]).toBeCloseTo(0, 8);
-    // Less toward the Achilles tendon above it.
-    const above = moved([cx, cy + 0.04, cz - 0.03]);
-    expect(-above[2]).toBeGreaterThan(0.0003);
-    expect(-above[2]).toBeLessThan(-back[2] * 0.4);
+    withoutRounding(() => {
+      const back = moved([cx, cy, cz - 0.034]);
+      expect(back[0]).toBeCloseTo(0, 8);
+      expect(back[1]).toBeCloseTo(0, 4);
+      expect(back[2]).toBeCloseTo(-0.034 * HEEL.grow[1], 6);
+      const sides = moved([cx + 0.035, cy, cz, cx - 0.035, cy, cz]);
+      expect(sides[0]).toBeCloseTo(0.035 * HEEL.grow[0], 6);
+      expect(sides[3]).toBeCloseTo(-0.035 * HEEL.grow[0], 6);
+      expect(sides[2]).toBeCloseTo(0, 8);
+      // More in length than in width.
+      expect(HEEL.grow[1]).toBeGreaterThan(HEEL.grow[0]);
+      // Less toward the Achilles tendon above it.
+      const above = moved([cx, cy + 0.04, cz - 0.03]);
+      expect(-above[2]).toBeGreaterThan(0.0003);
+      expect(-above[2]).toBeLessThan(-back[2] * 0.4);
+    });
   });
 
   it("rounds the heel underneath: the skin on the floor rises around the middle, which stays down", () => {
-    const [, middle] = moved([cx, 0.002, cz]);
-    expect(middle).toBeCloseTo(0, 8);
-    const [, rim] = moved([cx, 0.002, cz - HEEL.rim]);
-    expect(rim).toBeGreaterThan(HEEL.lift * 0.9);
-    expect(rim).toBeLessThan(HEEL.lift);
-    const [, halfway] = moved([cx + HEEL.rim / 2, 0.002, cz]);
-    expect(halfway).toBeGreaterThan(rim * 0.2);
-    expect(halfway).toBeLessThan(rim * 0.3);
-    // Only the skin near the floor is lifted.
-    expect(moved([cx, 0.04, cz - HEEL.rim])[1]).toBeLessThan(0.0001);
+    withoutRounding(() => {
+      const [, middle] = moved([cx, 0.002, cz]);
+      expect(middle).toBeCloseTo(0, 8);
+      const [, rim] = moved([cx, 0.002, cz - HEEL.rim]);
+      expect(rim).toBeGreaterThan(HEEL.lift * 0.9);
+      expect(rim).toBeLessThan(HEEL.lift);
+      const [, halfway] = moved([cx + HEEL.rim / 2, 0.002, cz]);
+      expect(halfway).toBeGreaterThan(rim * 0.2);
+      expect(halfway).toBeLessThan(rim * 0.3);
+      // Only the skin near the floor is lifted.
+      expect(moved([cx, 0.04, cz - HEEL.rim])[1]).toBeLessThan(0.0001);
+    });
+  });
+
+  it("rounds the back of the heel a little: in under the tendon, out at the corner above the sole", () => {
+    const [shoulder, corner] = HEEL.round;
+    const rounding = HEEL.round.map((dent) => {
+      const rest = [cx, dent.y, dent.z];
+      const grown = withoutRounding(() => moved(rest));
+      const full = moved(rest);
+      // The dent is measured from where the heel's growth put the vertex.
+      const y = rest[1] + grown[1];
+      const z = rest[2] + grown[2];
+      let dy = 0;
+      let dz = 0;
+      for (const other of HEEL.round) {
+        const reach = Math.exp(-(((y - other.y) / other.radius) ** 2 + ((z - other.z) / other.radius) ** 2));
+        dy += other.dir[0] * other.amount * reach;
+        dz += other.dir[1] * other.amount * reach;
+      }
+      expect(full[1] - grown[1]).toBeCloseTo(dy, 6);
+      expect(full[2] - grown[2]).toBeCloseTo(dz, 6);
+      expect(dent.amount).toBeGreaterThan(0.0005);
+      expect(dent.amount).toBeLessThan(0.002);
+      return [full[1] - grown[1], full[2] - grown[2]];
+    });
+    // The shoulder goes forward, into the leg; the corner goes back and a little down.
+    expect(shoulder.dir[1]).toBeGreaterThan(0);
+    expect(rounding[0][1]).toBeGreaterThan(0.0005);
+    expect(corner.dir[1]).toBeLessThan(0);
+    expect(rounding[1][1]).toBeLessThan(-0.0005);
+    expect(rounding[1][0]).toBeLessThan(0);
   });
 
   it("leaves the rest of the foot and the leg where they are", () => {
@@ -339,7 +383,7 @@ describe("shapeHeel", () => {
       expect(Math.abs(offset)).toBeLessThan(0.00005);
     }
     // Along the foot the change fades out, from the heel to the arch.
-    const fading = [-0.02, 0, 0.02, 0.034].map((z) => moved([cx + 0.03, cy, z])[0]);
+    const fading = withoutRounding(() => [-0.02, 0, 0.02, 0.034].map((z) => moved([cx + 0.03, cy, z])[0]));
     expect(fading[0]).toBeCloseTo(0.03 * HEEL.grow[0], 6);
     expect(fading[1]).toBeLessThan(fading[0]);
     expect(fading[2]).toBeLessThan(fading[1]);
@@ -589,8 +633,8 @@ describe("buildLegModel on the shipped model", () => {
       {
         "circumference": "0653da83",
         "collision": [
-          "070bceed",
-          "77aaa757",
+          "1a056408",
+          "bd9dc45b",
           "617bdd01",
           "1ed66ba3",
         ],
@@ -605,11 +649,11 @@ describe("buildLegModel on the shipped model", () => {
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "legTangent": "709f9cbf",
-          "normal": "0c3e2188",
-          "position": "18c6a985",
-          "skinFx": "b4a189bd",
-          "stretch": "9438b2f3",
+          "legTangent": "1077294f",
+          "normal": "27df1e3a",
+          "position": "10b7badc",
+          "skinFx": "686c4940",
+          "stretch": "9d9226c7",
           "toeShade": "8ec92b05",
           "uv": "736679e6",
         },

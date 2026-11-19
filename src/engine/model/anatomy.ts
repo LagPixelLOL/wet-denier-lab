@@ -92,12 +92,21 @@ export const INSTEP = [
   { y: 0.076, z: 0.086, radius: 0.026, amount: 0.0015, dir: [-0.88, -0.47] },
 ];
 
-/** Takes the instep in (see INSTEP), in place. Returns `positions`. */
-export function slimInstep(positions: Float32Array): Float32Array {
+/** A place in the leg's side view where the surface moves by `amount` along `dir`, fading out over `radius`. */
+interface SideDent {
+  y: number;
+  z: number;
+  radius: number;
+  amount: number;
+  dir: readonly number[];
+}
+
+/** Moves every vertex by the dents it lies in (each measured from where the vertex was). */
+function applySideDents(positions: Float32Array, dents: readonly SideDent[]): void {
   for (let i = 0; i < positions.length; i += 3) {
     const y = positions[i + 1];
     const z = positions[i + 2];
-    for (const dent of INSTEP) {
+    for (const dent of dents) {
       const dy = (y - dent.y) / dent.radius;
       const dz = (z - dent.z) / dent.radius;
       const d2 = dy * dy + dz * dz;
@@ -108,6 +117,11 @@ export function slimInstep(positions: Float32Array): Float32Array {
       }
     }
   }
+}
+
+/** Takes the instep in (see INSTEP), in place. Returns `positions`. */
+export function slimInstep(positions: Float32Array): Float32Array {
+  applySideDents(positions, INSTEP);
   return positions;
 }
 
@@ -118,6 +132,8 @@ export function slimInstep(positions: Float32Array): Float32Array {
  * to `fade[1]` along the foot.
  * Underneath, the skin up to about `sole` above the floor is lifted around the middle of the heel: by `lift` at
  * `rim` from that middle, growing with the square of the distance. The lowest point stays on the floor.
+ * `round` then shapes the back of the heel into more of a ball, seen from the side: it takes in the shoulder
+ * where the heel runs up into the Achilles tendon, and fills out the corner between its back and the sole.
  */
 export const HEEL = {
   center: [0.004, 0.028, -0.022],
@@ -127,6 +143,10 @@ export const HEEL = {
   sole: 0.012,
   lift: 0.003,
   rim: 0.034,
+  round: [
+    { y: 0.055, z: -0.053, radius: 0.014, amount: 0.0012, dir: [-0.34, 0.94] },
+    { y: 0.009, z: -0.048, radius: 0.014, amount: 0.0012, dir: [-0.45, -0.89] },
+  ],
 };
 
 /** Shapes the heel (see HEEL), in place. Returns `positions`. */
@@ -148,6 +168,7 @@ export function shapeHeel(positions: Float32Array): Float32Array {
     positions[i + 1] += HEEL.lift * out * along * Math.exp(-((y / HEEL.sole) ** 2));
     positions[i + 2] += Math.min(dz, 0) * grow * HEEL.grow[1];
   }
+  applySideDents(positions, HEEL.round);
   return positions;
 }
 
