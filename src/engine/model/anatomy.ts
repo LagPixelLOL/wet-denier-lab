@@ -79,24 +79,25 @@ export function inflateThigh(positions: Float32Array, axisProfile: ArrayLike<num
 }
 
 /**
- * The top of the instep where it rises to the ankle: the model's is higher than a slender foot's, which makes
- * the foot look thick from the side. `amount` (m) is how far it is taken down at (y, z), fading out over the
- * radii (ry, rz) toward the shin, the toes and the sole; `dir` points into the foot there.
+ * Where the instep turns up into the shin. The model rounds that corner with a wide curve, which starts far
+ * down the foot and stands the top of the instep high above a slender foot's, so the foot looks thick from the
+ * side. Taking the surface in by `amount` (m) at the middle of the corner (y, z), fading out over `radius` up
+ * the shin, down the instep and into the foot, leaves the instep straight until close to the ankle and turns
+ * it into the shin over a shorter curve. `dir` (y, z) points into the leg at the corner.
  */
 const INSTEP = {
-  y: 0.088,
-  z: 0.068,
-  ry: 0.022,
-  rz: 0.03,
-  amount: 0.007,
-  dir: [-0.85, -0.53],
+  y: 0.105,
+  z: 0.054,
+  radius: 0.028,
+  amount: 0.0075,
+  dir: [-0.62, -0.78],
 };
 
-/** Lowers the top of the instep, in place. Returns `positions`. */
+/** Tightens the corner between the instep and the shin, in place. Returns `positions`. */
 export function slimInstep(positions: Float32Array): Float32Array {
   for (let i = 0; i < positions.length; i += 3) {
-    const dy = (positions[i + 1] - INSTEP.y) / INSTEP.ry;
-    const dz = (positions[i + 2] - INSTEP.z) / INSTEP.rz;
+    const dy = (positions[i + 1] - INSTEP.y) / INSTEP.radius;
+    const dz = (positions[i + 2] - INSTEP.z) / INSTEP.radius;
     const d2 = dy * dy + dz * dz;
     if (d2 < 9) {
       const amount = INSTEP.amount * Math.exp(-d2);

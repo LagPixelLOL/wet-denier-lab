@@ -241,18 +241,26 @@ describe("inflateThigh", () => {
 });
 
 describe("slimInstep", () => {
-  it("takes the top of the instep down and into the foot, most where it rises to the ankle", () => {
-    const positions = Float32Array.of(0.01, 0.088, 0.068, -0.02, 0.08, 0.08, 0, 0.067, 0.1);
+  it("takes the corner between the instep and the shin in, most at its middle", () => {
+    const positions = Float32Array.of(0.01, 0.105, 0.054, -0.02, 0.092, 0.065, 0, 0.127, 0.045, 0, 0.077, 0.084);
     expect(slimInstep(positions)).toBe(positions);
-    // 7 mm at the center, along (0, -0.85, -0.53).
+    // 7.5 mm at the middle, along (0, -0.62, -0.78).
     expect(positions[0]).toBe(Math.fround(0.01));
-    expect(positions[1]).toBeCloseTo(0.088 - 0.85 * 0.007, 6);
-    expect(positions[2]).toBeCloseTo(0.068 - 0.53 * 0.007, 6);
-    const lowered = [0.08 - positions[4], 0.067 - positions[7]];
-    expect(lowered[0]).toBeGreaterThan(0.004);
-    expect(lowered[0]).toBeLessThan(0.85 * 0.007);
-    expect(lowered[1]).toBeGreaterThan(0.0005);
-    expect(lowered[1]).toBeLessThan(lowered[0]);
+    expect(positions[1]).toBeCloseTo(0.105 - 0.62 * 0.0075, 6);
+    expect(positions[2]).toBeCloseTo(0.054 - 0.78 * 0.0075, 6);
+    const moved = [1, 2, 3].map((k) =>
+      Math.hypot(
+        positions[k * 3 + 1] - [0.092, 0.127, 0.077][k - 1],
+        positions[k * 3 + 2] - [0.065, 0.045, 0.084][k - 1],
+      ),
+    );
+    // Less down the instep and up the shin, and little by the middle of the foot.
+    expect(moved[0]).toBeGreaterThan(0.004);
+    expect(moved[0]).toBeLessThan(0.0075);
+    expect(moved[1]).toBeGreaterThan(0.002);
+    expect(moved[1]).toBeLessThan(moved[0]);
+    expect(moved[2]).toBeGreaterThan(0.0003);
+    expect(moved[2]).toBeLessThan(0.0015);
   });
 
   it("leaves the shin, the toes, the sole and the heel where they are", () => {
@@ -505,10 +513,10 @@ describe("buildLegModel on the shipped model", () => {
       ],
     }).toMatchInlineSnapshot(`
       {
-        "circumference": "970aaf53",
+        "circumference": "d2fc0aef",
         "collision": [
-          "cc215239",
-          "391a3d9e",
+          "5625ee45",
+          "4605d6ba",
           "617bdd01",
           "1ed66ba3",
         ],
@@ -523,11 +531,11 @@ describe("buildLegModel on the shipped model", () => {
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "legTangent": "8e42f585",
-          "normal": "502bc673",
-          "position": "17176a8d",
-          "skinFx": "5d0a4614",
-          "stretch": "35b96f23",
+          "legTangent": "e4eabb11",
+          "normal": "08a4cf33",
+          "position": "7cf20df6",
+          "skinFx": "f14d710e",
+          "stretch": "c40be472",
           "toeShade": "8ec92b05",
           "uv": "736679e6",
         },
