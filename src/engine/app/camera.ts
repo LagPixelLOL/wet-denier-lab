@@ -6,22 +6,23 @@ import { app, type PickHit } from "./runtime";
 import type { CameraView } from "../share/lookCodec";
 import { layout } from "./layout";
 
+/** The view the page opens on, and the one the reset button goes back to. */
 export const homeView = {
   yaw: 0.62,
   pitch: 0.1,
-  dist: 1.95,
+  dist: 2.45,
   target: new THREE.Vector3(0, 0.43, 0.035),
 };
 
 export const orbit = {
   yaw: homeView.yaw,
   pitch: homeView.pitch,
-  dist: homeView.dist + 0.5,
+  dist: homeView.dist,
   target: homeView.target.clone(),
   cur: {
     yaw: homeView.yaw + 0.5,
     pitch: 0.18,
-    dist: homeView.dist + 0.9,
+    dist: homeView.dist + 0.4,
     target: homeView.target.clone(),
   },
 };

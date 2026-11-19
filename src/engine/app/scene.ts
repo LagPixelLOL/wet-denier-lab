@@ -97,9 +97,8 @@ export function syncFootprint() {
   const fp = app.rig.footprint;
   app.water.setFootprint(fp.x, fp.z, fp.w, fp.d);
   app.water.setLegCount(app.rig.solo ? 1 : 2);
-  const homeDist = app.rig.solo ? 1.95 : 2;
-  const offset = orbit.dist - homeView.dist;
-  if (Math.abs(offset) < 0.02 || Math.abs(offset - 0.5) < 0.02) {
+  const homeDist = app.rig.solo ? 2.45 : 2.5;
+  if (Math.abs(orbit.dist - homeView.dist) < 0.02) {
     orbit.dist += homeDist - homeView.dist;
   }
   homeView.dist = homeDist;

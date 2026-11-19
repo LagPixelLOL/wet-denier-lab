@@ -1,12 +1,12 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { actions } from "../../../src/engine/app/actions";
-import { homeView, orbit } from "../../../src/engine/app/camera";
+import { currentView, homeView, orbit, orbitBy, panBy } from "../../../src/engine/app/camera";
 import { hideHint } from "../../../src/engine/app/hud";
 import { currentLook } from "../../../src/engine/app/outfit";
 import { app } from "../../../src/engine/app/runtime";
 import { outfit, state } from "../../../src/engine/app/state";
 import { PRESETS, withLegDefaults } from "../../../src/engine/catalog/presets";
-import { lookUrl } from "../../../src/engine/share/lookCodec";
+import { lookUrl, type CameraView } from "../../../src/engine/share/lookCodec";
 import { ui } from "../../../src/state/ui";
 import { bootApp, type Harness } from "../../helpers/appHarness";
 import { seedRandom } from "../../helpers/random";
@@ -17,6 +17,7 @@ vi.mock("three", async (importOriginal) => ({
 }));
 
 let h: Harness;
+let openedOn: CameraView;
 
 const presetLegs = (index: number) => {
   const preset = PRESETS[index];
@@ -34,6 +35,7 @@ function setClipboard(writeText: ((text: string) => Promise<void>) | null) {
 
 beforeAll(async () => {
   h = await bootApp();
+  openedOn = currentView();
   settle();
 });
 
@@ -78,6 +80,18 @@ describe("simple actions", () => {
     expect(orbit.dist).toBeCloseTo(homeView.dist * 1.25, 12);
     actions.resetView();
     expect(orbit.dist).toBe(homeView.dist);
+  });
+
+  it("resets to the view the page opened on", () => {
+    expect(openedOn.dist).toBe(homeView.dist);
+    actions.zoomIn();
+    orbitBy(120, -40);
+    panBy(30, 50);
+    expect(currentView()).not.toEqual(openedOn);
+    actions.resetView();
+    expect(currentView()).toEqual(openedOn);
+    settle();
+    expect(orbit.cur.dist).toBeCloseTo(openedOn.dist, 4);
   });
 
   it("throws a bucket and dries off", () => {

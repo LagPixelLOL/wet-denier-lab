@@ -338,9 +338,9 @@ describe("pointer input in water mode", () => {
     pointer("pointermove", { x: 640, y: 380, button: 1 });
     expect(orbit.target.toArray().map((v) => +v.toFixed(5))).toMatchInlineSnapshot(`
       [
-        -0.04206,
-        0.40334,
-        0.06831,
+        -0.05258,
+        0.39667,
+        0.07664,
       ]
     `);
     pointer("pointermove", { x: 20000, y: -20000, button: 1 });
@@ -374,7 +374,7 @@ describe("pointer input in water mode", () => {
     // Spread from 200 to 400 px halves the distance; the midpoint moved 100 px right.
     expect(orbit.dist).toBeCloseTo(dist / 2, 12);
     expect(app.pinch).toMatchObject({ mx: a.x + 200, my: a.y });
-    pointer("pointermove", { id: 1, x: a.x - 2000, y: a.y });
+    pointer("pointermove", { id: 1, x: a.x - 4000, y: a.y });
     expect(orbit.dist).toBe(0.2);
     // Fingers together zoom out (to the limit).
     pointer("pointermove", { id: 1, x: a.x + 399, y: a.y });
