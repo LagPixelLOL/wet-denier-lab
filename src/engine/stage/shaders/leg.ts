@@ -232,14 +232,26 @@ void main() {
   ${forefootClipGlsl("vRestPos")}
   vec3 n = normalize(vNormal);
   if (!gl_FrontFacing) n = -n;
-  // A toenail is a plate standing a little above the skin: tilt the normal over its rim.
-  vec2 nailAt = toeNailCoord(vRestPos);
-  float nailR = pow(dot(pow(abs(nailAt), vec2(3.0)), vec2(1.0)), 1.0 / 3.0);
+  // Toenails sit on top of the toes. Where the forefoot's skin is drawn under the fabric, it carries them, not
+  // the fabric. The lookup is skipped away from the toes; screen-space derivatives stay outside the branches,
+  // where they are defined for every pixel.
+  bool nearNails = (uClip < -0.5 || uOverlay < 0.5) && vRestPos.z > 0.15 && vRestPos.y < 0.05 && vRestNormal.y > 0.2;
+  vec2 nailAt = vec2(9.0);
+  float nailR = 9.0;
+  if (nearNails) {
+    nailAt = toeNailCoord(vRestPos);
+    nailR = pow(dot(pow(abs(nailAt), vec2(3.0)), vec2(1.0)), 1.0 / 3.0);
+  }
+  // A nail is a plate standing a little above the skin: tilt the normal over its rim.
   float nailHeight = 0.0005 * (1.0 - smoothstep(0.78, 1.0, nailR));
+  float nailEdge = fwidth(nailR) * 0.75;
   vec3 dpdx = dFdx(vWorldPos), dpdy = dFdy(vWorldPos);
-  vec3 r1 = cross(dpdy, n), r2 = cross(n, dpdx);
-  float det = dot(dpdx, r1);
-  n = normalize(abs(det) * n - sign(det) * (dFdx(nailHeight) * r1 + dFdy(nailHeight) * r2));
+  vec2 nailSlope = vec2(dFdx(nailHeight), dFdy(nailHeight));
+  if (nailR < 1.1) {
+    vec3 r1 = cross(dpdy, n), r2 = cross(n, dpdx);
+    float det = dot(dpdx, r1);
+    n = normalize(abs(det) * n - sign(det) * (nailSlope.x * r1 + nailSlope.y * r2));
+  }
   vec3 v = normalize(cameraPosition - vWorldPos);
   float ndv = clamp(dot(n, v), 0.0, 1.0);
   float ndl = dot(n, uKeyDir);
@@ -266,22 +278,31 @@ void main() {
   float contact = sole * (1.0 - smoothstep(0.0035, 0.0115, height));
   skinTint *= mix(vec3(1.0), vec3(1.0, 0.82, 0.80), contact) * mix(vec3(1.0), vec3(1.05, 1.03, 0.99), sole - contact);
   // Veins show faintly through the skin, where it is bare or behind fabric sheer enough to tell.
-  if (uIsSkin > 0.5 || uCuffY < 0.0 || uUnder > 0.5 || uDenier < 30.0) skinTint *= mix(vec3(1.0), vec3(0.90, 0.95, 0.985), skinVeins(vRestPos, normalize(vRestNormal)) * 0.8);
+  if (uIsSkin > 0.5 || height > uCuffY || uUnder > 0.5 || uDenier < 30.0) skinTint *= mix(vec3(1.0), vec3(0.90, 0.95, 0.985), skinVeins(vRestPos, normalize(vRestNormal)) * 0.8);
   // The sides of the toes sink into the shade between them.
   float betweenToes = vBetweenToes;
   bareSkin *= skinTint * mix(vec3(1.0), vec3(0.80, 0.62, 0.62), betweenToes);
   underSkin *= skinTint;
-  float nailNear = step(nailR, 1.5);
-  vec4 nail = vec4(1.0 - aaStep(1.0, nailR), aaStep(0.8, nailR) * smoothstep(0.1, 0.5, nailAt.y), 0.0, smoothstep(0.7, 1.0, nailR)) * nailNear;
-  nail.z = (1.0 - aaStep(1.13, nailR)) * mix(1.0, 0.55, smoothstep(0.2, 0.7, nailAt.y)) * nailNear;
-  vec3 nailGloss = vec3(0.3) * nail.x * smoothstep(0.45, 0.75, pow(max(dot(n, normalize(uKeyDir + v)), 0.0), 18.0));
-  bareSkin = withNail(bareSkin, hemi * mix(0.86, 1.06, skinLit), nail) + nailGloss;
-  underSkin = withNail(underSkin, hemi * mix(0.86, 1.06, underLit), nail) + nailGloss;
+  if (nailR < 1.5) {
+    vec4 nail = vec4(1.0 - smoothstep(1.0 - nailEdge, 1.0 + nailEdge, nailR), smoothstep(0.8 - nailEdge, 0.8 + nailEdge, nailR) * smoothstep(0.1, 0.5, nailAt.y), 0.0, smoothstep(0.7, 1.0, nailR));
+    nail.z = (1.0 - smoothstep(1.13 - nailEdge, 1.13 + nailEdge, nailR)) * mix(1.0, 0.55, smoothstep(0.2, 0.7, nailAt.y));
+    vec3 nailGloss = vec3(0.3) * nail.x * smoothstep(0.45, 0.75, pow(max(dot(n, normalize(uKeyDir + v)), 0.0), 18.0));
+    bareSkin = withNail(bareSkin, hemi * mix(0.86, 1.06, skinLit), nail) + nailGloss;
+    underSkin = withNail(underSkin, hemi * mix(0.86, 1.06, underLit), nail) + nailGloss;
+  }
   vec3 wet = vUv.x >= 0.0 ? texture2D(uWetMap, vec2(vUv.x * uWetMapSlot.x + uWetMapSlot.y, vUv.y)).rgb : vec3(0.0);
   float soak = wet.r;
   float wetness = smoothstep(0.075, 0.15, soak) * clamp(0.5 + soak * 0.7, 0.0, 1.0);
   float film = smoothstep(0.04, 0.35, wet.g);
   float fresh = wet.b;
+  if (uUnder > 0.5) {
+    // Skin under a stocking: only what the fabric's own pass lets show through, tinted by the dye.
+    vec3 underDye = mix(uDye, uWetDye.rgb, uWetDye.a * wetness);
+    vec3 underTint = mix(mix(vec3(1.0), underDye / max(max(underDye.r, underDye.g), max(underDye.b, 0.02)), uThrough), vec3(1.0), wetness * 0.6);
+    vec3 seen = underSkin * mix(vec3(1.0), vec3(0.97, 0.86, 0.86), wetness) * mix(vec3(1.0), vec3(0.50, 0.42, 0.48), betweenToes * 0.85);
+    gl_FragColor = vec4(seen * underTint, uOpacity * exp(-max(vWorldPos.y * uMirrorFlipY, 0.0) * uMirrorFalloff));
+    return;
+  }
   float cuffDy = height - uCuffY;
   float fabric = 1.0 - uIsSkin;
   float cuffDen = -1.0, cut = 0.0;
@@ -352,7 +373,7 @@ void main() {
   throughTint = mix(throughTint, vec3(1.0), wetness * 0.6);
   // Over the forefoot the skin is a surface of its own under the fabric (drawn first, with uUnder), and shows
   // through the fabric itself: "through" is how much of what lies behind this fragment stays visible.
-  float overlay = uOverlay * (1.0 - uUnder) * smoothstep(0.114, 0.128, vRestPos.z) * (1.0 - smoothstep(0.075, 0.09, height));
+  float overlay = uOverlay * smoothstep(0.114, 0.128, vRestPos.z) * (1.0 - smoothstep(0.075, 0.09, height));
   float through = sheer * overlay * fabric;
   vec3 stockCol = fabCol * (1.0 - sheer) + seenSkin * throughTint * sheer * (1.0 - overlay);
   vec3 col = mix(bareSkin * mix(vec3(1.0), vec3(0.94, 0.88, 0.88), wetness), stockCol, fabric);
@@ -419,7 +440,6 @@ void main() {
   }
   float fade = smoothstep(uFadeStart, uFadeEnd, vFadeHeight);
   if (!gl_FrontFacing && height > 0.3) fade = max(fade, mix(0.92, 1.0, smoothstep(uFadeStart - 0.10, uFadeStart, vFadeHeight)));
-  if (uUnder > 0.5) col = seenSkin * throughTint;
   float alpha = (1.0 - fade) * uOpacity * exp(-max(vWorldPos.y * uMirrorFlipY, 0.0) * uMirrorFalloff);
   gl_FragColor = vec4(col / max(1.0 - through, 0.001), alpha * (1.0 - through));
 }

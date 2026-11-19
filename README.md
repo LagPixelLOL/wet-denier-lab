@@ -237,16 +237,19 @@ npm run render:check -- --size 1920x1080 --hash '#look=1~...'
 ```
 
 Options: `--url` (render an existing page instead), `--no-build`, `--hash`, `--size WxH`, `--dpr`, `--locale <tag>` (the browser language, default `en-US`),
-`--click <selector>` (repeatable, clicked in order once the page is ready), `--settle <ms>`, `--angle vulkan|gl-egl|swiftshader` (default `vulkan`), `--out <file.png>` and
+`--click <selector>` (repeatable, clicked in order once the page is ready), `--settle <ms>`, `--perf`, `--dev`, `--angle vulkan|gl-egl|swiftshader` (default `vulkan`), `--out <file.png>` and
 `--allow-software`. It needs a machine with a GPU. Without one, it fails unless you pass `--allow-software`, and
 software rendering is slow (about 9 s to boot and 2-3 fps).
 
 Frame rates are capped by vsync unless you pass `--perf`. That turns the cap off and also reports `gpuMs`: how long
-the GPU takes to finish each frame, measured by reading a pixel back right after the app has drawn. To compare
-shader changes, use a large canvas and run the same look before and after:
+the GPU takes to finish each frame, measured by reading a pixel back right after the app has drawn. On a fast GPU
+a frame at the app's normal resolution costs too little to compare this way, so to see what a shader change costs,
+add `--dev`: it serves the development build, in which `--dpr` sets the render scale directly (past the app's pixel
+budget), and reports `benchMs`, the time per frame when rendering frames back to back at that scale. Run the same
+look before and after:
 
 ```sh
-npm run render:check -- --perf --size 2560x1440 --dpr 2 --settle 3000 --hash '#look=1~...'
+npm run render:check -- --dev --perf --size 2560x1440 --dpr 3 --hash '#look=1~...'
 ```
 
 ## Credits

@@ -15,7 +15,11 @@
  *   --settle <ms>       time to keep rendering after the page is ready (default 2000)
  *   --angle <backend>   ANGLE backend: vulkan, gl-egl or swiftshader (default vulkan)
  *   --perf              uncap the frame rate (no vsync) and also report gpuMs, the time the GPU needs to finish
- *                       each frame; use a large --size and --dpr so that shader cost dominates
+ *                       each frame
+ *   --dev               serve the app with Vite's dev server instead of the built one. The development build lets
+ *                       --dpr set the render scale directly, past the app's pixel budget, and with --perf adds
+ *                       benchMs to the report: the time per frame when rendering frames back to back at that
+ *                       scale, which is what to compare when a shader changes (use e.g. --dpr 5)
  *   --out <file.png>    screenshot path (default render-check/render.png); the report goes next to it
  *   --allow-software    do not fail when the renderer is a software one
  */
@@ -24,7 +28,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { chromium, type Page } from "playwright";
-import { build, preview, type PreviewServer } from "vite";
+import { build, createServer, preview, type PreviewServer, type ViteDevServer } from "vite";
 
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render/i;
 
@@ -47,6 +51,7 @@ const { values: opts } = parseArgs({
     settle: { type: "string", default: "2000" },
     angle: { type: "string", default: "vulkan" },
     perf: { type: "boolean", default: false },
+    dev: { type: "boolean", default: false },
     out: { type: "string", default: "render-check/render.png" },
     "allow-software": { type: "boolean", default: false },
   },
@@ -183,13 +188,42 @@ function imageStats(page: Page, png: Buffer) {
   );
 }
 
-let server: PreviewServer | undefined;
+/**
+ * Renders `frames` frames back to back with the development build's __advance hook, waits for the GPU to finish
+ * them and returns the time per frame (ms). With the render scale pushed up, this is dominated by shader cost.
+ */
+function benchFrames(page: Page, frames: number) {
+  return page.evaluate((frames) => {
+    const advance = (window as { __advance?: (seconds: number, fps: number) => void }).__advance;
+    const gl = document.querySelector<HTMLCanvasElement>("#view")?.getContext("webgl2");
+    if (!advance || !gl) return null;
+    const pixel = new Uint8Array(4);
+    const run = (count: number) => {
+      const start = performance.now();
+      advance(count / 60, 60);
+      const bound = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, bound);
+      return (performance.now() - start) / count;
+    };
+    run(10);
+    return [run(frames), run(frames), run(frames)].sort((a, b) => a - b)[1];
+  }, frames);
+}
+
+let server: PreviewServer | ViteDevServer | undefined;
 let url = opts.url;
 if (!url) {
-  if (opts.build) await build({ logLevel: "warn" });
-  server = await preview({ logLevel: "warn", preview: { host: "127.0.0.1", port: 4173, open: false } });
+  if (opts.dev) {
+    server = await createServer({ logLevel: "warn", server: { host: "127.0.0.1", port: 4173, open: false } });
+    await server.listen();
+  } else {
+    if (opts.build) await build({ logLevel: "warn" });
+    server = await preview({ logLevel: "warn", preview: { host: "127.0.0.1", port: 4173, open: false } });
+  }
   url = server.resolvedUrls?.local[0];
-  if (!url) throw new Error("vite preview did not report a URL");
+  if (!url) throw new Error("vite did not report a URL");
 }
 url += opts.hash;
 
@@ -211,9 +245,13 @@ try {
   const cdp = await browser.newBrowserCDPSession();
   const page = await browser.newPage({
     viewport: { width, height },
-    deviceScaleFactor: Number(opts.dpr),
+    deviceScaleFactor: opts.dev ? 1 : Number(opts.dpr),
     locale: opts.locale,
   });
+  if (opts.dev) {
+    // The development build takes its render scale from this global, ignoring the pixel budget.
+    await page.addInitScript((dpr) => Object.assign(window, { __YUSI_DPR__: dpr }), Number(opts.dpr));
+  }
   page.on("console", (msg) => msg.type() === "error" && consoleErrors.push(msg.text()));
   page.on("pageerror", (err) => consoleErrors.push(String(err)));
 
@@ -236,6 +274,7 @@ try {
     measureFrames(page, settleMs, opts.perf),
     new Promise((resolve) => setTimeout(() => resolve(sampleNvidia()), settleMs / 2)),
   ]);
+  const benchMs = opts.perf && opts.dev ? await benchFrames(page, 40) : null;
   const webgl = await readWebGLInfo(page);
   const bootError = await page.evaluate(() => {
     const loading = document.getElementById("loading");
@@ -260,6 +299,7 @@ try {
     readyMs,
     uncapped: opts.perf,
     ...frameStats(frameTimes),
+    ...(benchMs === null ? {} : { benchMs: Math.round(benchMs * 1000) / 1000 }),
     webgl,
     hardware,
     gpuDevices: info.gpu.devices.map((d) => `${d.vendorString} ${d.deviceString}`.trim()),
