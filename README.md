@@ -146,7 +146,9 @@ on the skin, which the leg shader draws as raised plates.
   a stocking. `tools/fit_toes.py` first smooths the foot between the ankle and the toes, in the stocking's own
   shape and in the MakeHuman skin: it takes out lumps of up to a centimeter and fills the dents that ran along
   the top of the foot and between the balls (each slice across the foot is filled out to its convex outline),
-  which read as grooves on a smoothly shaded foot. All of that stops short of the clefts between the toes,
+  which read as grooves on a smoothly shaded foot. It also takes the small ridges out of the sole's edge and
+  fills the dip in the inner side of the foot behind the ball of the big toe. All of that stops short of the
+  clefts between the toes,
   which the tool finds on the skin, and fades out slowly on the way there, so nothing bulges behind them. The
   skin's top lies just inside the stocking at the join (the stocking was made for a slightly fuller foot) and
   leaves it gradually toward the clefts. A test measures what is left of the dents on the built model.

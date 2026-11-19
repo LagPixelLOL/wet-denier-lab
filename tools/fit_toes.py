@@ -437,9 +437,21 @@ FILL_BLUR = 0.0015
 # Lumps are taken out of the same parts of the foot (see lumps): those up to about twice SMOOTH_BLUR across.
 SMOOTH_BLUR = 0.004
 SMOOTH_TOES_AT = {1: (-0.016, -0.004), -1: (-0.024, -0.012)}
-# The skin's top lies just inside the stocking at the join (see onto_stocking) and has left it this far before
-# the clefts.
-ONTO_TOES = -0.006
+# The sole and the foot's sides are smoothed (see smooth_sole) in front of SOLE_Z and below SOLE_Y, fading in
+# over those bands.
+SOLE_Z = (0.065, 0.080)
+SOLE_Y = (0.035, 0.050)
+SOLE_BLUR = 0.005
+SOLE_ROUNDS = 3
+# Dents in the foot's sides are filled (see side_dents) in front of SIDE_Z, fading in over that band, and up to
+# SIDE_TOES before the clefts, which leaves the ball of the big toe as it is.
+SIDE_Z = (0.085, 0.100)
+SIDE_TOES = (-0.012, -0.002)
+SIDE_BLUR = 0.008
+SIDE_ROUNDS = 3
+# The skin lies just inside the stocking at the join (see onto_stocking) and has left it this far before the
+# clefts: on top, and under the foot and on its sides.
+ONTO_TOES = (-0.006, -0.018)
 # A cleft between two toes begins where the skin lies CLEFT_DEPTH under a line laid across CLEFT_WIDTH of the
 # foot's top, in front of CLEFT_FROM; the toes' roots up to CLEFT_BESIDE to its sides count as being at it.
 CLEFT_DEPTH = 0.002
@@ -471,7 +483,7 @@ def foot_height(points, normals, sign):
     return xs, zs, height, facing
 
 
-def cleft_line(points, normals):
+def cleft_line(points, normals, toes):
     """
     Where the clefts between the toes begin, as z per x (two arrays): seen from above, the first place along
     the foot where the skin lies CLEFT_DEPTH under a line laid across its neighbourhood (a closing of the top's
@@ -484,7 +496,9 @@ def cleft_line(points, normals):
     depth = np.where(have, grey_closing(low, size=(1, int(CLEFT_WIDTH / 0.001) | 1)) - low, 0)
     depth[zs < CLEFT_FROM] = 0
     begins = np.array([zs[column.argmax()] if column.any() else np.nan for column in (depth > CLEFT_DEPTH).T])
-    found = np.isfinite(begins)
+    # Only between the big toe and the little one: beyond them a notch in the foot's outline is no cleft.
+    between = (xs >= min(toe[1, 0] for toe in toes)) & (xs <= max(toe[1, 0] for toe in toes))
+    found = np.isfinite(begins) & between
     begins = np.interp(xs, xs[found], begins[found])
     begins = minimum_filter1d(begins, int(CLEFT_BESIDE / 0.001) | 1, mode="nearest")
     return xs, gaussian_filter(begins, CLEFT_BESIDE / 0.002, mode="nearest")
@@ -548,6 +562,80 @@ def dents_across(points, normals, clefts, sign):
     return np.maximum(at, 0) * facing * before_toes(points, clefts, FILL_Z[sign], FILL_TOES[sign])
 
 
+def smooth_sole(stocking, triangles, weld, clefts):
+    """
+    The stocking with the small ridges and grooves taken out of the sole and the foot's sides, from behind the
+    balls to the clefts: along the inner edge of the sole a ridge with a groove beside it read as a dent.
+    Each vertex is compared, along its normal, with the surface around it blurred twice over (2 G - G G at
+    SOLE_BLUR, which leaves the arch and the balls as they are) and moved onto it.
+    """
+    points = stocking.copy()
+    canonical = np.unique(weld)
+    part = canonical[(points[canonical, 2] > 0.04) & (points[canonical, 2] < 0.19) & (points[canonical, 1] < 0.08)]
+    for _ in range(SOLE_ROUNDS):
+        normals = welded_normals(points, triangles, weld).astype(np.float64)[part]
+        at = points[part]
+        near = cKDTree(at).query_ball_point(at, 3 * SOLE_BLUR)
+
+        def blur(field):
+            out = np.empty_like(field)
+            for i, others in enumerate(near):
+                others = np.array(others)
+                others = others[normals[others] @ normals[i] > 0.5]
+                share = np.exp(-((at[others] - at[i]) ** 2).sum(axis=1) / (2 * SOLE_BLUR**2))
+                out[i] = share @ field[others] / share.sum()
+            return out
+
+        once = blur(at)
+        lump = np.einsum("ij,ij->i", at - (2 * once - blur(once)), normals)
+        amount = before_toes(at, clefts, SOLE_Z, SMOOTH_TOES_AT[-1])
+        amount = amount * (1 - smoothstep(0.0, 0.4, normals[:, 1])) * (1 - smoothstep(*SOLE_Y, at[:, 1]))
+        points[part] = at - (lump * amount)[:, None] * normals
+        points = points[weld]
+    return points
+
+
+def side_dents(points, normals, clefts):
+    """
+    How deep each point of the foot's sides lies in a dent, behind the balls: along its normal, under the
+    surface around it blurred twice over (2 G - G G at SIDE_BLUR, so dents of up to a few centimeters count
+    and the foot's own roundness does not). Behind the ball of the big toe the inner side of the foot dipped.
+    Returns the depth per point (m, 0 or more).
+    """
+    part = np.where((points[:, 2] > 0.06) & (points[:, 2] < 0.18) & (points[:, 1] < 0.075))[0]
+    at, facing = points[part], normals[part]
+    near = cKDTree(at).query_ball_point(at, 3 * SIDE_BLUR)
+
+    def blur(field):
+        out = np.empty_like(field)
+        for i, others in enumerate(near):
+            others = np.array(others)
+            others = others[facing[others] @ facing[i] > 0.5]
+            share = np.exp(-((at[others] - at[i]) ** 2).sum(axis=1) / (2 * SIDE_BLUR**2))
+            out[i] = share @ field[others] / share.sum()
+        return out
+
+    once = blur(at)
+    lump = np.einsum("ij,ij->i", at - (2 * once - blur(once)), facing)
+    amount = before_toes(at, clefts, SIDE_Z, SIDE_TOES) * (1 - smoothstep(*SOLE_Y, at[:, 1]))
+    amount = amount * smoothstep(0.3, 0.55, np.abs(facing[:, 0])) * (1 - smoothstep(0.3, 0.7, facing[:, 1]))
+    depth = np.zeros(len(points))
+    depth[part] = np.maximum(-lump, 0) * amount
+    return depth
+
+
+def fill_sides(cage, cage_quads, clefts):
+    """The skin's cage with the dents in the foot's sides filled (see side_dents), measured on its surface."""
+    # The cage is coarse, so each round moves it a little further than the surface is short.
+    for _ in range(SIDE_ROUNDS * 3):
+        surface, quads = cage, cage_quads
+        for _ in range(2):
+            surface, quads = catmull_clark(surface, quads)
+        normals = vertex_normals(surface, quads)
+        cage = cage + 1.4 * (side_dents(surface, normals, clefts)[:, None] * normals)[: len(cage)]
+    return cage
+
+
 def fill_foot(cage, cage_quads, clefts):
     """
     The skin's cage with its lumps taken out (see lumps) and the dents across the foot filled (see
@@ -587,11 +675,11 @@ def smooth_foot(cage, cage_quads, clefts):
 
 def onto_stocking(cage, cage_quads, stocking, stocking_normals, clefts):
     """
-    The skin's cage with the top of the foot laid just inside the stocking at the join, leaving it gradually
-    on the way to the clefts between the toes. The stocking was made for a slightly fuller foot than the
-    MakeHuman one, so the skin stepped down in front of the join, where the app lays it onto the stocking. The
-    toes keep their own shape (the fabric is fitted to them instead), and so does the sole, which matched the
-    stocking's already.
+    The skin's cage laid just inside the stocking at the join, leaving it gradually on the way to the clefts
+    between the toes (sooner under the foot, where the balls keep their own shape). The stocking was made for
+    a slightly fuller foot than the MakeHuman one and is smoothed behind the toes, so the skin stepped where
+    the app lays it onto the stocking, in front of the join. The toes keep their own shape (the fabric is
+    fitted to them instead).
     It is the skin's surface that is laid there, not the cage: each round moves the cage's vertices by what
     their points of the subdivided surface are still short of, evened out over their neighbours so that the
     skin stays as smooth as it was.
@@ -610,10 +698,12 @@ def onto_stocking(cage, cage_quads, stocking, stocking_normals, clefts):
         apart, nearest = tree.query(points)
         normals = stocking_normals[nearest]
         outside = np.einsum("ij,ij->i", points - stocking[nearest], normals)
-        leaves = np.interp(start[:, 0], *clefts) + ONTO_TOES
+        # On top the skin has left the stocking by ONTO_TOES[0] before the clefts, under the foot and on its
+        # sides by ONTO_TOES[1], before the balls.
+        on_top = smoothstep(-0.1, 0.5, normals[:, 1])
+        leaves = np.interp(start[:, 0], *clefts) + ONTO_TOES[1] + (ONTO_TOES[0] - ONTO_TOES[1]) * on_top
         follow = 1 - smoothstep(FABRIC_Z[0], np.maximum(leaves, FABRIC_Z[1]), start[:, 2])
         follow = follow * (apart < 0.008) * (start[:, 1] < FABRIC_Y[1])
-        follow = follow * smoothstep(-0.1, 0.5, normals[:, 1])
         move = -((outside + FABRIC_THICKNESS) * follow)[:, None] * normals
         for _ in range(2):
             total = np.zeros_like(move)
@@ -775,8 +865,8 @@ def main():
     surface, surface_quads = cage, cage_quads
     for _ in range(3):
         surface, surface_quads = catmull_clark(surface, surface_quads)
-    clefts = cleft_line(surface, vertex_normals(surface, surface_quads))
-    print("clefts begin at z (mm) for x -40 to 50 mm:", np.interp(np.arange(-0.04, 0.051, 0.01), *clefts).round(3) * 1000)
+    clefts = cleft_line(surface, vertex_normals(surface, surface_quads), toes)
+    print("clefts begin at z (mm) for x -50 to 50 mm:", np.interp(np.arange(-0.05, 0.051, 0.01), *clefts).round(3) * 1000)
     # The foot behind the toes without its dents: the stocking's own shape there, and the skin's.
     filled = stocking.copy()
     stocking_normals = welded_normals(stocking, triangles, weld).astype(np.float64)
@@ -787,9 +877,16 @@ def main():
         filled[:, 1] += sign * dents_across(filled, welded_normals(filled, triangles, weld).astype(np.float64), clefts, sign)
     filled = filled[weld]
     print(f"stocking: lumps taken out and dents across the foot filled, by up to {np.abs(filled - stocking).max() * 1000:.2f} mm")
-    stocking = filled
+    stocking = smooth_sole(filled, triangles, weld, clefts)
+    print(f"stocking: sole smoothed, by up to {np.abs(stocking - filled).max() * 1000:.2f} mm")
+    canonical = np.unique(weld)
+    for _ in range(SIDE_ROUNDS):
+        normals = welded_normals(stocking, triangles, weld).astype(np.float64)
+        stocking[canonical] += (side_dents(stocking[canonical], normals[canonical], clefts)[:, None] * normals[canonical])
+        stocking = stocking[weld]
     cage = smooth_foot(cage, cage_quads, clefts)
     cage = fill_foot(cage, cage_quads, clefts)
+    cage = fill_sides(cage, cage_quads, clefts)
     cage = onto_stocking(cage, cage_quads, stocking, welded_normals(stocking, triangles, weld).astype(np.float64), clefts)
     print(f"MakeHuman leg placed at scale {scale:.5f} m/dm, shift {np.round(shift, 5)}")
 

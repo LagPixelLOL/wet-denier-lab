@@ -104,7 +104,7 @@ describe("parseModelGlb", () => {
         "e7ecf9f5",
         "6f7a6d70",
         "0c6f6798",
-        "0757317e",
+        "40ecd7e8",
       ]
     `);
   });
@@ -634,10 +634,10 @@ describe("buildLegModel on the shipped model", () => {
       ],
     }).toMatchInlineSnapshot(`
       {
-        "circumference": "fffc42ed",
+        "circumference": "c5c65bcc",
         "collision": [
-          "47a2f321",
-          "f1853cf7",
+          "bfc3edce",
+          "7f7ee637",
           "617bdd01",
           "1ed66ba3",
         ],
@@ -653,11 +653,11 @@ describe("buildLegModel on the shipped model", () => {
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "legTangent": "403b63f7",
-          "normal": "33bba35f",
-          "position": "44fca6a4",
-          "skinFx": "df3e36f7",
-          "stretch": "4b5490b1",
+          "legTangent": "60c6ce56",
+          "normal": "6264fcb2",
+          "position": "5b82ce65",
+          "skinFx": "ed05a851",
+          "stretch": "781a45c0",
           "toeShade": "8ec92b05",
           "under": "477cb2c5",
           "uv": "736679e6",
