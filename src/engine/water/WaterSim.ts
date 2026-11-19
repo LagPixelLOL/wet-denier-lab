@@ -151,6 +151,9 @@ const GRAVITY = 9.81;
 
 const BEAD_PIN_RADIUS = 0.0021;
 
+/** How far from a bead its surface may have moved for the bead to move with it (m, plus the bead's radius). */
+const BEAD_RESEAT_REACH = 0.003;
+
 const PUDDLE_RES = 96;
 
 const PUDDLE_SIZE = 0.8;
@@ -503,6 +506,39 @@ export class WaterSim {
     area.w = width;
     area.d = depth;
     area.rate = Math.sqrt((width * depth) / 0.09);
+  }
+  /**
+   * Puts a leg's beads back on its surface after the surface changed shape under them (a stocking came off the
+   * toes, or went on). A bead still within reach of the surface moves onto it. One left in the air, like a
+   * bead that sat on the fabric over the gap between two toes, falls; one left under the new surface soaks
+   * into it.
+   */
+  reseat(leg: number): void {
+    const beads = this.beads;
+    for (let i = beads.length - 1; i >= 0; i--) {
+      const bead = beads[i];
+      if (bead.leg !== leg) {
+        continue;
+      }
+      const near = this.surface.closest(bead.x, bead.y, bead.z, BEAD_RESEAT_REACH + bead.r);
+      if (near && near.leg === leg) {
+        bead.x = bead.lx = near.x;
+        bead.y = bead.ly = near.y;
+        bead.z = bead.lz = near.z;
+        bead.nx = near.nx;
+        bead.ny = near.ny;
+        bead.nz = near.nz;
+        continue;
+      }
+      const cover = this.surface.closest(bead.x, bead.y, bead.z, 0.025);
+      if (cover && cover.leg === leg && cover.side < 0) {
+        this.wetmap.stamp(cover.x, cover.y, cover.z, bead.r * 1.6, 0.3, 0.2, 0.1, 0.4);
+      } else {
+        this._drip(bead);
+      }
+      beads[i] = beads[beads.length - 1];
+      beads.pop();
+    }
   }
   shakeOff(): void {
     for (const bead of this.beads) {

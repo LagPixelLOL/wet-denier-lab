@@ -11,7 +11,12 @@
  *   --size <w>x<h>      viewport size in CSS pixels (default 1280x800)
  *   --dpr <n>           device pixel ratio (default 1)
  *   --locale <tag>      browser language, which picks the UI language (default en-US)
- *   --click <selector>  click this element once the page is ready (repeatable, in order)
+ *   --click <selector>  click this element once the page is ready (repeatable, in order); "wait:<ms>" in place
+ *                       of a selector pauses that long before the next click
+ *   --pour <x>,<y>      press and hold the pointer at this point of the viewport (CSS pixels) once the page is
+ *                       ready, which pours water there; it stays down while settling and for the screenshot
+ *   --release <ms>      with --pour: let the pointer go after settling and keep rendering this long before
+ *                       the screenshot
  *   --settle <ms>       time to keep rendering after the page is ready (default 2000)
  *   --angle <backend>   ANGLE backend: vulkan, gl-egl or swiftshader (default vulkan)
  *   --perf              uncap the frame rate (no vsync) and also report gpuMs, the time the GPU needs to finish
@@ -48,6 +53,8 @@ const { values: opts } = parseArgs({
     dpr: { type: "string", default: "1" },
     locale: { type: "string", default: "en-US" },
     click: { type: "string", multiple: true, default: [] },
+    pour: { type: "string" },
+    release: { type: "string" },
     settle: { type: "string", default: "2000" },
     angle: { type: "string", default: "vulkan" },
     perf: { type: "boolean", default: false },
@@ -267,13 +274,27 @@ try {
   );
   const readyMs = Math.round(performance.now() - started);
   for (const selector of opts.click) {
-    await page.click(selector, { timeout: 5000 });
+    if (selector.startsWith("wait:")) {
+      await page.waitForTimeout(Number(selector.slice(5)));
+    } else {
+      await page.click(selector, { timeout: 5000 });
+    }
+  }
+  const pourAt = opts.pour?.split(",").map(Number);
+  if (pourAt) {
+    await page.mouse.move(pourAt[0], pourAt[1]);
+    await page.mouse.down();
   }
   const settleMs = Number(opts.settle);
   const [frameTimes, gpuDuring] = await Promise.all([
     measureFrames(page, settleMs, opts.perf),
     new Promise((resolve) => setTimeout(() => resolve(sampleNvidia()), settleMs / 2)),
   ]);
+  if (pourAt && opts.release !== undefined) {
+    await page.mouse.up();
+    await page.mouse.move(pourAt[0] + 40, pourAt[1] + 10, { steps: 8 });
+    await page.waitForTimeout(Number(opts.release));
+  }
   const benchMs = opts.perf && opts.dev ? await benchFrames(page, 40) : null;
   const webgl = await readWebGLInfo(page);
   const bootError = await page.evaluate(() => {

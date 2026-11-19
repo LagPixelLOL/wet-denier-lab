@@ -5,7 +5,7 @@ import { SCENES } from "../../../src/engine/stage/scenes";
 import type { SurfaceHit } from "../../../src/engine/surface/SurfaceGrid";
 import type { Bead, FreeDrop, ThrownDrop, WaterSim } from "../../../src/engine/water/WaterSim";
 import { digest, digestRounded } from "../../helpers/digest";
-import { toeGap } from "../../helpers/model";
+import { legModel, toeGap } from "../../helpers/model";
 import { seedRandom } from "../../helpers/random";
 import { waterWorld } from "../../helpers/waterWorld";
 import type { WaterWorld } from "../../helpers/waterWorld";
@@ -549,6 +549,77 @@ describe("free drops", () => {
     expect(other.floor).toBe(0);
     expect(other.beads.map((b) => b.leg)).toEqual([1]);
     expect(other.beads[0].y).toBeCloseTo(covered.beads[0].y, 4);
+  });
+
+  it("are put back on the surface when a stocking comes off the toes or goes on", () => {
+    const world = waterWorld();
+    const { water, rig, wetmap } = world;
+    const { x, z } = toeGap();
+    const bead = (hit: { x: number; y: number; z: number; nx: number; ny: number; nz: number }, r = 0.0012): Bead => {
+      const b: Bead = {
+        ...{ x: hit.x, y: hit.y, z: hit.z, nx: hit.nx, ny: hit.ny, nz: hit.nz },
+        ...{ leg: 0, vx: 0, vy: 0, vz: 0, r, age: 1, lx: hit.x, ly: hit.y, lz: hit.z, wob: 0, soakT: 0 },
+      };
+      water.beads.push(b);
+      return b;
+    };
+    const down = (restX: number, restZ: number) => {
+      const from = rig.point(0, restX, 0.06, restZ);
+      return { ...rig.surface.raycast(from[0], from[1], from[2], 0, -1, 0)! };
+    };
+    // On the stocking: one bead over the gap between the first two toes, one on top of the big toe, and one on
+    // the other leg, over its gap.
+    const [big] = legModel().nails;
+    const overGap = bead(down(x, z));
+    const onToe = bead(down(big.center[0], big.center[2] - 0.012));
+    const other = bead({ ...overGap, x: -overGap.x });
+    other.leg = 1;
+    const before = { ...onToe };
+    expect(rig.setBare(0, false)).toBe(false);
+    expect(rig.setBare(0, true)).toBe(true);
+    const stamps = wetmap.count;
+    const onSkin = (b: Bead): boolean => {
+      const hit = rig.surface.closest(b.x, b.y, b.z, 0.001);
+      return !!hit && hit.dist < 1e-6 && rig.triGroup[hit.tri] === 2;
+    };
+    water.reseat(0);
+    // The bead on the toe moves onto the skin under it. The one over the gap is not left in the air: it falls,
+    // or lands on the side of a toe within its reach.
+    expect(water.beads).toContain(onToe);
+    expect(water.beads).toContain(other);
+    expect(Math.hypot(onToe.x - before.x, onToe.y - before.y, onToe.z - before.z)).toBeLessThan(0.003);
+    expect(onSkin(onToe)).toBe(true);
+    expect([onToe.lx, onToe.ly, onToe.lz]).toEqual([onToe.x, onToe.y, onToe.z]);
+    if (water.beads.includes(overGap)) {
+      expect(onSkin(overGap)).toBe(true);
+      expect(water.drops).toHaveLength(0);
+    } else {
+      expect(water.drops.map((drop) => drop.kind)).toEqual([2]);
+    }
+    expect(wetmap.count).toBe(stamps);
+    // A bead with nothing within its reach, 8 mm above the skin, falls.
+    water.beads.length = 0;
+    water.drops.length = 0;
+    water.beads.push(onToe, other);
+    const inAir = bead({ ...before, y: onToe.y + 0.008 });
+    water.reseat(0);
+    expect(water.beads).toEqual([onToe, other]);
+    expect(water.beads).not.toContain(inAir);
+    expect(water.drops.map((drop) => drop.kind)).toEqual([2]);
+    expect(wetmap.count).toBe(stamps);
+
+    // On the bare foot: a bead on the side of a toe, deep in the gap. The stocking goes on over it.
+    water.drops.length = 0;
+    const gap = rig.point(0, x, 0.012, z);
+    const deep = bead({ ...rig.surface.closest(gap[0], gap[1], gap[2], 0.02)! });
+    expect(rig.setBare(0, false)).toBe(true);
+    water.reseat(0);
+    // It soaks into the fabric above it; the bead on the toe moves back up onto the fabric.
+    expect(water.beads).toEqual([onToe, other]);
+    expect(water.beads).not.toContain(deep);
+    expect(water.drops).toHaveLength(0);
+    expect(wetmap.count).toBe(stamps + 1);
+    expect(rig.triGroup[rig.surface.closest(onToe.x, onToe.y, onToe.z, 0.001)!.tri]).toBe(1);
   });
 
   it("ignore the fabric in their first 25 ms (they start on it)", () => {

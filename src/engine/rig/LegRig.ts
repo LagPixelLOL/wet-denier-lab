@@ -291,17 +291,19 @@ export class LegRig {
   /**
    * Sets whether a leg is bare. In front of the forefoot's join a bare leg collides with the skin and its
    * separate toes, and a leg in a stocking with the stocking stretched over them. Without a forefoot in the
-   * model there is only the stocking's mesh, and nothing changes.
+   * model there is only the stocking's mesh, and nothing changes. Returns whether the collision surface changed.
    */
-  setBare(index: number, bare: boolean): void {
+  setBare(index: number, bare: boolean): boolean {
     if (this.bare[index] === bare) {
-      return;
+      return false;
     }
     this.bare[index] = bare;
     if (this.n > this.stockingVerts) {
       this._skipTris(index);
       this._index();
+      return true;
     }
+    return false;
   }
   _place(): void {
     for (let i = 0; i < 2; i++) {

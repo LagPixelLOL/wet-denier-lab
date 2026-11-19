@@ -38,7 +38,9 @@ export function applyStocking(leg: number, spec: Partial<LegSpec>) {
  */
 function refreshLeg(leg: number) {
   const resolved = applyStocking(leg, outfit.legs[leg]);
-  app.rig.setBare(leg, !!resolved.bare);
+  if (app.rig.setBare(leg, !!resolved.bare)) {
+    app.water.reseat(leg);
+  }
   app.wetmap.setLegWater(leg, resolved.water);
   app.water.setLegWater(leg, resolved.water);
 }

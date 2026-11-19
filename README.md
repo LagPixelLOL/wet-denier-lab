@@ -153,6 +153,8 @@ on the skin, which the leg shader draws as raised plates.
 - Picking and water follow the same switch: a bare leg collides with the forefoot's skin (a coarser build of it,
   `LegRig.setBare`), so beads sit on the toes and run between them, while a stocking keeps its own shape. The
   skin borrows the stocking's UVs for the wet map, with the stocking's UV seams carried over.
+  When a leg changes between the two, its beads are put back on the new surface (`WaterSim.reseat`): one that
+  sat on the fabric over the gap between two toes falls, and one left under the fabric soaks into it.
 
 `tools/fit_toes.py` (Python with numpy and scipy) writes all of this into the model file from the MakeHuman base
 mesh, which the leg came from: it places the MakeHuman foot on the model, stores its forefoot and the nails, and
@@ -247,7 +249,11 @@ npm run render:check -- --size 1920x1080 --hash '#look=1~...'
 ```
 
 Options: `--url` (render an existing page instead), `--no-build`, `--hash`, `--size WxH`, `--dpr`, `--locale <tag>` (the browser language, default `en-US`),
-`--click <selector>` (repeatable, clicked in order once the page is ready), `--settle <ms>`, `--perf`, `--dev`, `--angle vulkan|gl-egl|swiftshader` (default `vulkan`), `--out <file.png>` and
+`--click <selector>` (repeatable, clicked in order once the page is ready; `wait:<ms>` in place of a selector pauses
+before the next click), `--pour <x>,<y>` (holds the pointer down at that point of the viewport, which pours water
+there, while settling and for the screenshot), `--release <ms>` (with `--pour`: lets go and keeps rendering that
+long before the screenshot), `--settle <ms>`, `--perf`, `--dev`, `--angle vulkan|gl-egl|swiftshader` (default
+`vulkan`), `--out <file.png>` and
 `--allow-software`. It needs a machine with a GPU. Without one, it fails unless you pass `--allow-software`, and
 software rendering is slow (about 9 s to boot and 2-3 fps).
 
