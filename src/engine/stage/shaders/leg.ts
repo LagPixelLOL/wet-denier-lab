@@ -180,11 +180,18 @@ float patternDensity(vec2 coord, float h, out float open, out float accent) {
     return 1.0 + 2.6 * (1.0 - aaStep(0.0009, d));
   }
   if (uPattern < 6.5) {
-    float backMask = smoothstep(0.25, 0.6, -normalize(vRestNormal).z);
-    float d = abs(vRestPos.x - mix(0.011, -0.004, smoothstep(0.2, 0.5, vRestPos.y)));
-    float seam = (1.0 - aaStep(0.0011, d)) * smoothstep(0.03, 0.05, vRestPos.y);
-    float heel = (1.0 - aaStep(mix(0.032, 0.0011, smoothstep(0.035, 0.125, vRestPos.y)), d)) * (1.0 - smoothstep(0.118, 0.126, vRestPos.y));
-    return 1.0 + backMask * (5.0 * seam + 2.4 * heel);
+    // Back seam with a reinforced heel: the seam runs down the back of the leg and under the heel, and the heel
+    // patch wraps the heel from the sole up to a point on the Achilles tendon. around is the angle from the seam
+    // about the heel's axis (0 at the back, a quarter turn at the sides), carried on forward as a distance.
+    float y = vRestPos.y, z = vRestPos.z;
+    float d = abs(vRestPos.x - mix(mix(0.003, 0.011, smoothstep(0.0, 0.11, y)), -0.004, smoothstep(0.2, 0.5, y)));
+    float around = z < 0.0 ? atan(d, -z) : 1.5708 + z / 0.045;
+    float reach = clamp((0.125 - y) / 0.105, 0.0, 1.0);
+    float past = around - 1.85 * (0.3 * reach + 0.7 * pow(smoothstep(0.0, 1.0, reach), 1.5));
+    float heel = 1.0 - smoothstep(-1.0, 1.0, past / min(fwidth(past) * 0.75, 0.3));
+    float behind = max(smoothstep(0.25, 0.6, -normalize(vRestNormal).z), (1.0 - smoothstep(0.07, 0.1, y)) * step(z, 0.0126));
+    float seam = (1.0 - aaStep(0.0011, d)) * behind;
+    return 1.0 + 5.0 * seam + 2.4 * heel;
   }
   if (uPattern < 7.5) return 1.0 + 3.2 * atlasPattern(coord, 0.0, 0.026, 0.62);
   if (uPattern < 8.5) return 1.0 + 3.2 * atlasPattern(coord, 1.0, 0.026, 0.62);
