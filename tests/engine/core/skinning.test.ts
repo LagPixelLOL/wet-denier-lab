@@ -59,12 +59,14 @@ describe("joint constants and the GLSL skinning chunk", () => {
 
   it("bakes every pivot and blend range into the shader with four decimals", () => {
     const f = (v: number): string => v.toFixed(4);
-    const vec = (v: readonly number[]): string => "vec3(" + v.map(f).join(", ") + ")";
+    const vec = (v: readonly number[]): string => `vec${v.length}(` + v.map(f).join(", ") + ")";
     const expected = [
       `smoothstepD(${f(LEG_JOINTS.toeZ[0])}, ${f(LEG_JOINTS.toeZ[1])}, rest.z, dToeZ)`,
       `smoothstepD(${f(LEG_JOINTS.toeY[0])}, ${f(LEG_JOINTS.toeY[1])}, rest.y, dToeY)`,
       `uToeRot, ${vec(LEG_JOINTS.toe)}`,
-      `smoothstepD(${f(LEG_JOINTS.ankleY[0])}, ${f(LEG_JOINTS.ankleY[1])}, rest.y, dAnkle)`,
+      `smoothstepD(${f(LEG_JOINTS.ankleBackZ[0])}, ${f(LEG_JOINTS.ankleBackZ[1])}, rest.z, dAnkleBack)`,
+      `mix(${vec(LEG_JOINTS.ankleY)}, ${vec(LEG_JOINTS.ankleBackY)}, ankleBack)`,
+      `clamp(rest.y - ${f(LEG_JOINTS.ankleHoldY)}, 0.0, ${f(LEG_JOINTS.ankleHoldEase)})`,
       `uAnkleRot, ${vec(LEG_JOINTS.ankle)}`,
       `smoothstepD(${f(LEG_JOINTS.kneeY[0])}, ${f(LEG_JOINTS.kneeY[1])}, rest.y, dKnee)`,
       `uKneeRot, ${vec(LEG_JOINTS.knee)}`,
@@ -224,6 +226,52 @@ describe("skinLegPoint", () => {
     const tip = skinLegPoint(pose, 1, 0, 0, 0.01, 0.2);
     expect(tip[1]).toBeLessThan(0.01);
   });
+
+  it("turns the toes along an arc about their pivot, so the bend keeps its thickness", () => {
+    const pose = buildLegPose({ toe: -38 });
+    const [, pivotY, pivotZ] = LEG_JOINTS.toe;
+    for (const z of [0.1, 0.12, 0.135, 0.15, 0.17, 0.2]) {
+      for (const y of [0.002, 0.03, 0.055]) {
+        const out = skinLegPoint(pose, 1, 0, 0.01, y, z);
+        expect(Math.hypot(out[1] - pivotY, out[2] - pivotZ)).toBeCloseTo(Math.hypot(y - pivotY, z - pivotZ), 12);
+        expect(out[0]).toBeCloseTo(0.01, 12);
+      }
+    }
+  });
+
+  it("moves the skin around the ankle with the foot under it instead of swinging it around the ankle", () => {
+    const pose = buildLegPose({ ankle: 38 });
+    const z = -0.045;
+    // Behind the leg, from the top of the heel up to the calf: the skin over the Achilles tendon.
+    let last = skinLegPoint(pose, 1, 0, 0, 0.07, z);
+    for (let y = 0.08; y < LEG_JOINTS.ankleBackY[1]; y += 0.01) {
+      const out = skinLegPoint(pose, 1, 0, 0, y, z);
+      // It stays in line with the leg above it, and keeps its order up the leg.
+      expect(Math.abs(out[2] - z)).toBeLessThan(0.006);
+      expect(out[1]).toBeGreaterThan(last[1]);
+      expect(out[1]).toBeGreaterThanOrEqual(y);
+      last = out;
+    }
+    // The heel itself turns with the foot, up and back.
+    const heel = skinLegPoint(pose, 1, 0, 0, 0.03, -0.055);
+    expect(heel[1]).toBeGreaterThan(0.06);
+    expect(heel[2]).toBeLessThan(-0.065);
+    // In front of the leg the top of the instep goes down with the foot, and never forward of where it was.
+    for (let y = 0.08; y < LEG_JOINTS.ankleY[1]; y += 0.01) {
+      const front = skinLegPoint(pose, 1, 0, 0, y, 0.05);
+      expect(front[1]).toBeLessThan(y);
+      expect(front[2]).toBeLessThanOrEqual(0.05);
+    }
+    // Below the hold the foot turns about the ankle as one piece.
+    const [, pivotY, pivotZ] = LEG_JOINTS.ankle;
+    const sole = skinLegPoint(pose, 1, 0, 0, 0.02, 0.08);
+    expect(Math.hypot(sole[1] - pivotY, sole[2] - pivotZ)).toBeCloseTo(Math.hypot(0.02 - pivotY, 0.08 - pivotZ), 12);
+    expect(skinLegPoint(pose, 1, 0, 0, LEG_JOINTS.ankleBackY[1] + 0.001, z)).toEqual([
+      0,
+      LEG_JOINTS.ankleBackY[1] + 0.001,
+      z,
+    ]);
+  });
 });
 
 describe("skinLegVertices", () => {
@@ -265,6 +313,10 @@ describe("skinLegVertices", () => {
       [0.01, 0.06, 0.137], // toe blend in both z and y
       [0.0, 0.02, 0.06], // fully weighted foot
       [0.01, 0.09, 0.0], // ankle blend
+      [0.0, 0.12, -0.04], // behind the ankle, held to the heel's height
+      [0.01, 0.06, -0.02], // where the hold sets in, between the front and the back
+      [0.0, 0.09, 0.05], // in front of the ankle, held
+      [0.0, 0.03, 0.13], // toe blend in z only
       [0.0, 0.49, 0.05], // knee blend
       [0.03, 0.7, 0.0], // thigh, hip only
     ];
@@ -327,7 +379,7 @@ describe("computeFootLift", () => {
         expect(lowest).toBeCloseTo(floorY, 12);
       });
     }
-    expect(digestRounded(lifts, 9)).toMatchInlineSnapshot(`"f52e9ae5"`);
+    expect(digestRounded(lifts, 9)).toMatchInlineSnapshot(`"2214e999"`);
   });
 });
 
@@ -341,7 +393,7 @@ describe("solveReachKnees", () => {
     expect(knee).toBeGreaterThan(0);
     const lift = (spec: LegPoseSpec): number => computeFootLift(rest.pos, foot, buildLegPose(spec), floorY);
     expect(lift(legs[0])).toBeCloseTo(lift(legs[1]), 5);
-    expect(Math.round(knee * 1e5) / 1e5).toMatchInlineSnapshot(`45.96469`);
+    expect(Math.round(knee * 1e5) / 1e5).toMatchInlineSnapshot(`46.30426`);
   });
 
   it("leaves the knee straight when the foot already reaches the floor", () => {

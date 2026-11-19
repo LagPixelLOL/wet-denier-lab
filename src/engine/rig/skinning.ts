@@ -16,6 +16,9 @@ export type LegPoseKey = "x" | "z" | "yaw" | "roll" | "pitch" | "knee" | "heel" 
  */
 export type LegPoseSpec = Partial<Record<LegPoseKey, number>> & { reach?: boolean };
 
+/** A rotation as its unit axis and its angle in radians. */
+type Turn = [x: number, y: number, z: number, angle: number];
+
 /** A LegPoseSpec resolved into radians and joint rotation matrices. */
 export interface LegPose {
   x: number;
@@ -31,6 +34,9 @@ export interface LegPose {
   T: Mat3;
   A: Mat3;
   K: Mat3;
+  /** The toe and ankle rotations (T, A) as an axis and an angle, which the skinning turns points through. */
+  toeTurn: Turn;
+  ankleTurn: Turn;
   /** Hip rotation. */
   H: Mat3;
   /** 1 when any joint below the hip is rotated. */
@@ -74,6 +80,16 @@ export function lerpLegSpec(from: LegPoseSpec, to: LegPoseSpec, t: number, out: 
   return out;
 }
 
+/** A rotation as its unit axis (x, y, z) and angle; the axis is zero for no rotation. Mirrors turnJoint in GLSL. */
+function rotationTurn(rot: Mat3): Turn {
+  const x = rot[7] - rot[5];
+  const y = rot[2] - rot[6];
+  const z = rot[3] - rot[1];
+  const sine = Math.hypot(x, y, z);
+  const scale = 1 / Math.max(sine, 1e-9);
+  return [x * scale, y * scale, z * scale, Math.atan2(sine, rot[0] + rot[4] + rot[8] - 1)];
+}
+
 export function buildLegPose(spec: LegPoseSpec): LegPose {
   const yaw = (spec.yaw || 0) * DEG2RAD;
   const roll = (spec.roll || 0) * DEG2RAD;
@@ -89,6 +105,8 @@ export function buildLegPose(spec: LegPoseSpec): LegPose {
   const eversion = Math.atan2(-shinUpX, shinUpY);
   const ankle = shinTilt + heel + (spec.ankle || 0) * DEG2RAD;
   const toe = -heel + (spec.toe || 0) * DEG2RAD;
+  const toeRot = rotX(toe);
+  const ankleRot = mat3Mul(rotZ(eversion), rotX(ankle));
   return {
     x: spec.x || 0,
     z: spec.z || 0,
@@ -99,9 +117,11 @@ export function buildLegPose(spec: LegPoseSpec): LegPose {
     ankle: ankle,
     ev: eversion,
     toe: toe,
-    T: rotX(toe),
-    A: mat3Mul(rotZ(eversion), rotX(ankle)),
+    T: toeRot,
+    A: ankleRot,
     K: rotX(knee),
+    toeTurn: rotationTurn(toeRot),
+    ankleTurn: rotationTurn(ankleRot),
     H: hipRot,
     on: knee || ankle || eversion || toe ? 1 : 0,
   };
@@ -115,6 +135,8 @@ const SKIN_OUT = {
 };
 
 const JACOBIAN_SCRATCH = new Float64Array(9);
+const TURNED = new Float64Array(3);
+const TURN_SCRATCH = new Float64Array(3);
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
@@ -158,6 +180,71 @@ function applyJointBlend(
   SKIN_OUT.z += weight * offZ;
 }
 
+/** Rotates v about the unit axis k by the angle whose cosine and sine are c and s. */
+function turnAbout(
+  kx: number,
+  ky: number,
+  kz: number,
+  c: number,
+  s: number,
+  vx: number,
+  vy: number,
+  vz: number,
+  out: Float64Array,
+): void {
+  const along = (kx * vx + ky * vy + kz * vz) * (1 - c);
+  out[0] = vx * c + (ky * vz - kz * vy) * s + kx * along;
+  out[1] = vy * c + (kz * vx - kx * vz) * s + ky * along;
+  out[2] = vz * c + (kx * vy - ky * vx) * s + kz * along;
+}
+
+/**
+ * Turns the point about the pivot through the fraction `weight` of a rotation, given as its axis and angle
+ * (rotationTurn). Unlike applyJointBlend, which moves a point straight toward where the joint takes it, this
+ * carries it along the arc, so a bend keeps its thickness instead of dipping in halfway.
+ * `hold` lowers the point the move is worked out for: the point moves as one that far below it would.
+ */
+function applyJointTurn(
+  turn: Turn,
+  pivot: Vec3,
+  weight: number,
+  dWeightDy: number,
+  dWeightDz: number,
+  withJacobian: boolean,
+  hold = 0,
+  dHoldDy = 0,
+  dHoldDz = 0,
+): void {
+  const [kx, ky, kz, angle] = turn;
+  const c = Math.cos(angle * weight);
+  const s = Math.sin(angle * weight);
+  const fromX = SKIN_OUT.x - pivot[0];
+  const fromY = SKIN_OUT.y - pivot[1] - hold;
+  const fromZ = SKIN_OUT.z - pivot[2];
+  turnAbout(kx, ky, kz, c, s, fromX, fromY, fromZ, TURNED);
+  if (withJacobian) {
+    const jac = SKIN_OUT.J;
+    const swingX = (ky * TURNED[2] - kz * TURNED[1]) * angle;
+    const swingY = (kz * TURNED[0] - kx * TURNED[2]) * angle;
+    const swingZ = (kx * TURNED[1] - ky * TURNED[0]) * angle;
+    turnAbout(kx, ky, kz, c, s, 0, 1, 0, TURN_SCRATCH);
+    const upX = TURN_SCRATCH[0];
+    const upY = TURN_SCRATCH[1] - 1;
+    const upZ = TURN_SCRATCH[2];
+    for (let j = 0; j < 3; j++) {
+      const grad = j === 1 ? dWeightDy : j === 2 ? dWeightDz : 0;
+      const holdGrad = j === 1 ? dHoldDy : j === 2 ? dHoldDz : 0;
+      turnAbout(kx, ky, kz, c, s, jac[j], jac[3 + j], jac[6 + j], TURN_SCRATCH);
+      jac[j] = TURN_SCRATCH[0] + swingX * grad - upX * holdGrad;
+      jac[3 + j] = TURN_SCRATCH[1] + swingY * grad - upY * holdGrad;
+      jac[6 + j] = TURN_SCRATCH[2] + swingZ * grad - upZ * holdGrad;
+    }
+  }
+  SKIN_OUT.x += TURNED[0] - fromX;
+  SKIN_OUT.y += TURNED[1] - fromY;
+  SKIN_OUT.z += TURNED[2] - fromZ;
+}
+
 function skinRestPoint(pose: LegPose, x: number, y: number, z: number, withJacobian: boolean): void {
   SKIN_OUT.x = x;
   SKIN_OUT.y = y;
@@ -174,8 +261,8 @@ function skinRestPoint(pose: LegPose, x: number, y: number, z: number, withJacob
   if (pose.toe && z > joints.toeZ[0] && y < joints.toeY[1]) {
     const toeWeightZ = smoothstep(joints.toeZ[0], joints.toeZ[1], z);
     const toeWeightY = smoothstep(joints.toeY[0], joints.toeY[1], y);
-    applyJointBlend(
-      pose.T,
+    applyJointTurn(
+      pose.toeTurn,
       joints.toe,
       toeWeightZ * (1 - toeWeightY),
       -toeWeightZ * smoothstepDeriv(joints.toeY[0], joints.toeY[1], y),
@@ -183,14 +270,28 @@ function skinRestPoint(pose: LegPose, x: number, y: number, z: number, withJacob
       withJacobian,
     );
   }
-  if ((pose.ankle || pose.ev) && y < joints.ankleY[1]) {
-    applyJointBlend(
-      pose.A,
+  if ((pose.ankle || pose.ev) && y < joints.ankleBackY[1]) {
+    const back = 1 - smoothstep(joints.ankleBackZ[0], joints.ankleBackZ[1], z);
+    const dBack = smoothstepDeriv(joints.ankleBackZ[0], joints.ankleBackZ[1], z);
+    const moveStart = joints.ankleBackY[0] - joints.ankleY[0];
+    const moveEnd = joints.ankleBackY[1] - joints.ankleY[1];
+    const start = joints.ankleY[0] + moveStart * back;
+    const end = joints.ankleY[1] + moveEnd * back;
+    const at = Math.min(1, Math.max(0, (y - start) / (end - start)));
+    const dAnkle = smoothstepDeriv(start, end, y);
+    const ease = joints.ankleHoldEase;
+    const eased = Math.min(ease, Math.max(0, y - joints.ankleHoldY));
+    const above = (eased * eased) / (2 * ease) + Math.max(y - joints.ankleHoldY - ease, 0);
+    applyJointTurn(
+      pose.ankleTurn,
       joints.ankle,
-      1 - smoothstep(joints.ankleY[0], joints.ankleY[1], y),
-      -smoothstepDeriv(joints.ankleY[0], joints.ankleY[1], y),
-      0,
+      1 - smoothstep(start, end, y),
+      -dAnkle,
+      -dAnkle * dBack * (moveStart + (moveEnd - moveStart) * at),
       withJacobian,
+      above,
+      eased / ease,
+      0,
     );
   }
   if (pose.knee && y < joints.kneeY[1]) {

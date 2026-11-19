@@ -160,7 +160,7 @@ describe("LegRig construction", () => {
       front: Math.round(rig.front * 1e6) / 1e6,
     }).toMatchInlineSnapshot(`
       {
-        "cast": "81fe8d9c",
+        "cast": "ec2667b3",
         "footprint": [
           -0.002492,
           0.102641,
@@ -168,8 +168,8 @@ describe("LegRig construction", () => {
           0.470608,
         ],
         "front": 0.307945,
-        "nrm": "9b21fd1c",
-        "pos": "717aab20",
+        "nrm": "a80c6afb",
+        "pos": "974d37e3",
       }
     `);
   });
@@ -516,7 +516,8 @@ describe("LegRig with the forefoot's skin", () => {
     // The other leg still wears its stocking.
     const other = shootThroughGap(rig, 1)!;
     expect(other.leg).toBe(1);
-    expect(other.t).toBeCloseTo(covered.t, 6);
+    // The toes bend a little along their length, and the two legs of the pose bend them differently.
+    expect(other.t).toBeCloseTo(covered.t, 3);
     expect(rig.triGroup[other.tri - rig.legTris]).toBe(1);
 
     rig.setBare(1, true);
