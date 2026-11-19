@@ -14,8 +14,8 @@
  *   --click <selector>  click this element once the page is ready (repeatable, in order)
  *   --settle <ms>       time to keep rendering after the page is ready (default 2000)
  *   --angle <backend>   ANGLE backend: vulkan, gl-egl or swiftshader (default vulkan)
- *   --perf              uncap the frame rate (no vsync) so the report's frame times show the real render cost;
- *                       use a large --size and --dpr to make the GPU the bottleneck
+ *   --perf              uncap the frame rate (no vsync) and also report gpuMs, the time the GPU needs to finish
+ *                       each frame; use a large --size and --dpr so that shader cost dominates
  *   --out <file.png>    screenshot path (default render-check/render.png); the report goes next to it
  *   --allow-software    do not fail when the renderer is a software one
  */
@@ -90,36 +90,62 @@ function readWebGLInfo(page: Page) {
   });
 }
 
-/** Times between animation frames (ms) over `ms` while the app keeps rendering. */
-function measureFrames(page: Page, ms: number) {
+/**
+ * Times between animation frames (ms) over `ms` while the app keeps rendering. With `gpu`, also how long the GPU
+ * took to finish each frame: this callback runs right after the app's own, and reading a pixel back blocks until
+ * everything the app just drew has been executed.
+ */
+function measureFrames(page: Page, ms: number, gpu: boolean) {
   return page.evaluate(
-    (ms) =>
-      new Promise<number[]>((resolve) => {
-        const times: number[] = [];
+    ([ms, gpu]) =>
+      new Promise<{ frame: number[]; gpu: number[] }>((resolve) => {
+        const gl = gpu ? document.querySelector<HTMLCanvasElement>("#view")?.getContext("webgl2") : null;
+        const pixel = new Uint8Array(4);
+        const times = { frame: [] as number[], gpu: [] as number[] };
         let last = performance.now();
         const end = last + ms;
         const tick = () => {
           const now = performance.now();
-          times.push(now - last);
+          times.frame.push(now - last);
           last = now;
+          if (gl) {
+            // three.js caches the bound framebuffer, so put it back afterwards.
+            const bound = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            const before = performance.now();
+            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+            times.gpu.push(performance.now() - before);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, bound);
+          }
           if (now < end) requestAnimationFrame(tick);
           else resolve(times);
         };
         requestAnimationFrame(tick);
       }),
-    ms,
+    [ms, gpu] as const,
   );
 }
 
-/** Frame rate and frame time percentiles, skipping the first frames while the page warms up. */
-function frameStats(times: number[]) {
+/** Mean and percentiles of a list of times (ms), skipping the first frames while the page warms up. */
+function timeStats(times: number[]) {
   const steady = times.slice(Math.min(5, times.length - 1)).sort((a, b) => a - b);
   const total = steady.reduce((sum, t) => sum + t, 0);
   const at = (q: number) => Math.round(steady[Math.min(steady.length - 1, Math.floor(q * steady.length))] * 100) / 100;
   return {
-    frames: steady.length,
-    fps: Math.round((steady.length / total) * 10000) / 10,
-    frameMs: { mean: Math.round((total / steady.length) * 100) / 100, p50: at(0.5), p95: at(0.95), max: at(1) },
+    count: steady.length,
+    total,
+    ms: { mean: Math.round((total / steady.length) * 1000) / 1000, p50: at(0.5), p95: at(0.95), max: at(1) },
+  };
+}
+
+/** Frame rate and frame times, plus GPU times per frame when they were measured. */
+function frameStats(times: { frame: number[]; gpu: number[] }) {
+  const frame = timeStats(times.frame);
+  return {
+    frames: frame.count,
+    fps: Math.round((frame.count / frame.total) * 10000) / 10,
+    frameMs: frame.ms,
+    ...(times.gpu.length ? { gpuMs: timeStats(times.gpu).ms } : {}),
   };
 }
 
@@ -207,7 +233,7 @@ try {
   }
   const settleMs = Number(opts.settle);
   const [frameTimes, gpuDuring] = await Promise.all([
-    measureFrames(page, settleMs),
+    measureFrames(page, settleMs, opts.perf),
     new Promise((resolve) => setTimeout(() => resolve(sampleNvidia()), settleMs / 2)),
   ]);
   const webgl = await readWebGLInfo(page);
