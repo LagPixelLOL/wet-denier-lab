@@ -26,30 +26,12 @@ beforeAll(async () => {
   throwAt = vi.spyOn(app.water, "throwAt");
 });
 
-describe("intro splash", () => {
-  it("splashes the left leg once the water clock passes 1.4 s, without counting it", () => {
-    while (!app.introSplashDone) {
-      expect(throwAt).not.toHaveBeenCalled();
-      h.frame(FRAME);
-    }
-    // Checked before the frame's water update, so it fires on the first frame that starts at 1.4 s or later.
-    expect(app.water.time).toBeGreaterThan(1.4 + FRAME / 1000);
-    expect(app.water.time).toBeLessThan(1.4 + (2 * FRAME) / 1000);
-    expect(throwAt).toHaveBeenCalledTimes(1);
-    expect(throwAt.mock.calls[0][2]?.count).toBe(32);
-    expect(app.introSplashDone).toBe(true);
-    expect(state.splashes).toBe(0);
-    h.frames(30, FRAME);
-    expect(throwAt).toHaveBeenCalledTimes(1);
-  });
-
-  it("is skipped when the user splashed first", () => {
-    app.introSplashDone = false;
-    state.splashes = 1;
-    h.frame();
-    expect(app.introSplashDone).toBe(true);
+describe("launch", () => {
+  it("throws no water until the user does", () => {
+    h.frames(120, FRAME);
+    expect(app.water.time).toBeGreaterThan(1.9);
     expect(throwAt).not.toHaveBeenCalled();
-    state.splashes = 0;
+    expect(state.splashes).toBe(0);
   });
 });
 

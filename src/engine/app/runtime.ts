@@ -61,7 +61,6 @@ export interface AppRuntime {
   wetmap: WetMap;
   water: WaterSim;
   resolutionScale: number;
-  introSplashDone: boolean;
   /** Outfit saved while a preset is previewed. */
   previewBackup: LegSpec[] | null;
   targetFlash: {
@@ -114,7 +113,6 @@ export const app: AppRuntime = {
   wetmap: undefined!,
   water: undefined!,
   resolutionScale: 1,
-  introSplashDone: false,
   previewBackup: null,
   targetFlash: {
     leg: -1,

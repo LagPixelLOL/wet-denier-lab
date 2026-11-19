@@ -6,16 +6,6 @@ import { app, type PickHit } from "./runtime";
 import { hideHint } from "./hud";
 import { state } from "./state";
 
-export function maybeIntroSplash() {
-  if (app.introSplashDone || app.water.time < 1.4 || ((app.introSplashDone = true), state.splashes > 0)) {
-    return;
-  }
-  const hit = pickToward(new THREE.Vector3(...app.rig.point(0, 0, 0.33, 0.06)));
-  if (hit) {
-    splashAt(hit, false);
-  }
-}
-
 const raycaster = new THREE.Raycaster();
 
 export function pick(clientX: number, clientY: number): PickHit | null {
@@ -78,16 +68,14 @@ function splashReach(point: PickHit) {
   return Math.min(0.42, app.camera.position.distanceTo(new THREE.Vector3(point.x, point.y, point.z)) * 0.55);
 }
 
-export function splashAt(hit: PickHit, counted = true) {
+export function splashAt(hit: PickHit) {
   app.water.throwAt(hit, app.camera.position, {
     count: app.isMobile ? 26 : 32,
     reach: splashReach(hit),
   });
-  if (counted) {
-    state.splashes++;
-    onSplashed();
-    buzz(8);
-  }
+  state.splashes++;
+  onSplashed();
+  buzz(8);
 }
 
 export function pourAt(hit: PickHit) {

@@ -8,7 +8,7 @@ import { IS_PROD } from "./config";
 import { pointers } from "./input";
 import { takePhoto } from "./photo";
 import { frontLeg, updateAwayLeg } from "./scene";
-import { maybeIntroSplash, pick, pourAt, splashAt } from "./splash";
+import { pick, pourAt, splashAt } from "./splash";
 import { state } from "./state";
 import { refreshThumbs, renderThumb, thumbJobs } from "./thumbnails";
 
@@ -184,7 +184,6 @@ export function step(now: number, fixedDt?: number) {
       app.wetmap.updateMat.uniforms.uDryRate.value = 1 / 70;
     }
   }
-  maybeIntroSplash();
   app.water.update(simDt);
   app.wetmapDt += simDt;
   if (!app.isMobile || app.oddFrame) {
