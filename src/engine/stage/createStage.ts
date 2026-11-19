@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { DEFAULT_LEG_SPEC } from "../catalog/presets";
 import { resolveLegLook } from "../catalog/resolveLegLook";
 import type { LegLook } from "../catalog/resolveLegLook";
+import { UNDER_FIT, frontOfJoin } from "../model/forefoot";
 import type { ToeNail } from "../model/forefoot";
 import type { LegModel } from "../model/legModel";
 import type { Vec3 } from "../rig/joints";
@@ -200,6 +201,14 @@ export interface StageLeg {
   /** Color passes of the stocking and the skin. */
   stocking: StageMesh;
   skin: StageMesh;
+  /** The stocking's depth and color passes, in the view and in the floor's reflection. */
+  stockingParts: StageMesh[];
+  /**
+   * The same passes for the stocking in front of the forefoot's join alone. While the forefoot's skin shows
+   * through the fabric, the stocking is drawn in two parts: behind the join first, then the skin, then this
+   * part over both, so the leg is also seen through the fabric that spans the gaps between the toes.
+   */
+  stockingFrontParts: StageMesh[];
   /** Everything hidden when the skin is covered. */
   skinParts: StageMesh[];
   /** Whether the leg wears no stocking. */
@@ -209,7 +218,14 @@ export interface StageLeg {
    * view and in the floor's reflection), and its line, drawn when bare.
    */
   forefootUnder: U<number>;
+  forefootClip: U<number>;
   forefootParts: StageMesh[];
+  /**
+   * For a leg in a stocking: the passes that draw the forefoot's skin once more, bare, where it is right under
+   * the nearest fabric. Elsewhere the skin is seen through another part of the fabric and wears its own (see
+   * showForefoot).
+   */
+  forefootNearParts: StageMesh[];
   forefootOutline: StageMesh | null;
   shadow: StageMesh;
   caster: StageMesh;
@@ -543,6 +559,13 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     transparent: true,
   };
   const bowGeometry = createBowGeometry();
+  /**
+   * How far (along its normal) the fabric may be over the forefoot's skin for the skin to count as right under
+   * it (m): twice the distance up to which skin counts as wearing the fabric over it.
+   */
+  const UNDER_NEAR = 2 * UNDER_FIT.worn;
+  const stockingFront = model.forefoot ? frontOfJoin(model.stocking) : null;
+  const stockingLowFront = model.forefoot ? frontOfJoin(model.stockingLow) : null;
   function createLeg(index: number): StageLeg {
     const rigUniforms: RigUniforms = {
       uToeRot: {
@@ -658,11 +681,15 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       },
       ...castShadowUniforms,
     };
+    // Every material of the leg shaders sets every uniform: they share one program, which keeps the last value
+    // of a uniform a material leaves out.
     const surfaceUniforms = {
       ...lightUniforms,
       ...fabricUniforms,
       ...stockingUniforms,
       ...rigUniforms,
+      uCover: { value: 0 },
+      uTowardEye: { value: 0 },
     };
     const legGroup = new THREE.Group();
     legGroup.matrixAutoUpdate = false;
@@ -678,12 +705,15 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       legGroup.add(mesh);
       return mesh;
     };
-    // `behind` pushes the surface back a little in depth, for skin that lies right under the stocking. `extra`
+    // `behind` pushes the surface back a little in depth, for skin under the stocking: "on" it (the skin above
+    // the cuff, which lies on the stocking's own surface, so the push grows with the slope) or "under" it (the
+    // forefoot, which is a surface of its own a little inside the fabric: a slope-scaled push would send skin
+    // seen at a glancing angle behind whatever is drawn before it, like the rest of its own leg). `extra`
     // overrides uniforms for this surface alone.
     const addSurfacePasses = (
       geometry: THREE.BufferGeometry,
       isSkin: number,
-      behind: boolean,
+      behind: "on" | "under" | null,
       extra: Record<string, U<number>> = {},
     ): [StageMesh, StageMesh] => {
       const uniforms = {
@@ -696,7 +726,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       const offsetOptions = behind
         ? {
             polygonOffset: true,
-            polygonOffsetFactor: 1,
+            polygonOffsetFactor: behind === "on" ? 1 : 0,
             polygonOffsetUnits: 2,
           }
         : {};
@@ -738,7 +768,10 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       uSkinOutlineColor: skinOutlineColor,
       uCuffY: stockingUniforms.uCuffY,
       uHasCuff: stockingUniforms.uHasCuff,
-      uClip: stockingUniforms.uClip,
+      // The stocking's line stops at the join on a bare leg only (see showForefoot).
+      uClip: {
+        value: 0,
+      },
       uSilhouette: {
         value: 0,
       },
@@ -769,8 +802,8 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
         }),
         2,
       );
-    const stockingPasses = addSurfacePasses(model.stocking, 0, false);
-    const skinPasses = addSurfacePasses(model.skin, 1, true);
+    const stockingPasses = addSurfacePasses(model.stocking, 0, null);
+    const skinPasses = addSurfacePasses(model.skin, 1, "on");
     const skinParts = [...skinPasses, addOutline(model.skin, 1)];
     addOutline(model.stocking, 0);
     // The skin of the forefoot, in front of the join only: under the stocking, or in place of the stocking
@@ -778,13 +811,68 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     const forefootUniforms = {
       uUnder: { value: 0 },
       uClip: { value: -1 },
+      uCover: { value: 1 },
     };
     const forefootParts: StageMesh[] = model.forefoot
-      ? addSurfacePasses(model.forefoot, 0, true, forefootUniforms)
+      ? addSurfacePasses(model.forefoot, 0, "under", forefootUniforms)
       : [];
     const forefootOutline = model.forefoot
       ? addOutline(model.forefoot, 0, { uClip: forefootUniforms.uClip, uSilhouette: { value: 1 } })
       : null;
+    const stockingFrontParts: StageMesh[] = stockingFront
+      ? addSurfacePasses(stockingFront, 0, null, { uClip: { value: -1 } })
+      : [];
+    // The skin once more, bare, where it is right under the nearest fabric. To find where that is, the front of
+    // the stocking is first drawn into the depth buffer alone, UNDER_NEAR further away than it is: that only
+    // leaves the skin's own depth where the fabric lies that close over the nearest skin, and there the bare
+    // skin is drawn.
+    const forefootNearParts: StageMesh[] =
+      model.forefoot && stockingFront
+        ? [
+            addMesh(
+              stockingFront,
+              new THREE.ShaderMaterial({
+                vertexShader: LEG_VERTEX_SHADER,
+                fragmentShader: LEG_DEPTH_FRAGMENT_SHADER,
+                uniforms: {
+                  ...surfaceUniforms,
+                  uIsSkin: { value: 0 },
+                  uClip: { value: -1 },
+                  uTowardEye: { value: -UNDER_NEAR },
+                },
+                side: THREE.DoubleSide,
+                colorWrite: false,
+                ...transparentOptions,
+              }),
+              -2.5,
+            ),
+            addMesh(
+              model.forefoot,
+              new THREE.ShaderMaterial({
+                vertexShader: LEG_VERTEX_SHADER,
+                fragmentShader: LEG_FRAGMENT_SHADER,
+                uniforms: {
+                  ...surfaceUniforms,
+                  uIsSkin: { value: 0 },
+                  uUnder: forefootUniforms.uUnder,
+                  // Up to the join only: behind it the stocking is the nearest fabric, and paints its own skin.
+                  uClip: { value: -1 },
+                },
+                side: THREE.DoubleSide,
+                depthFunc: THREE.EqualDepth,
+                depthWrite: false,
+                polygonOffset: true,
+                polygonOffsetFactor: 0,
+                polygonOffsetUnits: 2,
+                ...transparentOptions,
+              }),
+              -2,
+            ),
+          ]
+        : [];
+    if (stockingFrontParts.length) {
+      stockingFrontParts[0].renderOrder = -1;
+    }
     const mirrorGroup = new THREE.Group();
     mirrorGroup.matrixAutoUpdate = false;
     mirrorScene.add(mirrorGroup);
@@ -795,12 +883,20 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       mirrorGroup.add(mesh);
       return mesh;
     };
-    addMirrorMesh(model.stockingLow, stockingPasses[0], 0);
-    addMirrorMesh(model.stockingLow, stockingPasses[1], 1);
+    const stockingParts = [
+      ...stockingPasses,
+      addMirrorMesh(model.stockingLow, stockingPasses[0], 0),
+      addMirrorMesh(model.stockingLow, stockingPasses[1], 1),
+    ];
     if (model.forefoot) {
+      // The reflection keeps to the bare skin under the fabric: it is too faint to tell which fabric that is.
       forefootParts.push(
         addMirrorMesh(model.forefoot, forefootParts[0], 0),
-        addMirrorMesh(model.forefoot, forefootParts[1], 1),
+        addMirrorMesh(model.forefoot, forefootNearParts[1], 1),
+      );
+      stockingFrontParts.push(
+        addMirrorMesh(stockingLowFront!, stockingFrontParts[0], -1),
+        addMirrorMesh(stockingLowFront!, stockingFrontParts[1], 1),
       );
     }
     skinParts.push(addMirrorMesh(model.skin, skinPasses[0], 0), addMirrorMesh(model.skin, skinPasses[1], 1));
@@ -879,10 +975,14 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       outlineUniforms: outlineUniforms,
       stocking: stockingPasses[1],
       skin: skinPasses[1],
+      stockingParts: stockingParts,
+      stockingFrontParts: stockingFrontParts,
       skinParts: skinParts,
       bare: false,
       forefootUnder: forefootUniforms.uUnder,
+      forefootClip: forefootUniforms.uClip,
       forefootParts: forefootParts,
+      forefootNearParts: forefootNearParts,
       forefootOutline: forefootOutline,
       shadow: shadowMesh,
       caster: casterMesh,
@@ -913,20 +1013,36 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
    * How the forefoot's skin is drawn. On a bare leg it stands in for the front of the stocking mesh and is drawn
    * along with it, so a faded leg still shows its nearest surface only. Under a stocking it is drawn first and
    * shows through the fabric, but only on a leg that is all there: a fading leg goes back to one surface, on
-   * which the fabric paints the skin itself.
+   * which the fabric paints the skin itself. What shows through the fabric must be drawn before it, and that
+   * includes the rest of the leg (seen between the toes, where the fabric spans the gaps): the stocking behind
+   * the join comes first, then the skin, then the stocking in front of the join.
+   * Only the nearest surface of that front part is drawn, so skin seen through one part of it (the fabric
+   * between two toes) would lack the fabric that lies on the skin itself. The skin is therefore drawn wearing
+   * that fabric first, and once more bare where it is right under the nearest fabric, which then covers it.
    */
   function showForefoot(leg: StageLeg): void {
     if (!model.forefoot) {
       return;
     }
     const overlay = leg.bare ? 0 : THREE.MathUtils.smoothstep(leg.fabric.uOpacity.value, 0.9, 1);
-    leg.fabric.uClip.value = leg.bare ? 1 : 0;
+    const through = overlay > 0;
+    leg.fabric.uClip.value = leg.bare || through ? 1 : 0;
+    leg.outlineUniforms.uClip.value = leg.bare ? 1 : 0;
     leg.fabric.uOverlay.value = overlay;
     leg.forefootUnder.value = leg.bare ? 0 : 1;
-    leg.forefootParts.forEach((part, i) => {
-      part.visible = leg.bare || overlay > 0;
-      part.renderOrder = (i % 2) - (leg.bare ? 0 : 2);
+    // Under a stocking the skin lies a little inside the stocking's surface, so it reaches back under the
+    // stocking behind the join: seen through the fabric over the toes, no slit opens between the two.
+    leg.forefootClip.value = leg.bare ? -1 : -0.1;
+    leg.stockingParts.forEach((part, i) => {
+      part.renderOrder = (i % 2) - (through ? 6 : 0);
     });
+    leg.forefootParts.forEach((part, i) => {
+      part.visible = leg.bare || through;
+      part.renderOrder = (i % 2) - (leg.bare ? 0 : 4);
+    });
+    for (const part of [...leg.stockingFrontParts, ...leg.forefootNearParts]) {
+      part.visible = through;
+    }
     leg.forefootOutline!.visible = leg.bare;
   }
   function setLegOpacity(index: number, opacity: number): void {

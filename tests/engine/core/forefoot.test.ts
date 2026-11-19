@@ -2,7 +2,13 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { weldVertices } from "../../../src/engine/geometry/weld";
 import { bonyAt } from "../../../src/engine/model/anatomy";
-import { buildForefoot, buildForefootCollision, FOREFOOT_JOIN } from "../../../src/engine/model/forefoot";
+import {
+  buildForefoot,
+  buildForefootCollision,
+  FOREFOOT_JOIN,
+  frontOfJoin,
+  UNDER_FIT,
+} from "../../../src/engine/model/forefoot";
 import type { ForefootCollision, ForefootData } from "../../../src/engine/model/forefoot";
 import { parseModelGlb } from "../../../src/engine/model/glb";
 import { buildLegModel } from "../../../src/engine/model/legModel";
@@ -12,7 +18,7 @@ import type { SurfaceMesh } from "../../../src/engine/surface/SurfaceGrid";
 import { legModel, modelData } from "../../helpers/model";
 import { edgeCounts, edgeVertices, tinyGlb, tinyModelData, topologyProblems } from "./fixtures";
 
-const FOREFOOT_ATTRIBUTES = ["legTangent", "normal", "position", "skinFx", "stretch", "toeShade", "uv"];
+const FOREFOOT_ATTRIBUTES = ["legTangent", "normal", "position", "skinFx", "stretch", "toeShade", "under", "uv"];
 
 function forefoot(): THREE.BufferGeometry {
   const geometry = legModel().forefoot;
@@ -464,6 +470,51 @@ describe("buildForefoot on a flat cage", () => {
 });
 
 describe("buildForefoot on the shipped model", () => {
+  it("fits the skin to the stocking it lies under, a hair inside the fabric and never through it", () => {
+    const geometry = forefoot();
+    const model = legModel();
+    const fabric = surfaceOf(model.stocking);
+    const positions = geometry.attributes.position.array;
+    const normals = geometry.attributes.normal.array;
+    const under = geometry.attributes.under.array;
+    const weld = weldVertices(positions);
+    let pressed = 0;
+    let worn = 0;
+    let longest = 0;
+    let nearest = Infinity;
+    for (let i = 0; i < positions.length / 3; i++) {
+      const [dx, dy, dz, cover] = under.subarray(i * 4, i * 4 + 4);
+      // Copies of a vertex at a UV seam move together.
+      expect(Array.from(under.subarray(weld[i] * 4, weld[i] * 4 + 4))).toEqual([dx, dy, dz, cover]);
+      expect(cover).toBeGreaterThanOrEqual(0);
+      expect(cover).toBeLessThanOrEqual(1);
+      longest = Math.max(longest, Math.hypot(dx, dy, dz));
+      worn += cover > 0.5 ? 1 : 0;
+      // Under a stocking the skin is drawn from 3 mm behind the join on (uClip -0.1).
+      if (positions[i * 3 + 2] < FOREFOOT_JOIN.cut - 0.004) {
+        continue;
+      }
+      const hit = fabric.closest(positions[i * 3] + dx, positions[i * 3 + 1] + dy, positions[i * 3 + 2] + dz, 0.0005);
+      if (
+        !hit ||
+        normals[i * 3] * hit.nx + normals[i * 3 + 1] * hit.ny + normals[i * 3 + 2] * hit.nz < UNDER_FIT.facing[0]
+      ) {
+        // Not under this fabric: the wall of a toe beside fabric that bridges the cleft.
+        expect(cover).toBe(0);
+        continue;
+      }
+      // Under the fabric (on the far side of its normal), at least the margin away.
+      expect(hit.side).toBe(-1);
+      nearest = Math.min(nearest, hit.dist);
+      pressed += hit.dist < UNDER_FIT.margin * 1.5 ? 1 : 0;
+    }
+    expect(nearest).toBeGreaterThan(UNDER_FIT.margin * 0.97);
+    // Most of the skin is pressed against the fabric, which never has to move further than the fit allows.
+    expect(pressed).toBeGreaterThan(positions.length / 3 / 3);
+    expect(worn).toBeGreaterThan(2000);
+    expect(longest).toBeLessThan(UNDER_FIT.loose);
+  });
+
   it("builds a geometry with the attributes the leg shader reads, one value per vertex", () => {
     const geometry = forefoot();
     expect(Object.keys(geometry.attributes).sort()).toEqual(FOREFOOT_ATTRIBUTES);
@@ -476,7 +527,16 @@ describe("buildForefoot on the shipped model", () => {
       expect(geometry.attributes[name].array).toBeInstanceOf(Float32Array);
       sizes[name] = geometry.attributes[name].itemSize;
     }
-    expect(sizes).toEqual({ legTangent: 3, normal: 3, position: 3, skinFx: 2, stretch: 1, toeShade: 1, uv: 2 });
+    expect(sizes).toEqual({
+      legTangent: 3,
+      normal: 3,
+      position: 3,
+      skinFx: 2,
+      stretch: 1,
+      toeShade: 1,
+      under: 4,
+      uv: 2,
+    });
     expect(geometry.boundingBox).not.toBeNull();
     expect(geometry.boundingSphere).not.toBeNull();
   });
@@ -953,6 +1013,28 @@ describe("buildForefootCollision on the shipped model", () => {
         }
       }
     }
+  });
+});
+
+describe("frontOfJoin", () => {
+  it("keeps the stocking's triangles in front of the join, sharing its attributes", () => {
+    const stocking = legModel().stocking;
+    const front = frontOfJoin(stocking);
+    for (const name of Object.keys(stocking.attributes)) {
+      expect(front.attributes[name]).toBe(stocking.attributes[name]);
+    }
+    const positions = stocking.attributes.position.array;
+    const kept = front.index!.array;
+    expect(kept.length).toBeGreaterThan(3000);
+    expect(kept.length).toBeLessThan(stocking.index!.array.length / 2);
+    let reach = -Infinity;
+    for (let t = 0; t < kept.length; t += 3) {
+      const corners = [kept[t], kept[t + 1], kept[t + 2]];
+      // In front of the join, on the foot: the knee and the thigh reach as far forward.
+      expect(Math.max(...corners.map((v) => positions[v * 3 + 2]))).toBeGreaterThan(FOREFOOT_JOIN.cut - 0.001);
+      reach = Math.max(reach, ...corners.map((v) => positions[v * 3 + 1]));
+    }
+    expect(reach).toBeLessThan(FOREFOOT_JOIN.maxY);
   });
 });
 

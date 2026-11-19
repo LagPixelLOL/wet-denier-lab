@@ -551,6 +551,7 @@ describe("buildLegModel on the shipped model", () => {
       "skinFx",
       "stretch",
       "toeShade",
+      "under",
       "uv",
     ]);
     for (const name of Object.keys(model.stocking.attributes)) {
@@ -566,6 +567,7 @@ describe("buildLegModel on the shipped model", () => {
       "skinFx",
       "stretch",
       "toeShade",
+      "under",
       "uv",
     ]);
   });
@@ -645,6 +647,7 @@ describe("buildLegModel on the shipped model", () => {
           "skinFx": "03a706c5",
           "stretch": "f1250325",
           "toeShade": "1ed63245",
+          "under": "c30e6fc5",
           "uv": "d0b75f45",
         },
         "skinIndex": "02e47460",
@@ -655,6 +658,7 @@ describe("buildLegModel on the shipped model", () => {
           "skinFx": "686c4940",
           "stretch": "9d9226c7",
           "toeShade": "8ec92b05",
+          "under": "477cb2c5",
           "uv": "736679e6",
         },
       }

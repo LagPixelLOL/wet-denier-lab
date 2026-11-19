@@ -145,7 +145,15 @@ on the skin, which the leg shader draws as raised plates.
   pulled taut over the skin: it touches the toes' tops and pads and bridges the gaps and creases between them.
   The fit only ever lifts the fabric off its old shape, and starts in front of the join, so the foot behind the
   toes keeps its shape.
-- Under a stocking the skin is drawn 0.4 mm inside its surface, so fabric lying right on it always covers it.
+- Under a stocking the skin is fitted to the fabric (`fitUnderStocking` in `model/forefoot.ts`, the `under`
+  vertex attribute): skin that faces fabric a few millimeters away is pressed against it, 0.1 mm under its
+  surface, so no gap shows where the fabric is pulled tight and the skin never comes through it. Between the
+  toes and in the creases under them the skin keeps its own shape and the fabric spans the gap.
+- What shows through the fabric over the toes is drawn before it: the stocking behind the forefoot's join, then
+  the skin, then the stocking in front of the join (`showForefoot` in `stage/createStage.ts`). So the rest of
+  the leg is seen between the toes too. Only the nearest surface of that front part is drawn, so the skin is
+  first drawn wearing the fabric that lies on it (which is what is seen through another part of the fabric),
+  and once more bare where it is right under the nearest fabric, which then covers it.
 - Nearly opaque fabric, and a leg that fades out for a close-up, go back to a single surface, so only the
   nearest surface is drawn.
 - Hosiery has a reinforced toe by default: a denser knit over the toes, closed by a seam along their tips. The

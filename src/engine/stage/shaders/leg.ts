@@ -13,13 +13,11 @@ export const FADE_HEIGHT_GLSL = "position.y - 0.3346 * (position.x - 0.066) + 0.
 /**
  * Where the stocking mesh hands over to the forefoot's skin: uClip 1 keeps what lies behind the join (the
  * stocking mesh of a bare leg), -1 what lies in front of it (the forefoot), 0 everything. Both sides reach a hair
- * past the join, where they coincide, so no pixel is left uncovered between them.
+ * past the join, where they coincide, so no pixel is left uncovered between them. A smaller uClip reaches
+ * further past it: -0.1 keeps 3 mm behind the join too.
  */
 export const forefootClipGlsl = (restPos: string): string =>
   `if (uClip * (${restPos}.z - ${FOREFOOT_JOIN.cut.toFixed(4)}) > 0.0003 && ${restPos}.y < ${FOREFOOT_JOIN.maxY.toFixed(4)}) discard;`;
-
-/** How far inside its surface the skin under a stocking is drawn (m). */
-const UNDER_INSET = 0.0004;
 
 export const LEG_VERTEX_SHADER = `
 invariant gl_Position;
@@ -27,10 +25,11 @@ ${LEG_SKINNING_GLSL}attribute vec3 legTangent;
 attribute float stretch;
 attribute vec2 skinFx;
 attribute float toeShade;
-uniform float uCuffY, uCuffBulge, uIsSkin, uUnder;
+attribute vec4 under;
+uniform float uCuffY, uCuffBulge, uIsSkin, uUnder, uTowardEye;
 varying vec3 vWorldPos, vNormal, vTangent, vRestPos, vRestNormal;
 varying vec2 vUv, vSkinFx;
-varying float vStretch, vTangentShift, vFadeHeight, vBetweenToes;
+varying float vStretch, vTangentShift, vFadeHeight, vBetweenToes, vCover;
 float cuffProfile(float dy) {
   float bulge = 0.0022 * exp(-pow((dy - 0.0065) / 0.0085, 2.0));
   float dent = -0.0011 * smoothstep(-0.05, -0.008, dy) * (1.0 - smoothstep(-0.002, 0.003, dy));
@@ -38,12 +37,10 @@ float cuffProfile(float dy) {
 }
 void main() {
   mat3 jac;
-  vec3 p = skinPosition(position, jac);
+  // Skin under a stocking takes the shape the fabric presses it into (see fitUnderStocking).
+  vec3 p = skinPosition(position + under.xyz * uUnder, jac);
   vec3 n = skinNormal(jac, normal), tang = normalize(jac * legTangent);
   vec3 rest = position;
-  // Skin under a stocking is drawn a little inside its own surface: where the fabric lies right on it, the
-  // fabric must always cover it.
-  p -= n * (${UNDER_INSET.toFixed(4)} * uUnder);
   if (uIsSkin < 0.5) {
     float dy = position.y - uCuffY;
     float off = cuffProfile(dy);
@@ -64,6 +61,11 @@ void main() {
   vSkinFx = skinFx;
   vStretch = stretch;
   vBetweenToes = toeShade;
+  vCover = under.w;
+  // uTowardEye draws the surface nearer in depth (further away when negative) without moving it on screen: by
+  // that much along its normal, so more along the line of sight where it is seen at a slant, up to 2 mm.
+  vec3 toEye = normalize(cameraPosition - world.xyz);
+  world.xyz += toEye * (sign(uTowardEye) * min(abs(uTowardEye) / max(abs(dot(vNormal, toEye)), 0.02), 0.002));
   gl_Position = projectionMatrix * viewMatrix * world;
 }
 `;
@@ -86,7 +88,7 @@ uniform float uCaustic, uMirrorFlipY, uMirrorFalloff;
 uniform vec3 uSkinLit, uSkinShade, uSkinScatter;
 uniform vec3 uDye, uDye2, uSheenColor, uShade;
 uniform float uStripe, uDenier, uPattern, uGloss, uCuffY, uHasCuff, uIsSkin, uThrough, uSheenAmount;
-uniform float uCuffStyle, uBand, uGarter, uUnder, uOverlay, uClip, uToe;
+uniform float uCuffStyle, uBand, uGarter, uUnder, uOverlay, uClip, uToe, uCover;
 uniform float uPrint, uMirror;
 uniform vec4 uMatWet;
 uniform vec4 uMatKnit;
@@ -103,7 +105,7 @@ uniform vec4 uNailCenter[${NAIL_COUNT}], uNailForward[${NAIL_COUNT}];
 uniform vec3 uNailNormal[${NAIL_COUNT}];
 varying vec3 vWorldPos, vNormal, vTangent, vRestPos, vRestNormal;
 varying vec2 vUv, vSkinFx;
-varying float vStretch, vTangentShift, vFadeHeight, vBetweenToes;
+varying float vStretch, vTangentShift, vFadeHeight, vBetweenToes, vCover;
 float aaStep(float edge, float x) {
   float w = fwidth(x) * 0.75;
   return smoothstep(edge - w, edge + w, x);
@@ -248,7 +250,7 @@ void main() {
   // Toenails sit on top of the toes. Where the forefoot's skin is drawn under the fabric, it carries them, not
   // the fabric. The lookup is skipped away from the toes; screen-space derivatives stay outside the branches,
   // where they are defined for every pixel.
-  bool nearNails = (uClip < -0.5 || uOverlay < 0.5) && vRestPos.z > 0.15 && vRestPos.y < 0.05 && vRestNormal.y > 0.2;
+  bool nearNails = (uUnder > 0.5 || uOverlay < 0.5) && vRestPos.z > 0.15 && vRestPos.y < 0.05 && vRestNormal.y > 0.2;
   vec2 nailAt = vec2(9.0);
   float nailR = 9.0;
   if (nearNails) {
@@ -308,16 +310,21 @@ void main() {
   float wetness = smoothstep(0.075, 0.15, soak) * clamp(0.5 + soak * 0.7, 0.0, 1.0);
   float film = smoothstep(0.04, 0.35, wet.g);
   float fresh = wet.b;
+  vec3 underSeen = vec3(0.0);
   if (uUnder > 0.5) {
     // Skin under a stocking: only what the fabric's own pass lets show through, tinted by the dye.
     vec3 underDye = mix(uDye, uWetDye.rgb, uWetDye.a * wetness);
     vec3 underTint = mix(mix(vec3(1.0), underDye / max(max(underDye.r, underDye.g), max(underDye.b, 0.02)), uThrough), vec3(1.0), wetness * 0.6);
-    vec3 seen = underSkin * mix(vec3(1.0), vec3(0.97, 0.86, 0.86), wetness) * mix(vec3(1.0), vec3(0.50, 0.42, 0.48), betweenToes * 0.85);
-    gl_FragColor = vec4(seen * underTint, uOpacity * exp(-max(vWorldPos.y * uMirrorFlipY, 0.0) * uMirrorFalloff));
-    return;
+    underSeen = underSkin * mix(vec3(1.0), vec3(0.97, 0.86, 0.86), wetness) * mix(vec3(1.0), vec3(0.50, 0.42, 0.48), betweenToes * 0.85) * underTint;
+    // Right under the nearest fabric that is all: the fabric's own pass covers it. Skin that is seen through
+    // another part of the fabric (between two toes, say) goes on to wear the fabric that lies on it (vCover).
+    if (uCover < 0.5) {
+      gl_FragColor = vec4(underSeen, uOpacity * exp(-max(vWorldPos.y * uMirrorFlipY, 0.0) * uMirrorFalloff));
+      return;
+    }
   }
   float cuffDy = height - uCuffY;
-  float fabric = 1.0 - uIsSkin;
+  float fabric = (1.0 - uIsSkin) * mix(1.0, vCover, uUnder);
   float cuffDen = -1.0, cut = 0.0;
   float stripe = 0.0, rib = 0.0, bandEdge = 0.0;
   if (uHasCuff > 0.5 && fabric > 0.5 && cuffDy > -0.075) {
@@ -396,10 +403,10 @@ void main() {
   // Over the forefoot the skin is a surface of its own under the fabric (drawn first, with uUnder), and shows
   // through the fabric itself: "through" is how much of what lies behind this fragment stays visible.
   // Only fabric sheer enough to tell: a nearly opaque one paints what little shows itself, like the rest of the leg.
-  float overlay = uOverlay * smoothstep(0.114, 0.128, vRestPos.z) * (1.0 - smoothstep(0.075, 0.09, height)) * smoothstep(0.004, 0.03, sheer);
+  float overlay = uOverlay * (1.0 - uUnder) * smoothstep(0.114, 0.128, vRestPos.z) * (1.0 - smoothstep(0.075, 0.09, height)) * smoothstep(0.004, 0.03, sheer);
   float through = sheer * overlay * fabric;
   vec3 stockCol = fabCol * (1.0 - sheer) + seenSkin * throughTint * sheer * (1.0 - overlay);
-  vec3 col = mix(bareSkin * mix(vec3(1.0), vec3(0.94, 0.88, 0.88), wetness), stockCol, fabric);
+  vec3 col = mix(mix(bareSkin * mix(vec3(1.0), vec3(0.94, 0.88, 0.88), wetness), underSeen, uUnder), stockCol, fabric);
   if (uGarter > 0.5 && uIsSkin < 0.5 && cuffDy > -0.014) {
     vec2 gp = vRestPos.xz - vec2(-0.004, 0.034);
     float gr = length(gp), gAng = atan(gp.x, gp.y);
@@ -465,6 +472,8 @@ void main() {
     float spark = (1.0 - smoothstep(sparkR * 0.5, sparkR, d)) * twinkle * step(0.78 - 0.3 * pearl, rnd.x) * smoothstep(0.2, 0.6, sparkAmt);
     col += mix(vec3(1.05), 0.75 + 0.5 * cos(6.2832 * (rnd.y + vec3(0.0, 0.33, 0.67))), pearl * 0.7) * spark * smoothstep(-0.4, 0.3, ndl) * mix(0.4, 1.0, lit);
   }
+  // Skin under a stocking that wears no fabric itself looks exactly as it does right under the fabric.
+  if (uUnder > 0.5) col = mix(underSeen, col, vCover);
   float fade = smoothstep(uFadeStart, uFadeEnd, vFadeHeight);
   if (!gl_FrontFacing && height > 0.3) fade = max(fade, mix(0.92, 1.0, smoothstep(uFadeStart - 0.10, uFadeStart, vFadeHeight)));
   float alpha = (1.0 - fade) * uOpacity * exp(-max(vWorldPos.y * uMirrorFlipY, 0.0) * uMirrorFalloff);

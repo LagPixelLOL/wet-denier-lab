@@ -103,12 +103,15 @@ describe("createStage construction", () => {
     expect(stage.floor.renderOrder).toBe(-5);
     expect(stage.floor.geometry.parameters).toMatchObject({ radius: 1.6, segments: 96 });
     for (const leg of stage.legs) {
-      // stocking, skin, their outlines, the forefoot's skin (drawn before the stocking it shows through) with
-      // its outline, and the bow
-      expect(leg.group.children.map((mesh) => mesh.renderOrder)).toEqual([0, 1, 0, 1, 2, 2, -2, -1, 2, 1.5]);
+      // The stocking (behind the forefoot's join first, while the forefoot shows through it), the skin, their
+      // outlines, the forefoot's skin with its outline, the stocking in front of the join, the passes that
+      // find the skin right under the nearest fabric and draw it bare, and the bow.
+      expect(leg.group.children.map((mesh) => mesh.renderOrder)).toEqual([
+        -6, -5, 0, 1, 2, 2, -4, -3, 2, -1, 1, -2.5, -2, 1.5,
+      ]);
       expect(leg.matrix).toBe(leg.group.matrix);
       expect(leg.group.matrixAutoUpdate).toBe(false);
-      expect(leg.mirror.children).toHaveLength(6);
+      expect(leg.mirror.children).toHaveLength(8);
       expect(leg.skinParts).toHaveLength(5);
       expect(leg.bow.visible).toBe(false);
       expect(leg.castScene.children).toEqual([leg.caster]);
@@ -122,11 +125,17 @@ describe("createStage construction", () => {
     const leg = stage.legs[0];
     expect(leg.stocking.geometry).toBe(model.stocking);
     expect(leg.skin.geometry).toBe(model.skin);
+    const lowFront = leg.stockingFrontParts[2].geometry;
+    expect(lowFront.attributes.position).toBe(model.stockingLow.attributes.position);
+    expect(lowFront.index!.count).toBeLessThan(model.stockingLow.index!.count / 2);
+    expect(leg.stockingFrontParts[0].geometry.attributes.position).toBe(model.stocking.attributes.position);
     expect(leg.mirror.children.map((mesh) => (mesh as THREE.Mesh).geometry)).toEqual([
       model.stockingLow,
       model.stockingLow,
       model.forefoot,
       model.forefoot,
+      lowFront,
+      lowFront,
       model.skin,
       model.skin,
     ]);
@@ -363,10 +372,17 @@ describe("setStocking", () => {
     const model = legModel();
     const leg = stage.legs[0];
     const forefoot = leg.group.children.filter((mesh) => (mesh as THREE.Mesh).geometry === model.forefoot);
-    expect(forefoot).toEqual([leg.forefootParts[0], leg.forefootParts[1], leg.forefootOutline]);
+    expect(forefoot).toEqual([
+      leg.forefootParts[0],
+      leg.forefootParts[1],
+      leg.forefootOutline,
+      leg.forefootNearParts[1],
+    ]);
     expect(leg.forefootParts).toHaveLength(4);
     expect(leg.forefootParts[1].material.polygonOffset).toBe(true);
-    expect(leg.forefootParts[1].material.uniforms.uClip.value).toBe(-1);
+    expect(leg.forefootParts[1].material.uniforms.uClip).toBe(leg.forefootClip);
+    expect(leg.forefootParts[1].material.polygonOffsetFactor).toBe(0);
+    expect(leg.skin.material.polygonOffsetFactor).toBe(1);
     expect(leg.forefootOutline!.material.uniforms.uSilhouette.value).toBe(1);
     const state = () => ({
       clip: leg.fabric.uClip.value,
@@ -375,20 +391,47 @@ describe("setStocking", () => {
       shown: leg.forefootParts.map((part) => part.visible),
       order: leg.forefootParts.map((part) => part.renderOrder),
       line: leg.forefootOutline!.visible,
+      reach: leg.forefootClip.value,
+      lineClip: leg.outlineUniforms.uClip.value,
+      stocking: leg.stockingParts.map((part) => part.renderOrder),
+      front: [...leg.stockingFrontParts, ...leg.forefootNearParts].map((part) => part.visible),
     });
-    // Under a stocking: drawn first, and seen through the fabric.
+    const all = (shown: boolean) => new Array<boolean>(6).fill(shown);
+    // Under a stocking: the stocking behind the join is drawn first, then the skin (wearing the fabric that
+    // lies on it, and reaching back under the stocking), then bare where it is right under the nearest fabric,
+    // then the stocking in front of the join, which it is seen through.
     stage.setStocking(0, resolveLegLook(DEFAULT_LEG_SPEC));
     expect(state()).toEqual({
-      clip: 0,
+      clip: 1,
       overlay: 1,
       under: 1,
       shown: [true, true, true, true],
-      order: [-2, -1, -2, -1],
+      order: [-4, -3, -4, -3],
       line: false,
+      reach: -0.1,
+      lineClip: 0,
+      stocking: [-6, -5, -6, -5],
+      front: all(true),
     });
+    expect(leg.forefootParts[1].material.uniforms.uCover.value).toBe(1);
+    // The reflection draws the bare skin only.
+    expect(leg.forefootParts[3].material).toBe(leg.forefootNearParts[1].material);
+    expect(leg.forefootNearParts).toHaveLength(2);
+    expect(leg.forefootNearParts[1].material.uniforms.uCover.value).toBe(0);
+    expect(leg.forefootNearParts[1].material.uniforms.uClip.value).toBe(-1);
+    expect(leg.forefootNearParts[1].material.depthFunc).toBe(THREE.EqualDepth);
+    expect(leg.forefootNearParts[0].material.colorWrite).toBe(false);
+    expect(leg.forefootNearParts[0].material.uniforms.uTowardEye.value).toBeLessThan(0);
+    expect(leg.stocking.material.uniforms.uTowardEye.value).toBe(0);
     // A fading leg goes back to a single surface.
     stage.setLegOpacity(0, 0.5);
-    expect(state()).toMatchObject({ overlay: 0, shown: [false, false, false, false] });
+    expect(state()).toMatchObject({
+      clip: 0,
+      overlay: 0,
+      shown: [false, false, false, false],
+      stocking: [0, 1, 0, 1],
+      front: all(false),
+    });
     stage.setLegOpacity(0, 0.95);
     expect(leg.fabric.uOverlay.value).toBeCloseTo(0.5, 5);
     expect(leg.forefootParts[0].visible).toBe(true);
@@ -404,10 +447,14 @@ describe("setStocking", () => {
         shown: [true, true, true, true],
         order: [0, 1, 0, 1],
         line: true,
+        reach: -1,
+        lineClip: 1,
+        stocking: [0, 1, 0, 1],
+        front: all(false),
       });
     }
     // The other leg keeps its own state.
-    expect(stage.legs[1].fabric.uClip.value).toBe(0);
+    expect(stage.legs[1].fabric.uClip.value).toBe(1);
     expect(stage.legs[1].bare).toBe(false);
   });
 

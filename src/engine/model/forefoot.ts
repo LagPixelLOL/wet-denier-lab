@@ -60,6 +60,34 @@ const COLLISION_LEVELS = 1;
  */
 export const FOREFOOT_JOIN = { cut: 0.112, to: 0.13, maxY: 0.09 };
 
+/**
+ * The part of a stocking geometry that reaches in front of the join (below maxY: the knee and the thigh reach
+ * as far forward): the same attributes, with only the triangles there. Clipped at the join by the shaders, it
+ * is the fabric the forefoot's skin shows through.
+ */
+export function frontOfJoin(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
+  const positions = geometry.attributes.position.array;
+  const index = geometry.index!.array;
+  const kept: number[] = [];
+  for (let t = 0; t < index.length; t += 3) {
+    const corners = [index[t], index[t + 1], index[t + 2]];
+    if (
+      corners.some((v) => positions[v * 3 + 2] > FOREFOOT_JOIN.cut - 0.001) &&
+      corners.every((v) => positions[v * 3 + 1] < FOREFOOT_JOIN.maxY)
+    ) {
+      kept.push(...corners);
+    }
+  }
+  const front = new THREE.BufferGeometry();
+  for (const name of Object.keys(geometry.attributes)) {
+    front.setAttribute(name, geometry.attributes[name]);
+  }
+  front.setIndex(new THREE.BufferAttribute(new Uint32Array(kept), 1));
+  front.boundingSphere = geometry.boundingSphere;
+  front.boundingBox = geometry.boundingBox;
+  return front;
+}
+
 /** The cage reaches further back than the join; the render geometry keeps this much of it behind the cut. */
 const BEHIND_CUT = 0.004;
 
@@ -336,6 +364,152 @@ function splitUvSeams(
   return { sources, seamUvs, uvTri };
 }
 
+/**
+ * How the skin lies under a stocking (m). The model's fabric rests a little off the skin it is pulled over, and
+ * further off where the foot is slimmer than the stocking was made. Skin that faces fabric at most `tight`
+ * away is pressed against it, `margin` under its surface, and by `loose` the skin keeps its own shape: between
+ * the toes and in the creases under them the fabric spans the gap. `facing` is the range of the cosine between
+ * the skin's normal and the fabric's over which that fades, so the walls of a toe stay clear of the fabric that
+ * bridges the cleft beside it. Skin that ends up less than `worn` under the fabric counts as wearing it.
+ */
+export const UNDER_FIT = { margin: 0.0001, worn: 0.00028, tight: 0.0025, loose: 0.0045, facing: [0.45, 0.75] };
+
+/** The triangles of `mesh` that the forefoot's skin can lie under. */
+function fabricOverForefoot(mesh: SurfaceMesh): SurfaceGrid {
+  const kept: number[] = [];
+  for (let t = 0; t < mesh.idx.length; t += 3) {
+    const corners = [mesh.idx[t], mesh.idx[t + 1], mesh.idx[t + 2]];
+    if (
+      corners.every((v) => mesh.pos[v * 3 + 1] < FOREFOOT_JOIN.maxY + 0.02) &&
+      corners.some((v) => mesh.pos[v * 3 + 2] > FOREFOOT_JOIN.cut - 0.01)
+    ) {
+      kept.push(...corners);
+    }
+  }
+  return new SurfaceGrid({ ...mesh, idx: new Uint32Array(kept) }, 0.003);
+}
+
+/**
+ * Per vertex of the skin, for drawing it under `stocking`: the offset that fits it to the fabric (xyz, in the
+ * rest pose) and how much it is covered by fabric lying on it (w, 0 to 1), see UNDER_FIT. No vertex is left
+ * nearer than the margin to the fabric's surface, or outside it, so the fabric always covers the skin.
+ */
+function fitUnderStocking(
+  positions: ArrayLike<number>,
+  normals: ArrayLike<number>,
+  triangles: ArrayLike<number>,
+  stocking: SurfaceMesh,
+): Float32Array {
+  const count = positions.length / 3;
+  const under = new Float32Array(count * 4);
+  const fabric = fabricOverForefoot(stocking);
+  const { margin, tight, loose, facing } = UNDER_FIT;
+  const weld = weldVertices(positions);
+  // Per vertex, the mean of `values` (`size` numbers each) over the vertex and its neighbours.
+  const spread = (values: Float32Array, size: number): Float32Array => {
+    const sums = new Float32Array(values.length);
+    const shares = new Uint16Array(count);
+    for (let t = 0; t < triangles.length; t += 3) {
+      const corners = [weld[triangles[t]], weld[triangles[t + 1]], weld[triangles[t + 2]]];
+      for (const to of corners) {
+        shares[to] += 3;
+        for (const from of corners) {
+          for (let k = 0; k < size; k++) {
+            sums[to * size + k] += values[from * size + k];
+          }
+        }
+      }
+    }
+    return sums.map((sum, at) => (shares[(at / size) | 0] ? sum / shares[(at / size) | 0] : 0));
+  };
+  let offsets: Float32Array = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    if (weld[i] !== i) {
+      continue;
+    }
+    const x = positions[i * 3];
+    const y = positions[i * 3 + 1];
+    const z = positions[i * 3 + 2];
+    const hit = closestWithin(fabric, x, y, z, loose);
+    if (!hit) {
+      continue;
+    }
+    // How far under the fabric the skin lies; negative where it sticks out.
+    const clearance = -hit.side * hit.dist;
+    const faces = normals[i * 3] * hit.nx + normals[i * 3 + 1] * hit.ny + normals[i * 3 + 2] * hit.nz;
+    // Deep in a cleft the nearest fabric can be the far side of a fold, which the skin is not under at all.
+    const pressed =
+      clearance <= margin
+        ? faces > facing[0] && clearance > -0.001
+          ? 1
+          : 0
+        : (1 - smoothstep(tight, loose, clearance)) * smoothstep(facing[0], facing[1], faces);
+    offsets.set(
+      [
+        (hit.x - hit.nx * margin - x) * pressed,
+        (hit.y - hit.ny * margin - y) * pressed,
+        (hit.z - hit.nz * margin - z) * pressed,
+      ],
+      i * 3,
+    );
+  }
+  // Evened out over the neighbours, so the skin keeps a smooth shape where the fabric lifts off it.
+  offsets = spread(spread(offsets, 3), 3);
+  let worn: Float32Array = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    if (weld[i] !== i) {
+      continue;
+    }
+    let dx = offsets[i * 3];
+    let dy = offsets[i * 3 + 1];
+    let dz = offsets[i * 3 + 2];
+    // Wherever that leaves the skin too close to the fabric, or outside it, it goes back under it.
+    const near = fabric.closest(positions[i * 3] + dx, positions[i * 3 + 1] + dy, positions[i * 3 + 2] + dz, 0.001);
+    if (near) {
+      const faces = normals[i * 3] * near.nx + normals[i * 3 + 1] * near.ny + normals[i * 3 + 2] * near.nz;
+      let gap = -near.side * near.dist;
+      if (gap < margin && faces > facing[0]) {
+        dx -= near.nx * (margin - gap);
+        dy -= near.ny * (margin - gap);
+        dz -= near.nz * (margin - gap);
+        gap = margin;
+      }
+      // The skin wears the fabric where the two end up touching, face to face: near the wall of a toe the
+      // fabric can pass as close, but that skin is seen from between the toes, under the fabric.
+      worn[i] = (1 - smoothstep(1.3 * margin, UNDER_FIT.worn, gap)) * smoothstep(facing[1], 0.9, faces);
+    }
+    under.set([dx, dy, dz], i * 4);
+  }
+  // Skin counts as worn only well inside a patch of it: along the patch's edge the fabric lifts off, and the
+  // skin there is also seen from under the lifted fabric, bare. Two rounds take the least of each vertex and
+  // its neighbours (about 3 mm in all), a third their mean. Behind the join the skin is the stocking's own,
+  // so the join is no such edge.
+  for (let i = 0; i < count; i++) {
+    if (positions[i * 3 + 2] < FOREFOOT_JOIN.cut) {
+      worn[i] = 1;
+    }
+  }
+  for (let round = 0; round < 2; round++) {
+    const next = worn.slice();
+    for (let t = 0; t < triangles.length; t += 3) {
+      const corners = [weld[triangles[t]], weld[triangles[t + 1]], weld[triangles[t + 2]]];
+      const least = Math.min(worn[corners[0]], worn[corners[1]], worn[corners[2]]);
+      for (const v of corners) {
+        next[v] = Math.min(next[v], least);
+      }
+    }
+    worn = next;
+  }
+  worn = spread(worn, 1);
+  for (let i = 0; i < count; i++) {
+    under[i * 4 + 3] = worn[i];
+    if (weld[i] !== i) {
+      under.copyWithin(i * 4, weld[i] * 4, weld[i] * 4 + 4);
+    }
+  }
+  return under;
+}
+
 /** Across the join the skin is lit like the stocking mesh it continues, so no seam shows. */
 function blendToStockingNormals(normals: THREE.TypedArray, skin: Skin): void {
   for (let i = 0; i < skin.onStocking.length; i++) {
@@ -383,6 +557,10 @@ export function buildForefoot(
   geometry.setAttribute("stretch", new THREE.BufferAttribute(stretch, 1));
   geometry.setAttribute("skinFx", new THREE.BufferAttribute(skinFx, 2));
   geometry.setAttribute("toeShade", new THREE.BufferAttribute(skin.shade, 1));
+  geometry.setAttribute(
+    "under",
+    new THREE.BufferAttribute(fitUnderStocking(positions, normals, skin.triangles, stocking), 4),
+  );
   return geometry;
 }
 

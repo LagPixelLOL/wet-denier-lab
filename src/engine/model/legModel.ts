@@ -91,6 +91,7 @@ export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions =
   const stocking = buildGeometry(fineWrapped.pos, mesh.uv, mesh.idx, fineWeld);
   stocking.setAttribute("skinFx", new THREE.BufferAttribute(skinFx, 2));
   stocking.setAttribute("toeShade", new THREE.BufferAttribute(new Float32Array(fineWrapped.pos.length / 3), 1));
+  stocking.setAttribute("under", new THREE.BufferAttribute(new Float32Array((fineWrapped.pos.length / 3) * 4), 4));
   computeLegTangents(stocking);
   const circumference = computeCircumference(stocking);
   const stockingLow = new THREE.BufferGeometry();
@@ -126,6 +127,7 @@ export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions =
   );
   skin.setAttribute("skinFx", new THREE.BufferAttribute(new Float32Array(skin.attributes.position.count * 2), 2));
   skin.setAttribute("toeShade", new THREE.BufferAttribute(new Float32Array(skin.attributes.position.count), 1));
+  skin.setAttribute("under", new THREE.BufferAttribute(new Float32Array(skin.attributes.position.count * 4), 4));
   skin.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(skin.attributes.position.count * 2).fill(-1), 2));
   return {
     stocking: stocking,
