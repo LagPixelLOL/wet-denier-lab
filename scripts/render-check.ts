@@ -14,6 +14,8 @@
  *   --click <selector>  click this element once the page is ready (repeatable, in order)
  *   --settle <ms>       time to keep rendering after the page is ready (default 2000)
  *   --angle <backend>   ANGLE backend: vulkan, gl-egl or swiftshader (default vulkan)
+ *   --perf              uncap the frame rate (no vsync) so the report's frame times show the real render cost;
+ *                       use a large --size and --dpr to make the GPU the bottleneck
  *   --out <file.png>    screenshot path (default render-check/render.png); the report goes next to it
  *   --allow-software    do not fail when the renderer is a software one
  */
@@ -44,6 +46,7 @@ const { values: opts } = parseArgs({
     click: { type: "string", multiple: true, default: [] },
     settle: { type: "string", default: "2000" },
     angle: { type: "string", default: "vulkan" },
+    perf: { type: "boolean", default: false },
     out: { type: "string", default: "render-check/render.png" },
     "allow-software": { type: "boolean", default: false },
   },
@@ -87,22 +90,37 @@ function readWebGLInfo(page: Page) {
   });
 }
 
-/** Counts animation frames over `ms` while the app keeps rendering. */
-function countFrames(page: Page, ms: number) {
+/** Times between animation frames (ms) over `ms` while the app keeps rendering. */
+function measureFrames(page: Page, ms: number) {
   return page.evaluate(
     (ms) =>
-      new Promise<number>((resolve) => {
-        let frames = 0;
-        const end = performance.now() + ms;
-        const tick = (now: number) => {
-          frames++;
+      new Promise<number[]>((resolve) => {
+        const times: number[] = [];
+        let last = performance.now();
+        const end = last + ms;
+        const tick = () => {
+          const now = performance.now();
+          times.push(now - last);
+          last = now;
           if (now < end) requestAnimationFrame(tick);
-          else resolve(frames);
+          else resolve(times);
         };
         requestAnimationFrame(tick);
       }),
     ms,
   );
+}
+
+/** Frame rate and frame time percentiles, skipping the first frames while the page warms up. */
+function frameStats(times: number[]) {
+  const steady = times.slice(Math.min(5, times.length - 1)).sort((a, b) => a - b);
+  const total = steady.reduce((sum, t) => sum + t, 0);
+  const at = (q: number) => Math.round(steady[Math.min(steady.length - 1, Math.floor(q * steady.length))] * 100) / 100;
+  return {
+    frames: steady.length,
+    fps: Math.round((steady.length / total) * 10000) / 10,
+    frameMs: { mean: Math.round((total / steady.length) * 100) / 100, p50: at(0.5), p95: at(0.95), max: at(1) },
+  };
 }
 
 /** Pixel statistics of a PNG, decoded in the browser, to catch blank or single-color renders. */
@@ -153,7 +171,13 @@ const browser = await chromium.launch({
   // Full Chromium in new headless mode; the separate headless shell does not use the GPU as reliably.
   channel: "chromium",
   headless: true,
-  args: ["--ignore-gpu-blocklist", "--enable-gpu", "--enable-gpu-rasterization", ...angleFlags],
+  args: [
+    "--ignore-gpu-blocklist",
+    "--enable-gpu",
+    "--enable-gpu-rasterization",
+    ...angleFlags,
+    ...(opts.perf ? ["--disable-gpu-vsync", "--disable-frame-rate-limit"] : []),
+  ],
 });
 const consoleErrors: string[] = [];
 let failure = "";
@@ -182,8 +206,8 @@ try {
     await page.click(selector, { timeout: 5000 });
   }
   const settleMs = Number(opts.settle);
-  const [frames, gpuDuring] = await Promise.all([
-    countFrames(page, settleMs),
+  const [frameTimes, gpuDuring] = await Promise.all([
+    measureFrames(page, settleMs),
     new Promise((resolve) => setTimeout(() => resolve(sampleNvidia()), settleMs / 2)),
   ]);
   const webgl = await readWebGLInfo(page);
@@ -208,7 +232,8 @@ try {
     viewport: { width, height, dpr: Number(opts.dpr) },
     locale: opts.locale,
     readyMs,
-    fps: Math.round((frames / settleMs) * 10000) / 10,
+    uncapped: opts.perf,
+    ...frameStats(frameTimes),
     webgl,
     hardware,
     gpuDevices: info.gpu.devices.map((d) => `${d.vendorString} ${d.deviceString}`.trim()),

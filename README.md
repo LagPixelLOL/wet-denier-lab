@@ -200,8 +200,8 @@ Tests run in Node without a browser or GPU and take a few seconds. Vitest has tw
 
 `npm run render:check` builds the app, serves `dist/` with `vite preview`, opens it in headless Chromium
 (Playwright) and saves `render-check/render.png` plus a `render.json` report. The report has the WebGL renderer
-string of the app's own context, Chromium's GPU feature status, the frame rate, `nvidia-smi` samples (when
-available), pixel statistics and any console errors. The check fails if the app does not boot, the screenshot is
+string of the app's own context, Chromium's GPU feature status, the frame rate and frame times (mean, median, 95th
+percentile, max), `nvidia-smi` samples (when available), pixel statistics and any console errors. The check fails if the app does not boot, the screenshot is
 blank, or WebGL ran on a software renderer (SwiftShader, llvmpipe, ...).
 
 ```sh
@@ -213,6 +213,14 @@ Options: `--url` (render an existing page instead), `--no-build`, `--hash`, `--s
 `--click <selector>` (repeatable, clicked in order once the page is ready), `--settle <ms>`, `--angle vulkan|gl-egl|swiftshader` (default `vulkan`), `--out <file.png>` and
 `--allow-software`. It needs a machine with a GPU. Without one, it fails unless you pass `--allow-software`, and
 software rendering is slow (about 9 s to boot and 2-3 fps).
+
+Frame rates are capped by vsync unless you pass `--perf`, which turns the cap off so the frame times show what a
+frame really costs. To compare shader changes, make the GPU the bottleneck with a large canvas and run the same
+look before and after:
+
+```sh
+npm run render:check -- --perf --size 2560x1440 --dpr 2 --settle 3000 --hash '#look=1~...'
+```
 
 ## Credits
 
