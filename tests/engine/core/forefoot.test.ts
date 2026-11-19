@@ -509,8 +509,9 @@ describe("buildForefoot on the shipped model", () => {
       pressed += hit.dist < UNDER_FIT.margin * 1.5 ? 1 : 0;
     }
     expect(nearest).toBeGreaterThan(UNDER_FIT.margin * 0.97);
-    // Most of the skin is pressed against the fabric, which never has to move further than the fit allows.
-    expect(pressed).toBeGreaterThan(positions.length / 3 / 3);
+    // Behind the toes the skin is pressed against the fabric (the toes keep their shape, and the fabric is
+    // fitted to them instead), and it never has to move further than the fit allows.
+    expect(pressed).toBeGreaterThan(positions.length / 3 / 5);
     expect(worn).toBeGreaterThan(2000);
     expect(longest).toBeLessThan(UNDER_FIT.loose);
   });

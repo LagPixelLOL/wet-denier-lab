@@ -405,7 +405,7 @@ def nail_frames(points, normals, quads, levels, toes):
 FABRIC_Z = (0.116, 0.132)
 FABRIC_Y = (0.075, 0.090)
 # The fabric's middle lies this far off the skin where it touches it.
-FABRIC_THICKNESS = 0.0003
+FABRIC_THICKNESS = 0.00015
 FABRIC_STEPS = 400
 # Around the toes the fabric is free to draw in onto the skin. A toe begins FABRIC_TOE_ROOT behind where it
 # comes free of the foot (further back under the foot by FABRIC_TOE_CREASE, to take in the crease behind its

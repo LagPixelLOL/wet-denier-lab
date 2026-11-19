@@ -381,7 +381,7 @@ export const UNDER_FIT = {
   edge: 0.003,
   broad: 0.002,
   local: 0.0003,
-  toes: { tight: 0.0006, beside: 0.004, behind: 0.008, crease: 0.007 },
+  toes: { tight: 0.0001, beside: 0.004, behind: 0.008, crease: 0.007 },
   tight: 0.004,
   loose: 0.006,
   facing: [0.45, 0.75],
