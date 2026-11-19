@@ -256,8 +256,8 @@ describe("a splash on the leg", () => {
       [
         "15: drops 0/128/0/0 beads 90 impacts 30 floor 0",
         "30: drops 0/93/0/0 beads 92 impacts 44 floor 103",
-        "45: drops 0/7/0/0 beads 92 impacts 44 floor 208",
-        "60: drops 0/0/0/0 beads 90 impacts 44 floor 215",
+        "45: drops 0/2/0/0 beads 93 impacts 44 floor 211",
+        "60: drops 0/0/0/0 beads 91 impacts 44 floor 213",
       ]
     `);
     expect(water.time).toBeCloseTo(1, 12);
@@ -271,14 +271,14 @@ describe("a splash on the leg", () => {
         water.beads.flatMap((b) => [b.x, b.y, b.z, b.r]),
         7,
       ),
-    ).toMatchInlineSnapshot(`"f1bbcfc6"`);
-    expect(digest(water.puddleBytes)).toMatchInlineSnapshot(`"727853c0"`);
+    ).toMatchInlineSnapshot(`"e7390959"`);
+    expect(digest(water.puddleBytes)).toMatchInlineSnapshot(`"f0805131"`);
     expect(
       digestRounded(
         water.ripples.flatMap((r) => r.toArray()),
         7,
       ),
-    ).toMatchInlineSnapshot(`"ac316e92"`);
+    ).toMatchInlineSnapshot(`"67ca0455"`);
   });
 
   it("centers the impact energy on the hit point", () => {

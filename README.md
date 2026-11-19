@@ -143,8 +143,9 @@ on the skin, which the leg shader draws as raised plates.
 - Under a stocking the forefoot is drawn first and the fabric over it lets it show through by its sheerness, so
   the toes are seen through the fabric with real depth. The fabric around the toes is fitted as a membrane
   pulled taut over the skin: it touches the toes' tops and pads and bridges the gaps and creases between them.
-  The fit only ever lifts the fabric off its old shape, and starts in front of the join, so the foot behind the
-  toes keeps its shape.
+  Around the toes the fabric is free to draw in onto the skin (the stocking's toe was roomier than the toes
+  are), so it hugs their tops, tips, pads and outer sides. Behind them the fit only lifts the fabric off its old
+  shape, and it starts in front of the join, so the rest of the foot keeps its shape.
 - Under a stocking the skin is fitted to the fabric (`fitUnderStocking` in `model/forefoot.ts`, the `under`
   vertex attribute): skin that faces fabric a few millimeters away is pressed against it, 0.1 mm under its
   surface, so no gap shows where the fabric is pulled tight and the skin never comes through it. Between the

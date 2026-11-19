@@ -821,10 +821,10 @@ describe("floor shadow rect", () => {
       expect(z).toBeLessThan(rect.y + rect.w);
     }
     // ...which still contains the default rect.
-    expect(rect.x).toBeLessThanOrEqual(-0.65);
-    expect(rect.y).toBeLessThanOrEqual(-0.72);
-    expect(rect.x + rect.z).toBeGreaterThanOrEqual(0.65);
-    expect(rect.y + rect.w).toBeGreaterThanOrEqual(0.58);
+    expect(rect.x).toBeLessThanOrEqual(-0.65 + 1e-12);
+    expect(rect.y).toBeLessThanOrEqual(-0.72 + 1e-12);
+    expect(rect.x + rect.z).toBeGreaterThanOrEqual(0.65 - 1e-12);
+    expect(rect.y + rect.w).toBeGreaterThanOrEqual(0.58 - 1e-12);
     // The shadow pass renders exactly that rect, with the blur scaled to stay the same on the floor.
     expect(passes[0].bounds).toEqual([rect.x, rect.x + rect.z, -rect.y, -(rect.y + rect.w)]);
     expect(passes[1].blur![0]).toBeCloseTo(((1.7 / 640) * 1.3) / rect.z, 12);

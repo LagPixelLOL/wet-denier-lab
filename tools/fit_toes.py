@@ -405,18 +405,25 @@ def nail_frames(points, normals, quads, levels, toes):
 FABRIC_Z = (0.116, 0.132)
 FABRIC_Y = (0.075, 0.090)
 # The fabric's middle lies this far off the skin where it touches it.
-FABRIC_THICKNESS = 0.0004
-FABRIC_STEPS = 120
+FABRIC_THICKNESS = 0.0003
+FABRIC_STEPS = 400
+# Around the toes the fabric is free to draw in onto the skin. A toe begins FABRIC_TOE_ROOT behind where it
+# comes free of the foot (further back under the foot by FABRIC_TOE_CREASE, to take in the crease behind its
+# pad), and the freedom fades out over FABRIC_TOE_FADE behind that.
+FABRIC_TOE_ROOT = 0.004
+FABRIC_TOE_CREASE = 0.007
+FABRIC_TOE_FADE = 0.008
 
 
-def fit_fabric(stocking, triangles, weld, skin, skin_normals):
+def fit_fabric(stocking, triangles, weld, skin, skin_normals, toes):
     """
     The stocking around the toes as a membrane pulled taut over the skin: each round every vertex moves toward
-    the middle of its neighbours (tension), then out of the skin if it sank in. What is left touches the skin on
-    the toes' tops, tips and pads and spans the clefts between the toes and the creases under them.
-    The membrane also stays outside the stocking's own shape as it was: that shape is the fabric at rest over
-    the foot, so the fit only ever lifts it over the toes, and tension cannot draw it in behind them (which
-    left a waist across the foot where the fit begins).
+    the middle of its neighbours (tension), then out of the skin if it sank in. What is left touches the skin on the toes' tops, tips, pads and
+    outer sides and spans the clefts between the toes and the creases under them.
+    Behind the toes the membrane also stays outside the stocking's own shape as it was: that shape is the
+    fabric at rest over the foot, so the fit only lifts it there, and tension cannot draw it in (which left a
+    waist across the foot where the fit begins). Around the toes it is free to draw in: the stocking's toe was
+    roomier than the toes are.
     Returns the new positions and each vertex's distance from the skin.
     """
     weight = smoothstep(*FABRIC_Z, stocking[:, 2]) * (1 - smoothstep(*FABRIC_Y, stocking[:, 1]))
@@ -440,6 +447,11 @@ def fit_fabric(stocking, triangles, weld, skin, skin_normals):
     rest = stocking[part].copy()
     rest_normals = welded_normals(stocking, triangles, weld).astype(np.float64)[part]
     rest_tree = cKDTree(rest)
+    # How much each vertex is over a toe, where the membrane may draw in.
+    toe_of = np.argmin([distance_to_path(rest[:, [0, 2]], toe[:, [0, 2]]) for toe in toes], axis=0)
+    begins = np.array([toe[1, 2] for toe in toes])[toe_of] - FABRIC_TOE_ROOT
+    begins -= FABRIC_TOE_CREASE * smoothstep(-0.2, 0.3, -rest_normals[:, 1])
+    held = 1 - smoothstep(begins - FABRIC_TOE_FADE, begins, rest[:, 2])
     position = stocking[part].copy()
     for _ in range(FABRIC_STEPS):
         total = np.zeros_like(position)
@@ -448,13 +460,23 @@ def fit_fabric(stocking, triangles, weld, skin, skin_normals):
         _, at = rest_tree.query(position)
         inside = np.einsum("ij,ij->i", position - rest[at], rest_normals[at])
         drawn_in = free & (inside < 0)
-        position[drawn_in] -= inside[drawn_in, None] * rest_normals[at[drawn_in]]
+        position[drawn_in] -= (inside * held)[drawn_in, None] * rest_normals[at[drawn_in]]
         off, nearest = distance(position)
         sunk = free & (off < FABRIC_THICKNESS)
         position[sunk] += (FABRIC_THICKNESS - off[sunk])[:, None] * skin_normals[nearest[sunk]]
     fitted = stocking.copy()
     fitted[part] = stocking[part] + (position - stocking[part]) * weight[part, None]
     fitted = fitted[weld]
+    # Tension must not have folded the membrane over itself.
+    corners = fitted[triangles]
+    before = stocking[triangles]
+    turned = np.einsum(
+        "ij,ij->i",
+        np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]),
+        np.cross(before[:, 1] - before[:, 0], before[:, 2] - before[:, 0]),
+    )
+    if (turned < 0).any():
+        raise SystemExit(f"the fitted stocking folds over itself in {int((turned < 0).sum())} triangles")
     return fitted, np.maximum(distance(fitted)[0] - FABRIC_THICKNESS, 0), weight[weld] > 0
 
 
@@ -536,7 +558,7 @@ def main():
     if wrap_info.get("toesFitted"):
         print("the stocking is already fitted over the toes")
     else:
-        fitted, off, changed = fit_fabric(stocking, triangles, weld, skin, skin_normals)
+        fitted, off, changed = fit_fabric(stocking, triangles, weld, skin, skin_normals, toes)
         moved = np.linalg.norm(fitted - stocking, axis=1)
         print(f"stocking refitted over the toes: {int(changed.sum())} vertices, moved up to {moved.max() * 1000:.1f} mm")
         offsets = np.rint((fitted - positions.astype(np.float64)) / WRAP_UNIT)

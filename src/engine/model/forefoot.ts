@@ -567,6 +567,46 @@ function fitUnderStocking(
     }
     under.set([dx, dy, dz], i * 4);
   }
+  // The other way round: where the skin curves in, a vertex of the fabric can still reach the flat triangle
+  // between the skin's vertices, although those are under the fabric. Such a triangle sinks until it is not.
+  const fitted = new Float32Array(count * 3);
+  for (let i = 0; i < count * 3; i++) {
+    fitted[i] = positions[i] + under[weld[(i / 3) | 0] * 4 + (i % 3)];
+  }
+  const skinSurface = new SurfaceGrid(
+    { pos: fitted, nrm: normals, uv: new Float32Array(count * 2), idx: triangles },
+    0.003,
+  );
+  const sink = new Float32Array(count);
+  const checked = new Uint8Array(stocking.pos.length / 3);
+  for (let at = 0; at < fabric.idx.length; at++) {
+    const f = fabric.idx[at];
+    if (checked[f]) {
+      continue;
+    }
+    checked[f] = 1;
+    const hit = skinSurface.closest(stocking.pos[f * 3], stocking.pos[f * 3 + 1], stocking.pos[f * 3 + 2], 0.0006);
+    if (
+      !hit ||
+      stocking.nrm[f * 3] * hit.nx + stocking.nrm[f * 3 + 1] * hit.ny + stocking.nrm[f * 3 + 2] * hit.nz < facing[0]
+    ) {
+      continue;
+    }
+    const short = margin * 0.6 - hit.side * hit.dist;
+    if (short > 0) {
+      for (let k = 0; k < 3; k++) {
+        const v = weld[triangles[hit.tri * 3 + k]];
+        sink[v] = Math.max(sink[v], short);
+      }
+    }
+  }
+  for (let i = 0; i < count; i++) {
+    if (sink[i] > 0) {
+      for (let k = 0; k < 3; k++) {
+        under[i * 4 + k] -= normals[i * 3 + k] * sink[i];
+      }
+    }
+  }
   // Skin counts as worn only well inside a patch of it: along the patch's edge the fabric lifts off, and the
   // skin there is also seen from under the lifted fabric, bare. So it is worn in full only `edge` away from any
   // skin that is not, and less the nearer it is to such skin. Behind the join the skin is the stocking's own,

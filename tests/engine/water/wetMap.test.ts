@@ -101,15 +101,15 @@ describe("WetMap construction", () => {
     expect(wetmap.boxes).toMatchInlineSnapshot(`
       [
         [
-          143,
+          144,
           17,
-          816,
+          815,
           999,
         ],
         [
-          1167,
+          1168,
           17,
-          816,
+          815,
           999,
         ],
       ]
