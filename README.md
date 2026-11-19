@@ -148,7 +148,8 @@ on the skin, which the leg shader draws as raised plates.
 - Under a stocking the skin is fitted to the fabric (`fitUnderStocking` in `model/forefoot.ts`, the `under`
   vertex attribute): skin that faces fabric a few millimeters away is pressed against it, 0.1 mm under its
   surface, so no gap shows where the fabric is pulled tight and the skin never comes through it. Between the
-  toes and in the creases under them the skin keeps its own shape and the fabric spans the gap.
+  toes and in the creases under them the skin keeps its own shape and the fabric spans the gap, and the toes
+  themselves only meet fabric that is nearly on them already, so they keep the shape they have bare.
 - What shows through the fabric over the toes is drawn before it: the stocking behind the forefoot's join, then
   the skin, then the stocking in front of the join (`showForefoot` in `stage/createStage.ts`). So the rest of
   the leg is seen between the toes too. Only the nearest surface of that front part is drawn, so the skin is

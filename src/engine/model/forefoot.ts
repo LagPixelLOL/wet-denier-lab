@@ -370,9 +370,23 @@ function splitUvSeams(
  * away is pressed against it, `margin` under its surface, and by `loose` the skin keeps its own shape: between
  * the toes and in the creases under them the fabric spans the gap. `facing` is the range of the cosine between
  * the skin's normal and the fabric's over which that fades, so the walls of a toe stay clear of the fabric that
- * bridges the cleft beside it. Skin that ends up less than `worn` under the fabric counts as wearing it.
+ * bridges the cleft beside it. On a toe (`toes.within` of the skin between two toes, fading out over that range)
+ * the skin only meets fabric at most `toes.tight` away, so the toes keep the shape they have bare; the fabric
+ * around them is roomier than they are. The skin keeps its shape on the way: it takes the `broad` part of the move (its
+ * mean over that distance) and at most `local` of the rest. Skin that ends up less than `worn` under the fabric
+ * counts as wearing it, in full `edge` away from skin that does not.
  */
-export const UNDER_FIT = { margin: 0.0001, worn: 0.00028, tight: 0.0025, loose: 0.0045, facing: [0.45, 0.75] };
+export const UNDER_FIT = {
+  margin: 0.0001,
+  worn: 0.00028,
+  edge: 0.003,
+  broad: 0.002,
+  local: 0.0003,
+  toes: { tight: 0.0006, within: [0.004, 0.009] },
+  tight: 0.004,
+  loose: 0.006,
+  facing: [0.45, 0.75],
+};
 
 /** The triangles of `mesh` that the forefoot's skin can lie under. */
 function fabricOverForefoot(mesh: SurfaceMesh): SurfaceGrid {
@@ -397,32 +411,60 @@ function fabricOverForefoot(mesh: SurfaceMesh): SurfaceGrid {
 function fitUnderStocking(
   positions: ArrayLike<number>,
   normals: ArrayLike<number>,
-  triangles: ArrayLike<number>,
+  shade: ArrayLike<number>,
   stocking: SurfaceMesh,
 ): Float32Array {
   const count = positions.length / 3;
   const under = new Float32Array(count * 4);
   const fabric = fabricOverForefoot(stocking);
-  const { margin, tight, loose, facing } = UNDER_FIT;
+  const { margin, tight, loose, facing, toes } = UNDER_FIT;
   const weld = weldVertices(positions);
-  // Per vertex, the mean of `values` (`size` numbers each) over the vertex and its neighbours.
-  const spread = (values: Float32Array, size: number): Float32Array => {
-    const sums = new Float32Array(values.length);
-    const shares = new Uint16Array(count);
-    for (let t = 0; t < triangles.length; t += 3) {
-      const corners = [weld[triangles[t]], weld[triangles[t + 1]], weld[triangles[t + 2]]];
-      for (const to of corners) {
-        shares[to] += 3;
-        for (const from of corners) {
-          for (let k = 0; k < size; k++) {
-            sums[to * size + k] += values[from * size + k];
-          }
+  // Vertices by cell of a grid, to find the ones near a point.
+  const bucketsOf = (size: number, keep: (i: number) => boolean) => {
+    const cellAt = (x: number, y: number, z: number): string =>
+      `${Math.floor(x / size)},${Math.floor(y / size)},${Math.floor(z / size)}`;
+    const buckets = new Map<string, number[]>();
+    for (let i = 0; i < count; i++) {
+      if (weld[i] === i && keep(i)) {
+        const key = cellAt(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+        const bucket = buckets.get(key);
+        if (bucket) {
+          bucket.push(i);
+        } else {
+          buckets.set(key, [i]);
         }
       }
     }
-    return sums.map((sum, at) => (shares[(at / size) | 0] ? sum / shares[(at / size) | 0] : 0));
+    /** Calls `visit` with every kept vertex within `size` of the point (and some a little further), and its squared distance. */
+    return (x: number, y: number, z: number, visit: (other: number, apart: number) => void): void => {
+      for (let c = 0; c < 27; c++) {
+        const bucket = buckets.get(
+          cellAt(x + ((c % 3) - 1) * size, y + ((((c / 3) | 0) % 3) - 1) * size, z + (((c / 9) | 0) - 1) * size),
+        );
+        for (const other of bucket ?? []) {
+          visit(
+            other,
+            (positions[other * 3] - x) ** 2 + (positions[other * 3 + 1] - y) ** 2 + (positions[other * 3 + 2] - z) ** 2,
+          );
+        }
+      }
+    };
   };
-  let offsets: Float32Array = new Float32Array(count * 3);
+  // How much each vertex belongs to a toe: 1 near the skin between two toes, 0 away from it.
+  const nearCleft = bucketsOf(toes.within[1], (i) => shade[i] > 0.2);
+  const onToe = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    if (weld[i] === i) {
+      let nearest = Infinity;
+      nearCleft(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2], (_, apart) => {
+        nearest = Math.min(nearest, apart);
+      });
+      onToe[i] = 1 - smoothstep(toes.within[0], toes.within[1], Math.sqrt(nearest));
+    }
+  }
+  // Where each vertex would go to lie against the fabric, and how much it is pressed that way.
+  const wanted = new Float32Array(count * 3);
+  const pressed = new Float32Array(count);
   for (let i = 0; i < count; i++) {
     if (weld[i] !== i) {
       continue;
@@ -438,23 +480,51 @@ function fitUnderStocking(
     const clearance = -hit.side * hit.dist;
     const faces = normals[i * 3] * hit.nx + normals[i * 3 + 1] * hit.ny + normals[i * 3 + 2] * hit.nz;
     // Deep in a cleft the nearest fabric can be the far side of a fold, which the skin is not under at all.
-    const pressed =
+    // A toe keeps its own shape: it only meets fabric that is nearly on it already.
+    const scale = 1 + (toes.tight / tight - 1) * onToe[i];
+    pressed[i] =
       clearance <= margin
         ? faces > facing[0] && clearance > -0.001
           ? 1
           : 0
-        : (1 - smoothstep(tight, loose, clearance)) * smoothstep(facing[0], facing[1], faces);
-    offsets.set(
-      [
-        (hit.x - hit.nx * margin - x) * pressed,
-        (hit.y - hit.ny * margin - y) * pressed,
-        (hit.z - hit.nz * margin - z) * pressed,
-      ],
-      i * 3,
-    );
+        : (1 - smoothstep(tight * scale, loose * scale, clearance)) * smoothstep(facing[0], facing[1], faces);
+    wanted.set([hit.x - hit.nx * margin - x, hit.y - hit.ny * margin - y, hit.z - hit.nz * margin - z], i * 3);
   }
-  // Evened out over the neighbours, so the skin keeps a smooth shape where the fabric lifts off it.
-  offsets = spread(spread(offsets, 3), 3);
+  // The skin keeps its shape: it follows the broad part of that move (the mean over the skin around it, which
+  // also carries the walls of a toe along with its top), and only up to `local` of what is left of its own.
+  const { broad, local } = UNDER_FIT;
+  const reach = broad * 2;
+  const around = bucketsOf(reach, () => true);
+  const offsets = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    if (weld[i] !== i) {
+      continue;
+    }
+    const x = positions[i * 3];
+    const y = positions[i * 3 + 1];
+    const z = positions[i * 3 + 2];
+    let sx = 0;
+    let sy = 0;
+    let sz = 0;
+    let total = 0;
+    around(x, y, z, (other, apart) => {
+      if (apart <= reach * reach) {
+        const share = Math.exp(-apart / (2 * broad * broad));
+        total += share;
+        sx += share * pressed[other] * wanted[other * 3];
+        sy += share * pressed[other] * wanted[other * 3 + 1];
+        sz += share * pressed[other] * wanted[other * 3 + 2];
+      }
+    });
+    sx /= total;
+    sy /= total;
+    sz /= total;
+    const rx = wanted[i * 3] - sx;
+    const ry = wanted[i * 3 + 1] - sy;
+    const rz = wanted[i * 3 + 2] - sz;
+    const own = pressed[i] * Math.min(1, local / (Math.hypot(rx, ry, rz) || 1));
+    offsets.set([sx + rx * own, sy + ry * own, sz + rz * own], i * 3);
+  }
   let worn: Float32Array = new Float32Array(count);
   for (let i = 0; i < count; i++) {
     if (weld[i] !== i) {
@@ -474,33 +544,33 @@ function fitUnderStocking(
         dz -= near.nz * (margin - gap);
         gap = margin;
       }
-      // The skin wears the fabric where the two end up touching, face to face: near the wall of a toe the
-      // fabric can pass as close, but that skin is seen from between the toes, under the fabric.
-      worn[i] = (1 - smoothstep(1.3 * margin, UNDER_FIT.worn, gap)) * smoothstep(facing[1], 0.9, faces);
+      // The skin wears the fabric where the two end up touching, and it faced the fabric well enough to be
+      // pressed against it: near the wall of a toe the fabric can pass as close, but that skin is seen from
+      // between the toes, under the fabric.
+      worn[i] = (1 - smoothstep(1.3 * margin, UNDER_FIT.worn, gap)) * smoothstep(facing[0], facing[1], faces);
     }
     under.set([dx, dy, dz], i * 4);
   }
   // Skin counts as worn only well inside a patch of it: along the patch's edge the fabric lifts off, and the
-  // skin there is also seen from under the lifted fabric, bare. Two rounds take the least of each vertex and
-  // its neighbours (about 3 mm in all), a third their mean. Behind the join the skin is the stocking's own,
+  // skin there is also seen from under the lifted fabric, bare. So it is worn in full only `edge` away from any
+  // skin that is not, and less the nearer it is to such skin. Behind the join the skin is the stocking's own,
   // so the join is no such edge.
+  const { edge } = UNDER_FIT;
   for (let i = 0; i < count; i++) {
     if (positions[i * 3 + 2] < FOREFOOT_JOIN.cut) {
       worn[i] = 1;
     }
   }
-  for (let round = 0; round < 2; round++) {
-    const next = worn.slice();
-    for (let t = 0; t < triangles.length; t += 3) {
-      const corners = [weld[triangles[t]], weld[triangles[t + 1]], weld[triangles[t + 2]]];
-      const least = Math.min(worn[corners[0]], worn[corners[1]], worn[corners[2]]);
-      for (const v of corners) {
-        next[v] = Math.min(next[v], least);
-      }
+  const raw = worn;
+  const nearBare = bucketsOf(edge, (i) => raw[i] < 1);
+  worn = raw.slice();
+  for (let i = 0; i < count; i++) {
+    if (weld[i] === i && raw[i] > 0) {
+      nearBare(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2], (other, apart) => {
+        worn[i] = Math.min(worn[i], raw[other] + Math.sqrt(apart) / edge);
+      });
     }
-    worn = next;
   }
-  worn = spread(worn, 1);
   for (let i = 0; i < count; i++) {
     under[i * 4 + 3] = worn[i];
     if (weld[i] !== i) {
@@ -559,7 +629,7 @@ export function buildForefoot(
   geometry.setAttribute("toeShade", new THREE.BufferAttribute(skin.shade, 1));
   geometry.setAttribute(
     "under",
-    new THREE.BufferAttribute(fitUnderStocking(positions, normals, skin.triangles, stocking), 4),
+    new THREE.BufferAttribute(fitUnderStocking(positions, normals, skin.shade, stocking), 4),
   );
   return geometry;
 }
