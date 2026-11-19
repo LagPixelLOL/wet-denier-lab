@@ -51,7 +51,7 @@ export function waterWorld({ mobile = false, size = 1024 } = {}): WaterWorld {
   const renderer = new FakeRenderer();
   const target = new RigUniformLegs();
   const model = legModel();
-  const rig = new LegRig(model.collision, target);
+  const rig = new LegRig(model.collision, target, model.forefootCollision);
   const wetmap = new WetMap(renderer.asRenderer, model.stockingLow, rig.surface, size, target.legs);
   const water = new WaterSim({ surface: rig.surface, wetmap, mobile });
   return { renderer, target, rig, wetmap, water };

@@ -5,6 +5,7 @@ import { SCENES } from "../../../src/engine/stage/scenes";
 import type { SurfaceHit } from "../../../src/engine/surface/SurfaceGrid";
 import type { Bead, FreeDrop, ThrownDrop, WaterSim } from "../../../src/engine/water/WaterSim";
 import { digest, digestRounded } from "../../helpers/digest";
+import { toeGap } from "../../helpers/model";
 import { seedRandom } from "../../helpers/random";
 import { waterWorld } from "../../helpers/waterWorld";
 import type { WaterWorld } from "../../helpers/waterWorld";
@@ -187,9 +188,10 @@ describe("throwAt", () => {
   it("moves the launch point off the normal, then closer, when the legs block the line of flight", () => {
     const world = waterWorld();
     const { water, rig } = world;
-    // vertices found by scanning the step pose: from the viewer, 17094 is blocked only when launching off the
-    // normal; 1141 is blocked both ways and launches from just short of the blocker
-    const launches = [17094, 1141].map((vertex) => {
+    // vertices found by scanning the step pose: from the viewer, 1116 of the second leg is blocked only when
+    // launching off the normal; 1141 of the first leg is blocked both ways and launches from just short of the
+    // blocker
+    const launches = [rig.n + 1116, 1141].map((vertex) => {
       const hit = {
         ...rig.surface.closest(rig.pos[vertex * 3], rig.pos[vertex * 3 + 1], rig.pos[vertex * 3 + 2], 0.01)!,
       };
@@ -509,6 +511,44 @@ describe("free drops", () => {
     expect(water.events.impacts).toBe(1);
     // a non-splash impact throws at most two spray drops
     expect(kindCounts(water)[1]).toBeLessThanOrEqual(2);
+  });
+
+  it("land on the stocking stretched over the toes, and fall between the toes of a bare leg", () => {
+    const world = waterWorld();
+    const { water, rig } = world;
+    const { x, z } = toeGap();
+    // A slow drop from above the gap between the first two toes of a leg, followed until it is gone.
+    const drip = (leg: number): { beads: Bead[]; floor: number } => {
+      const from = rig.point(leg, x, 0.05, z);
+      const floor = water.events.floor;
+      water.beads.length = 0;
+      const drop = freeDrop(2, from[0], from[1], from[2], 0.001, [0, -0.3, 0]);
+      drop.t = 0.03;
+      water.drops.push(drop);
+      for (let i = 0; i < 60 && water.drops.length; i++) {
+        water.update(DT);
+      }
+      expect(water.drops).toHaveLength(0);
+      return { beads: water.beads.map((b) => ({ ...b })), floor: water.events.floor - floor };
+    };
+    const above = rig.point(0, x, 0.05, z);
+    const top = rig.surface.raycast(above[0], above[1], above[2], 0, -1, 0)!.y;
+    const covered = drip(0);
+    expect(covered.floor).toBe(0);
+    expect(covered.beads).toHaveLength(1);
+    expect(covered.beads[0].leg).toBe(0);
+    expect(Math.abs(covered.beads[0].y - top)).toBeLessThan(0.002);
+
+    rig.setBare(0, true);
+    const bare = drip(0);
+    // Through the gap onto the floor, or onto a toe's flank well below where the stocking was.
+    expect(bare.beads.every((b) => b.y < covered.beads[0].y - 0.004)).toBe(true);
+    expect(bare.beads.length + bare.floor).toBe(1);
+    // The other leg still catches it on its stocking.
+    const other = drip(1);
+    expect(other.floor).toBe(0);
+    expect(other.beads.map((b) => b.leg)).toEqual([1]);
+    expect(other.beads[0].y).toBeCloseTo(covered.beads[0].y, 4);
   });
 
   it("ignore the fabric in their first 25 ms (they start on it)", () => {

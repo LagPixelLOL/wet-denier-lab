@@ -33,7 +33,7 @@ async function boot() {
   });
   const legMs = performance.now() - t0;
   app.stage = createStage(app.renderer, app.legModel);
-  app.rig = new LegRig(app.legModel.collision, app.stage);
+  app.rig = new LegRig(app.legModel.collision, app.stage, app.legModel.forefootCollision);
   app.surface = app.rig.surface;
   app.wetmap = new WetMap(
     app.renderer,

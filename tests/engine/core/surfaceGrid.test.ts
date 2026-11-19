@@ -230,6 +230,80 @@ describe("SurfaceGrid on a hand-made mesh", () => {
     expect(grid.cellStart).toBe(cellStart);
     expect(grid.closest(0.05, 0.05, 0.19)?.leg).toBe(1);
   });
+
+  it("leaves skipped triangles out of every query until they are indexed again", () => {
+    const grid = new SurfaceGrid(twoSquares());
+    const front = grid.max[2];
+    expect([...grid.skip]).toEqual([0, 0, 0, 0]);
+    // Marking alone changes nothing: the mask is read by rebuild().
+    grid.skip.fill(1, 2);
+    expect(grid.raycast(0.05, 0.05, 1, 0, 0, -1)?.leg).toBe(1);
+    grid.rebuild();
+    expect(grid.active).toBe(4);
+    const through = copyHit(grid.raycast(0.05, 0.05, 1, 0, 0, -1));
+    expect([through?.leg, through?.tri]).toEqual([0, expect.any(Number)]);
+    expect(through?.t).toBeCloseTo(1, 6);
+    // Right in front of leg 1, the closest point is on leg 0 behind it, or out of reach.
+    expect(grid.closest(0.05, 0.05, 0.06, 0.1)?.z).toBeCloseTo(0, 6);
+    expect(grid.closest(0.05, 0.05, 0.06, 0.02)).toBeNull();
+    const out: UvRect[] = [];
+    expect(grid.uvRects(0.05, 0.05, 0.025, 0.03, out)).toEqual([[0, 0, 0.5, 1]]);
+    // The grid only spans what it indexes.
+    expect(grid.max[2]).toBeCloseTo(front - 0.05, 6);
+
+    // One triangle of a square: only its half is left out.
+    grid.skip.fill(0);
+    grid.skip[2] = 1;
+    grid.rebuild();
+    expect(grid.raycast(0.07, 0.03, 1, 0, 0, -1)?.leg).toBe(0);
+    expect(grid.raycast(0.03, 0.07, 1, 0, 0, -1)?.tri).toBe(3);
+
+    grid.skip.fill(0);
+    grid.rebuild();
+    expect(grid.raycast(0.07, 0.03, 1, 0, 0, -1)?.tri).toBe(2);
+    expect(grid.closest(0.05, 0.05, 0.06, 0.02)?.leg).toBe(1);
+    expect(grid.uvRects(0.05, 0.05, 0.025, 0.03, out).length).toBe(2);
+  });
+
+  it("applies the skip mask within the triangles that rebuild() indexes", () => {
+    const grid = new SurfaceGrid(twoSquares());
+    grid.skip[0] = 1;
+    grid.skip[3] = 1;
+    grid.rebuild(2);
+    expect(grid.active).toBe(2);
+    // Leg 1 is not indexed at all, and of leg 0 only the second triangle is.
+    expect(grid.raycast(0.07, 0.03, 1, 0, 0, -1)).toBeNull();
+    expect(grid.raycast(0.03, 0.07, 1, 0, 0, -1)?.tri).toBe(1);
+    grid.rebuild();
+    expect(grid.active).toBe(4);
+    expect(grid.raycast(0.07, 0.03, 1, 0, 0, -1)?.tri).toBe(2);
+    expect(grid.raycast(0.03, 0.07, 1, 0, 0, -1)?.tri).toBe(1);
+    expect(grid.raycast(0.03, 0.07, 1, 0, 0, -1, 10, 0)).toBeNull();
+    // The mask survives a rebuild of fewer triangles and back.
+    grid.rebuild(2);
+    grid.rebuild();
+    expect(grid.raycast(0.07, 0.03, 0.03, 0, 0, -1)).toBeNull();
+    expect(grid.closest(0.07, 0.03, 0.01, 0.05)?.tri).toBe(1);
+  });
+
+  it("puts triangles into the UV island of the triangle they name", () => {
+    // Leg 1's square borrows the UVs of leg 0's: one island, although the squares share no vertex.
+    const mesh = twoSquares();
+    const grid = new SurfaceGrid({
+      ...mesh,
+      uv: new Float32Array([0, 0, 0.5, 0, 0.5, 1, 0, 1, 0.1, 0, 0.6, 0, 0.6, 1, 0.1, 1]),
+      islandOf: [-1, -1, 0, 1],
+    });
+    expect(grid.islandCount).toBe(1);
+    expect([...grid.triIsland]).toEqual([0, 0, 0, 0]);
+    const out: UvRect[] = [];
+    expect(grid.uvRects(0.05, 0.05, 0.025, 0.03, out).map((rect) => round(rect, 6))).toEqual([[0, 0, 0.6, 1]]);
+    // Only the named triangles join another island.
+    const half = new SurfaceGrid({ ...mesh, islandOf: [-1, -1, 0, -1] });
+    expect(half.islandCount).toBe(2);
+    expect([...half.triIsland]).toEqual([0, 0, 0, 1]);
+    expect(new SurfaceGrid({ ...mesh, islandOf: null }).islandCount).toBe(2);
+  });
 });
 
 /** Brute-force closest distance over every triangle. */

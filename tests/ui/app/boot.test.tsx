@@ -55,6 +55,12 @@ describe("startApp", () => {
     expect(h.fetches[0].url).toMatch(/legs\.glb$/);
     expect(app.uiBound).toBe(true);
     expect(app.surface).toBe(app.rig.surface);
+    // The rig collides with the stocking's mesh and the forefoot's skin, the legs dressed as the stage shows them.
+    const { collision, forefootCollision } = app.legModel;
+    expect(app.rig.stockingVerts).toBe(collision.pos.length / 3);
+    expect(app.rig.n).toBe((collision.pos.length + forefootCollision!.pos.length) / 3);
+    expect(app.rig.bare).toEqual(app.stage.legs.map((leg) => leg.bare));
+    expect(app.rig.bare).toEqual([false, false]);
     expect(app.stage.uniforms.floor.uPuddleTex.value).toBe(app.water.puddleTex);
     expect(app.stage.uniforms.floor.uRipples.value).toBe(app.water.ripples);
     expect(ui.get().bootError).toBeNull();
@@ -244,6 +250,20 @@ describe("share links at boot", () => {
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(setPose).toHaveBeenCalledTimes(2);
     setPose.mockRestore();
+  });
+
+  it("collides with the bare toes of a linked bare leg", () => {
+    // A copy: currentLook() hands out the outfit's own legs.
+    const look = { ...currentLook(), legs: [...outfit.legs] };
+    const legs = [withLegDefaults({ length: "bare" }), look.legs[1]];
+    history.replaceState(null, "", hashOf(lookUrl({ ...look, legs }, location.href)));
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(outfit.legs[0].length).toBe("bare");
+    expect(app.rig.bare).toEqual([true, false]);
+    expect(app.stage.legs.map((leg) => leg.bare)).toEqual([true, false]);
+    history.replaceState(null, "", hashOf(lookUrl(look, location.href)));
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(app.rig.bare).toEqual([false, false]);
   });
 
   it("applies only the legs of a link whose pose, scene and backdrop are unknown", () => {

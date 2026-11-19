@@ -32,8 +32,13 @@ export function applyStocking(leg: number, spec: Partial<LegSpec>) {
   return resolved;
 }
 
+/**
+ * Applies a leg's outfit: its look, what it collides with (a bare leg has separate toes) and how it takes water.
+ * Thumbnails only borrow the look (applyStocking) for one render.
+ */
 function refreshLeg(leg: number) {
   const resolved = applyStocking(leg, outfit.legs[leg]);
+  app.rig.setBare(leg, !!resolved.bare);
   app.wetmap.setLegWater(leg, resolved.water);
   app.water.setLegWater(leg, resolved.water);
 }

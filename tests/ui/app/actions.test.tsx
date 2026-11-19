@@ -184,6 +184,50 @@ describe("outfit actions", () => {
     settle();
   });
 
+  it("collides with the bare toes of the legs that are bare, previews included", () => {
+    // The last triangle of each leg is one of the forefoot's skin.
+    const skinIndexed = () => [1, 2].map((leg) => app.surface.skip[leg * app.rig.legTris - 1] === 0);
+    expect(app.rig.triGroup[app.rig.legTris - 1]).toBe(2);
+    expect(app.rig.bare).toEqual([false, false]);
+    expect(skinIndexed()).toEqual([false, false]);
+    const setBare = vi.spyOn(app.rig, "setBare");
+    actions.wearChip("length", "bare");
+    expect(setBare.mock.calls).toEqual([
+      [0, true],
+      [1, true],
+    ]);
+    expect(app.rig.bare).toEqual([true, true]);
+    expect(skinIndexed()).toEqual([true, true]);
+    // Only the leg being dressed is told, whatever changes on it.
+    actions.target(1);
+    setBare.mockClear();
+    actions.wearChip("length", "knee");
+    actions.wearChip("color", "ivory");
+    expect(setBare.mock.calls).toEqual([
+      [1, false],
+      [1, false],
+    ]);
+    expect(app.rig.bare).toEqual([true, false]);
+    expect(skinIndexed()).toEqual([true, false]);
+    expect(app.stage.legs.map((leg) => leg.bare)).toEqual(app.rig.bare);
+    // A previewed preset is what the legs collide as, until the preview ends.
+    actions.previewPreset(2);
+    expect(app.rig.bare).toEqual([false, false]);
+    actions.previewPreset(null);
+    expect(app.rig.bare).toEqual([true, false]);
+    // Presets and random outfits have no bare legs.
+    actions.random();
+    expect(app.rig.bare).toEqual([false, false]);
+    actions.wearChip("length", "bare");
+    expect(app.rig.bare).toEqual([false, true]);
+    actions.target(-1);
+    actions.preset(0);
+    expect(app.rig.bare).toEqual([false, false]);
+    expect(skinIndexed()).toEqual([false, false]);
+    setBare.mockRestore();
+    settle();
+  });
+
   it("maps wardrobe chips to leg spec values", () => {
     actions.wearChip("denier", "70");
     expect(outfit.legs[0].denier).toBe(70);

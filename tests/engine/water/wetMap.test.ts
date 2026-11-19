@@ -97,18 +97,19 @@ describe("WetMap construction", () => {
 
   it("bounds each leg's UV island set with a 6 pixel margin", () => {
     const { wetmap } = waterWorld();
+    // The stocking's islands start at pixel 150; the forefoot's skin continues their UVs a pixel past the seam.
     expect(wetmap.boxes).toMatchInlineSnapshot(`
       [
         [
-          144,
+          143,
           17,
-          815,
+          816,
           999,
         ],
         [
-          1168,
+          1167,
           17,
-          815,
+          816,
           999,
         ],
       ]

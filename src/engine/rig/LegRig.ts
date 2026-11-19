@@ -1,5 +1,6 @@
 /**
- * CPU skinning of both legs, floor placement, eased pose blending and solo/away opacity fades.
+ * CPU skinning of both legs, floor placement, eased pose blending and solo/away opacity fades, and the collision
+ * surface over both legs, which follows whether a leg is bare.
  */
 import type { Vec3 } from "./joints";
 import { DEFAULT_POSE, POSES } from "./poses";
@@ -16,6 +17,8 @@ import {
 import { fadeHeight } from "../stage/shaders/leg";
 import type { LegPose, LegPoseSpec } from "./skinning";
 import { SurfaceGrid } from "../surface/SurfaceGrid";
+import { FOREFOOT_JOIN } from "../model/forefoot";
+import type { ForefootCollision } from "../model/forefoot";
 import type { CollisionMesh } from "../model/legModel";
 
 /** The part of the stage a LegRig drives. */
@@ -79,11 +82,43 @@ const LEG_AXIS_POINTS: Vec3[] = [
  */
 const LEG_AXIS_RADII = [0.14, 0.14, 0.09, 0.085, 0.095, 0.115, 0.115];
 
+/**
+ * The triangle groups that only some legs collide with: the stocking's front, stretched over the toes (a leg in
+ * a stocking) and the forefoot's skin (a bare leg). Every leg collides with the rest, group 0.
+ */
+const TRI_STOCKING_FRONT = 1;
+const TRI_FOREFOOT_SKIN = 2;
+
+/** The stocking's collision mesh followed by the forefoot's skin, as one mesh. */
+function appendForefoot(stocking: CollisionMesh, forefoot: ForefootCollision): CollisionMesh {
+  const join = (a: Float32Array, b: Float32Array): Float32Array => {
+    const out = new Float32Array(a.length + b.length);
+    out.set(a);
+    out.set(b, a.length);
+    return out;
+  };
+  const vertCount = stocking.pos.length / 3;
+  const idx = new Uint32Array(stocking.idx.length + forefoot.idx.length);
+  idx.set(stocking.idx);
+  forefoot.idx.forEach((v, i) => {
+    idx[stocking.idx.length + i] = v + vertCount;
+  });
+  return {
+    pos: join(stocking.pos, forefoot.pos),
+    nrm: join(stocking.nrm, forefoot.nrm),
+    uv: join(stocking.uv, forefoot.uv),
+    idx,
+  };
+}
+
 export class LegRig {
+  /** The stocking's collision mesh at rest, followed by the forefoot's skin if the model has one. */
   declare rest: CollisionMesh;
   declare look: LegRigTarget;
   /** Vertices per leg. */
   declare n: number;
+  /** How many of them are the stocking's. They come first, and floor contact looks at them only. */
+  declare stockingVerts: number;
   declare floorY: number;
   /** Rest vertex indices of the foot (used for floor contact). */
   declare foot: number[];
@@ -91,8 +126,12 @@ export class LegRig {
   /** Posed positions/normals of both legs (leg 1 after leg 0). */
   declare pos: Float32Array;
   declare nrm: Float32Array;
-  /** Triangles per leg. */
+  /** Triangles per leg: the stocking's, then the forefoot's skin. */
   declare legTris: number;
+  /** Per triangle of a leg: 0, or the group that only some legs collide with (TRI_STOCKING_FRONT, ...). */
+  declare triGroup: Uint8Array;
+  /** Per leg: whether it is bare (see setBare). */
+  declare bare: boolean[];
   /** Current pose name. */
   declare name: string;
   /** Current, start and target leg poses of the blend. */
@@ -114,21 +153,48 @@ export class LegRig {
   declare _settled: (SettledLeg | null)[];
   /** Collision grid over the posed legs (at the target pose). */
   declare surface: SurfaceGrid;
-  constructor(rest: CollisionMesh, look: LegRigTarget) {
-    this.rest = rest;
+  /**
+   * `stocking` is the stocking's collision mesh and `forefoot` the skin of the forefoot under it, if the model
+   * has one: then a bare leg collides with its separate toes (see setBare). Both legs start in a stocking.
+   */
+  constructor(stocking: CollisionMesh, look: LegRigTarget, forefoot: ForefootCollision | null = null) {
+    const rest = (this.rest = forefoot ? appendForefoot(stocking, forefoot) : stocking);
     this.look = look;
     const vertCount = (this.n = rest.pos.length / 3);
     const triCount = rest.idx.length / 3;
+    const stockingVerts = (this.stockingVerts = stocking.pos.length / 3);
+    const stockingTris = stocking.idx.length / 3;
     this.floorY = Infinity;
-    for (let i = 1; i < rest.pos.length; i += 3) {
+    for (let i = 1; i < stocking.pos.length; i += 3) {
       this.floorY = Math.min(this.floorY, rest.pos[i]);
     }
     this.foot = [];
-    for (let i = 0; i < vertCount; i++) {
+    for (let i = 0; i < stockingVerts; i++) {
       if (rest.pos[i * 3 + 1] < 0.14) {
         this.foot.push(i);
       }
     }
+    this.triGroup = new Uint8Array(triCount);
+    // Per triangle of both legs: for the forefoot's skin, the stocking triangle whose UVs it borrows.
+    let islandOf: Int32Array | null = null;
+    if (forefoot) {
+      const borrowed = (islandOf = new Int32Array(triCount * 2).fill(-1));
+      const inFront = (v: number): boolean =>
+        rest.pos[v * 3 + 2] > FOREFOOT_JOIN.cut && rest.pos[v * 3 + 1] < FOREFOOT_JOIN.maxY;
+      for (let t = 0; t < stockingTris; t++) {
+        if (inFront(rest.idx[t * 3]) && inFront(rest.idx[t * 3 + 1]) && inFront(rest.idx[t * 3 + 2])) {
+          this.triGroup[t] = TRI_STOCKING_FRONT;
+        }
+      }
+      this.triGroup.fill(TRI_FOREFOOT_SKIN, stockingTris);
+      forefoot.uvTri.forEach((tri, t) => {
+        if (tri >= 0) {
+          borrowed[stockingTris + t] = tri;
+          borrowed[triCount + stockingTris + t] = triCount + tri;
+        }
+      });
+    }
+    this.bare = [false, false];
     this.poses = {};
     for (const [key, pose] of Object.entries<PoseDefinition>(POSES)) {
       this.poses[key] = {
@@ -203,8 +269,39 @@ export class LegRig {
       idx: indices,
       ry: restY,
       legTris: triCount,
+      islandOf: islandOf,
     });
-    this.surface.rebuild(this.solo ? triCount : triCount * 2);
+    this._skipTris(0);
+    this._skipTris(1);
+    this._index();
+  }
+  /** Marks the triangles of a leg that it does not collide with, bare or in a stocking. */
+  _skipTris(index: number): void {
+    const skip = this.surface.skip;
+    const group = this.triGroup;
+    const skipped = this.bare[index] ? TRI_STOCKING_FRONT : TRI_FOREFOOT_SKIN;
+    for (let t = 0, offset = index * this.legTris; t < group.length; t++) {
+      skip[offset + t] = group[t] === skipped ? 1 : 0;
+    }
+  }
+  /** Re-indexes the collision grid over the legs that are shown. */
+  _index(): void {
+    this.surface.rebuild(this.solo ? this.legTris : this.legTris * 2);
+  }
+  /**
+   * Sets whether a leg is bare. In front of the forefoot's join a bare leg collides with the skin and its
+   * separate toes, and a leg in a stocking with the stocking stretched over them. Without a forefoot in the
+   * model there is only the stocking's mesh, and nothing changes.
+   */
+  setBare(index: number, bare: boolean): void {
+    if (this.bare[index] === bare) {
+      return;
+    }
+    this.bare[index] = bare;
+    if (this.n > this.stockingVerts) {
+      this._skipTris(index);
+      this._index();
+    }
   }
   _place(): void {
     for (let i = 0; i < 2; i++) {
@@ -229,6 +326,7 @@ export class LegRig {
   _collide(specs: LegPoseSpec[]): void {
     const pos = this.pos;
     const n = this.n;
+    const stockingVerts = this.stockingVerts;
     const solo = this.solo;
     let minX = Infinity;
     let maxX = -Infinity;
@@ -239,7 +337,8 @@ export class LegRig {
       const lift = computeFootLift(this.rest.pos, this.foot, legPose, this.floorY);
       skinLegVertices(this.rest.pos, this.rest.nrm, legPose, i === 0 ? 1 : -1, lift, pos, this.nrm, i * n);
       if (i !== 1 || !solo) {
-        for (let v = i * n, end = v + n; v < end; v++) {
+        // The stocking's vertices only: the forefoot's skin lies under them.
+        for (let v = i * n, end = v + stockingVerts; v < end; v++) {
           const x = pos[v * 3];
           const z = pos[v * 3 + 2];
           if (x < minX) {
@@ -310,7 +409,7 @@ export class LegRig {
       this._place();
     }
     this._collide(this.to);
-    this.surface.rebuild(this.solo ? this.legTris : this.legTris * 2);
+    this._index();
     this.moving = !instant;
     return true;
   }

@@ -143,6 +143,9 @@ on the skin, which the leg shader draws as raised plates.
   the toes are seen through the fabric with real depth. The fabric around the toes is fitted as a membrane
   pulled taut over the skin: it touches the toes' tops and pads and bridges the gaps and creases between them.
 - A leg that fades out for a close-up goes back to a single surface, so only its nearest surface is drawn.
+- Picking and water follow the same switch: a bare leg collides with the forefoot's skin (a coarser build of it,
+  `LegRig.setBare`), so beads sit on the toes and run between them, while a stocking keeps its own shape. The
+  skin borrows the stocking's UVs for the wet map, with the stocking's UV seams carried over.
 
 `tools/fit_toes.py` (Python with numpy and scipy) writes all of this into the model file from the MakeHuman base
 mesh, which the leg came from: it places the MakeHuman foot on the model, stores its forefoot and the nails, and

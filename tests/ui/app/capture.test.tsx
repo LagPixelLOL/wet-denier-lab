@@ -229,6 +229,35 @@ describe("thumbnails", () => {
     settle();
   });
 
+  it("dresses the legs for the cards without changing what they collide with", () => {
+    const length = outfit.legs[0].length;
+    actions.wearChip("length", "bare");
+    expect(app.rig.bare).toEqual([true, true]);
+    const setBare = vi.spyOn(app.rig, "setBare");
+    const drawnBare: boolean[] = [];
+    const render = h.renderer.render;
+    const spy = vi.spyOn(h.renderer, "render").mockImplementation((scene, cam) => {
+      if (cam === app.thumbCamera) {
+        drawnBare.push(app.stage.legs[0].bare);
+      }
+      render.call(h.renderer, scene, cam);
+    });
+    actions.pose("point");
+    setPanel("mat");
+    expect(thumbJobs).toHaveLength(PRESETS.length);
+    settle();
+    expect(thumbJobs).toHaveLength(0);
+    // No preset is bare: the cards show stockings, on legs that stay bare for the water.
+    expect(drawnBare).toEqual(PRESETS.map(() => false));
+    expect(setBare).not.toHaveBeenCalled();
+    expect(app.rig.bare).toEqual([true, true]);
+    expect(app.stage.legs.map((leg) => leg.bare)).toEqual([true, true]);
+    spy.mockRestore();
+    setBare.mockRestore();
+    actions.wearChip("length", length);
+    expect(app.rig.bare).toEqual([false, false]);
+  });
+
   it("renders while a leg is faded for a close-up, showing both legs fully, then restores the fade", () => {
     // Keep leg 1 faded as if the camera were close up behind it.
     const setAway = vi.spyOn(app.rig, "setAway").mockImplementation(() => {});

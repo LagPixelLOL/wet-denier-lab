@@ -14,6 +14,11 @@ export interface SurfaceMesh {
   ry?: ArrayLike<number> | null;
   /** Triangles below this index belong to leg 0, the rest to leg 1. */
   legTris?: number;
+  /**
+   * Per triangle, another triangle (one that names none itself) whose UV island it belongs to although the two
+   * share no vertex, or -1. For skin that borrows the UVs of the surface it lies under.
+   */
+  islandOf?: ArrayLike<number> | null;
 }
 
 /**
@@ -65,11 +70,19 @@ export class SurfaceGrid {
   declare cellStart: Int32Array;
   declare cellTris: Int32Array;
   declare hit: SurfaceHit;
-  /** Number of triangles currently indexed. */
+  /** Triangles below this index are indexed, unless skipped. */
   declare active: number;
+  /**
+   * Per triangle: nonzero leaves it out of the index, so no query returns it. Takes effect on the next
+   * rebuild().
+   */
+  declare skip: Uint8Array;
   declare _range?: Int32Array;
   declare _fill2?: Int32Array;
-  constructor({ pos, nrm, uv, idx, ry: restY = null, legTris = Infinity }: SurfaceMesh, cellSize = 0.012) {
+  constructor(
+    { pos, nrm, uv, idx, ry: restY = null, legTris = Infinity, islandOf = null }: SurfaceMesh,
+    cellSize = 0.012,
+  ) {
     this.pos = pos;
     this.nrm = nrm;
     this.uv = uv;
@@ -111,14 +124,25 @@ export class SurfaceGrid {
     const islandIds = new Map<number, number>();
     this.triIsland = new Int32Array(triCount);
     for (let i = 0; i < triCount; i++) {
+      if (islandOf && islandOf[i] >= 0) {
+        continue;
+      }
       const root = findRoot(idx[i * 3]);
       if (!islandIds.has(root)) {
         islandIds.set(root, islandIds.size);
       }
       this.triIsland[i] = islandIds.get(root)!;
     }
+    if (islandOf) {
+      for (let i = 0; i < triCount; i++) {
+        if (islandOf[i] >= 0) {
+          this.triIsland[i] = this.triIsland[islandOf[i]];
+        }
+      }
+    }
     this.islandCount = islandIds.size;
     this.mark = new Int32Array(triCount);
+    this.skip = new Uint8Array(triCount);
     this.query = 0;
     this.min = [0, 0, 0];
     this.max = [0, 0, 0];
@@ -143,11 +167,12 @@ export class SurfaceGrid {
     };
     this.rebuild();
   }
-  /** Re-indexes the first `activeTris` triangles at their current positions. */
+  /** Re-indexes the first `activeTris` triangles at their current positions, except those marked in `skip`. */
   rebuild(activeTris = this.triCount): void {
     const pos = this.pos;
     const idx = this.idx;
     const triC = this.triC;
+    const skip = this.skip;
     const cellSize = this.cell;
     this.active = activeTris;
     let minX = Infinity;
@@ -157,6 +182,9 @@ export class SurfaceGrid {
     let maxY = -Infinity;
     let maxZ = -Infinity;
     for (let i = 0; i < activeTris; i++) {
+      if (skip[i]) {
+        continue;
+      }
       const a = idx[i * 3] * 3;
       const b = idx[i * 3 + 1] * 3;
       const c = idx[i * 3 + 2] * 3;
@@ -229,6 +257,9 @@ export class SurfaceGrid {
         : (this._range = new Int32Array(this.triCount * 6));
     let totalRefs = 0;
     for (let i = 0; i < activeTris; i++) {
+      if (skip[i]) {
+        continue;
+      }
       const a = idx[i * 3] * 3;
       const b = idx[i * 3 + 1] * 3;
       const c = idx[i * 3 + 2] * 3;
@@ -266,6 +297,9 @@ export class SurfaceGrid {
     cursor.set(cellStart.subarray(0, cellCount));
     const cellTris = this.cellTris;
     for (let i = 0; i < activeTris; i++) {
+      if (skip[i]) {
+        continue;
+      }
       const o = i * 6;
       for (let iz = ranges[o + 4]; iz <= ranges[o + 5]; iz++) {
         for (let iy = ranges[o + 2]; iy <= ranges[o + 3]; iy++) {

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { FOREFOOT_JOIN } from "../../../src/engine/model/forefoot";
 import { LegRig } from "../../../src/engine/rig/LegRig";
 import type { LegRigTarget, RigUpdateState } from "../../../src/engine/rig/LegRig";
 import type { Vec3 } from "../../../src/engine/rig/joints";
@@ -11,8 +12,9 @@ import {
   skinLegVertices,
 } from "../../../src/engine/rig/skinning";
 import type { LegPose } from "../../../src/engine/rig/skinning";
+import type { SurfaceHit } from "../../../src/engine/surface/SurfaceGrid";
 import { digestRounded } from "../../helpers/digest";
-import { legModel } from "../../helpers/model";
+import { legModel, toeGap } from "../../helpers/model";
 
 const DT = 1 / 60;
 
@@ -38,6 +40,12 @@ class RecordingTarget implements LegRigTarget {
 function makeRig(): { rig: LegRig; target: RecordingTarget } {
   const target = new RecordingTarget();
   return { rig: new LegRig(legModel().collision, target), target };
+}
+
+/** A rig as the app builds it: with the forefoot's skin for bare legs. */
+function makeToeRig(): { rig: LegRig; target: RecordingTarget } {
+  const target = new RecordingTarget();
+  return { rig: new LegRig(legModel().collision, target, legModel().forefootCollision), target };
 }
 
 let shared: { rig: LegRig; target: RecordingTarget } | undefined;
@@ -341,5 +349,300 @@ describe("LegRig queries", () => {
     // Beyond the hip end the distance is to the end point.
     const top = axis[0];
     expect(rig.distanceToLeg(0, top[0], top[1] + 1, top[2])).toBeCloseTo(1, 6);
+  });
+});
+
+/** A ray straight down through a leg's toe gap at its target pose, from 6 cm above the sole to 1 cm below it. */
+function shootThroughGap(rig: LegRig, leg: number): SurfaceHit | null {
+  const { x, z } = toeGap();
+  const from = rig.point(leg, x, 0.06, z);
+  const to = rig.point(leg, x, -0.01, z);
+  const length = Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
+  const hit = rig.surface.raycast(
+    from[0],
+    from[1],
+    from[2],
+    (to[0] - from[0]) / length,
+    (to[1] - from[1]) / length,
+    (to[2] - from[2]) / length,
+    length,
+  );
+  return hit && { ...hit };
+}
+
+describe("LegRig with the forefoot's skin", () => {
+  it("appends the skin to each leg's mesh, the stocking's vertices and triangles first", () => {
+    const { rig } = makeToeRig();
+    const { collision, forefootCollision } = legModel();
+    const skin = forefootCollision!;
+    const stockingVerts = collision.pos.length / 3;
+    const stockingTris = collision.idx.length / 3;
+    expect(rig.stockingVerts).toBe(stockingVerts);
+    expect(rig.n).toBe(stockingVerts + skin.pos.length / 3);
+    expect(rig.legTris).toBe(stockingTris + skin.idx.length / 3);
+    expect(rig.rest.pos.subarray(0, stockingVerts * 3)).toEqual(collision.pos);
+    expect(rig.rest.pos.subarray(stockingVerts * 3)).toEqual(skin.pos);
+    expect(rig.rest.nrm.subarray(stockingVerts * 3)).toEqual(skin.nrm);
+    expect(rig.rest.uv.subarray(stockingVerts * 2)).toEqual(skin.uv);
+    expect(rig.rest.idx.subarray(0, stockingTris * 3)).toEqual(collision.idx);
+    expect(rig.rest.idx.subarray(stockingTris * 3)).toEqual(skin.idx.map((v) => v + stockingVerts));
+    expect(rig.pos.length).toBe(rig.n * 6);
+    expect(rig.surface.triCount).toBe(rig.legTris * 2);
+    expect(rig.surface.legTris).toBe(rig.legTris);
+    // The model's own collision mesh is left alone.
+    expect(rig.rest).not.toBe(collision);
+    expect(makeRig().rig.rest).toBe(collision);
+  });
+
+  it("stands, poses and skins the stocking exactly as a rig without the skin does", () => {
+    const { rig, target } = makeToeRig();
+    const plain = sharedRig();
+    expect(rig.floorY).toBe(plain.rig.floorY);
+    expect(rig.foot).toEqual(plain.rig.foot);
+    expect(rig.poses).toEqual(plain.rig.poses);
+    expect(rig.legs.map((leg) => leg.lift)).toEqual(plain.rig.legs.map((leg) => leg.lift));
+    expect(target.matrix).toEqual(plain.target.matrix);
+    expect(target.castPoints).toEqual(plain.target.castPoints);
+    expect(rig.footprint).toEqual(plain.rig.footprint);
+    expect(rig.front).toBe(plain.rig.front);
+    const stocking = rig.stockingVerts * 3;
+    for (const leg of [0, 1]) {
+      const from = leg * rig.n * 3;
+      expect(rig.pos.subarray(from, from + stocking)).toEqual(
+        plain.rig.pos.subarray(leg * stocking, (leg + 1) * stocking),
+      );
+      expect(rig.nrm.subarray(from, from + stocking)).toEqual(
+        plain.rig.nrm.subarray(leg * stocking, (leg + 1) * stocking),
+      );
+      // The skin is skinned like every other vertex.
+      const skin = legModel().forefootCollision!;
+      const expected = new Float32Array(skin.pos.length);
+      const normals = new Float32Array(skin.pos.length);
+      skinLegVertices(
+        skin.pos,
+        skin.nrm,
+        buildLegPose(rig.spec[leg]),
+        leg === 0 ? 1 : -1,
+        rig.legs[leg].lift,
+        expected,
+        normals,
+      );
+      expect(rig.pos.subarray(from + stocking, from + rig.n * 3)).toEqual(expected);
+      expect(rig.nrm.subarray(from + stocking, from + rig.n * 3)).toEqual(normals);
+    }
+    // In every pose too, the solved knee and the lifts included.
+    const other = makeRig().rig;
+    for (const name of POSE_ORDER.filter((pose) => pose !== DEFAULT_POSE)) {
+      rig.setPose(name, { instant: true });
+      other.setPose(name, { instant: true });
+      expect(rig.legs.map((leg) => leg.lift)).toEqual(other.legs.map((leg) => leg.lift));
+      expect(rig.footprint).toEqual(other.footprint);
+      expect(rig.front).toBe(other.front);
+      expect(rig.point(0, 0.01, 0.02, 0.18)).toEqual(other.point(0, 0.01, 0.02, 0.18));
+    }
+  });
+
+  it("sorts the triangles into the stocking behind the join, its front and the skin", () => {
+    const { rig } = makeToeRig();
+    const { collision } = legModel();
+    const stockingTris = collision.idx.length / 3;
+    const counts = [0, 0, 0];
+    for (let t = 0; t < rig.legTris; t++) {
+      const group = rig.triGroup[t];
+      counts[group]++;
+      const corners = [rig.rest.idx[t * 3], rig.rest.idx[t * 3 + 1], rig.rest.idx[t * 3 + 2]];
+      const inFront = corners.every(
+        (v) => rig.rest.pos[v * 3 + 2] > FOREFOOT_JOIN.cut && rig.rest.pos[v * 3 + 1] < FOREFOOT_JOIN.maxY,
+      );
+      if (t >= stockingTris ? group !== 2 : group !== (inFront ? 1 : 0)) {
+        throw new Error("triangle " + t + " is in group " + group);
+      }
+    }
+    expect(counts[0] + counts[1]).toBe(stockingTris);
+    // The front of the foot is a good part of the stocking's mesh, and the shin above it is not in it.
+    expect(counts[1]).toBeGreaterThan(stockingTris / 8);
+    expect(counts[1]).toBeLessThan(stockingTris / 2);
+    expect(counts[2]).toBeGreaterThan(1000);
+    // Both legs start in a stocking: the skin is left out, the stocking's front is in.
+    expect(rig.bare).toEqual([false, false]);
+    for (const leg of [0, 1]) {
+      const skip = rig.surface.skip.subarray(leg * rig.legTris, (leg + 1) * rig.legTris);
+      expect(skip).toEqual(rig.triGroup.map((group) => (group === 2 ? 1 : 0)));
+    }
+    expect(rig.surface.active).toBe(rig.legTris * 2);
+    // The skin borrows the stocking's UVs, so it adds no UV island.
+    expect(rig.surface.islandCount).toBe(sharedRig().rig.surface.islandCount);
+  });
+
+  it("collides like a rig without the skin while both legs wear a stocking", () => {
+    const { rig } = makeToeRig();
+    const plain = sharedRig().rig;
+    expect(rig.surface.dims).toEqual(plain.surface.dims);
+    expect(rig.surface.min).toEqual(plain.surface.min);
+    expect(rig.surface.max).toEqual(plain.surface.max);
+    const { x, z } = toeGap();
+    const fields = (hit: SurfaceHit | null): number[] | null =>
+      hit && [hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz, hit.u, hit.v, hit.dist, hit.side, hit.leg, hit.ry];
+    for (const leg of [0, 1]) {
+      for (const y of [0.005, 0.012, 0.03]) {
+        const p = rig.point(leg, x, y, z);
+        expect(fields(rig.surface.closest(p[0], p[1], p[2], 0.03))).toEqual(
+          fields(plain.surface.closest(p[0], p[1], p[2], 0.03)),
+        );
+        expect(fields(rig.surface.raycast(p[0], p[1] + 0.2, p[2], 0, -1, 0))).toEqual(
+          fields(plain.surface.raycast(p[0], p[1] + 0.2, p[2], 0, -1, 0)),
+        );
+      }
+    }
+  });
+
+  it("lets a ray through between the toes of a bare leg, and stops it on the stocking stretched over them", () => {
+    const { rig } = makeToeRig();
+    const covered = shootThroughGap(rig, 0)!;
+    // The stocking spans the gap about level with the tops of the toes, 3 cm under the ray's start.
+    expect(covered.leg).toBe(0);
+    expect(covered.t).toBeGreaterThan(0.025);
+    expect(covered.t).toBeLessThan(0.04);
+    expect(covered.ny).toBeGreaterThan(0.8);
+    expect(rig.triGroup[covered.tri]).toBe(1);
+
+    rig.setBare(0, true);
+    expect(rig.bare).toEqual([true, false]);
+    // Between the toes: all the way through, or onto the side of a toe well below the stocking.
+    const bare = shootThroughGap(rig, 0);
+    if (bare && (bare.t < covered.t + 0.004 || rig.triGroup[bare.tri] !== 2)) {
+      throw new Error("the ray stopped on " + JSON.stringify(bare));
+    }
+    // The other leg still wears its stocking.
+    const other = shootThroughGap(rig, 1)!;
+    expect(other.leg).toBe(1);
+    expect(other.t).toBeCloseTo(covered.t, 6);
+    expect(rig.triGroup[other.tri - rig.legTris]).toBe(1);
+
+    rig.setBare(1, true);
+    const otherBare = shootThroughGap(rig, 1);
+    expect(otherBare === null || otherBare.t > other.t + 0.004).toBe(true);
+    rig.setBare(0, false);
+    expect(shootThroughGap(rig, 0)).toEqual(covered);
+    rig.setBare(1, false);
+    expect(shootThroughGap(rig, 1)).toEqual(other);
+  });
+
+  it("finds the side of a toe from inside the gap of a bare leg, in the leg's own half of the UVs", () => {
+    const { rig } = makeToeRig();
+    const { x, z } = toeGap();
+    const across = [0, 1].map((leg) => {
+      const a = rig.point(leg, x - 0.001, 0.012, z);
+      const b = rig.point(leg, x + 0.001, 0.012, z);
+      return [b[0] - a[0], b[1] - a[1], b[2] - a[2]].map((c) => c / 0.002);
+    });
+    const sideways = (leg: number): { hit: SurfaceHit; turn: number; rects: number } => {
+      const p = rig.point(leg, x, 0.012, z);
+      const hit = { ...rig.surface.closest(p[0], p[1], p[2], 0.03)! };
+      const rects = rig.surface.uvRects(p[0], p[1], p[2], 0.01, []).length;
+      return {
+        hit,
+        turn: Math.abs(hit.nx * across[leg][0] + hit.ny * across[leg][1] + hit.nz * across[leg][2]),
+        rects,
+      };
+    };
+    for (const leg of [0, 1]) {
+      // Inside the stocking, its sole is the nearest surface: below, facing down.
+      const covered = sideways(leg);
+      expect([covered.hit.leg, covered.hit.side]).toEqual([leg, -1]);
+      expect(covered.turn).toBeLessThan(0.4);
+      rig.setBare(leg, true);
+      // Between two bare toes it is the flank of one of them, nearer and facing across the gap.
+      const bare = sideways(leg);
+      expect([bare.hit.leg, bare.hit.side]).toEqual([leg, 1]);
+      expect(bare.turn).toBeGreaterThan(0.8);
+      expect(bare.hit.dist).toBeLessThan(covered.hit.dist);
+      expect(rig.triGroup[bare.hit.tri - leg * rig.legTris]).toBe(2);
+      expect(Math.floor(bare.hit.u * 2)).toBe(leg);
+      expect(Math.abs(bare.hit.u - covered.hit.u)).toBeLessThan(0.05);
+      expect(Math.abs(bare.hit.v - covered.hit.v)).toBeLessThan(0.05);
+      // One stamp rectangle, as on the stocking: the skin is part of the stocking's UV island.
+      expect([covered.rects, bare.rects]).toEqual([1, 1]);
+    }
+  });
+
+  it("stamps the stocking and the skin of a bare leg as one UV island where they join", () => {
+    const { rig } = makeToeRig();
+    // On the instep at the cut, where the stocking's mesh ends and the skin begins.
+    const above = rig.point(0, 0, 0.1, FOREFOOT_JOIN.cut);
+    const join = { ...rig.surface.raycast(above[0], above[1], above[2], 0, -1, 0)! };
+    const covered = rig.surface.uvRects(join.x, join.y, join.z, 0.01, []);
+    rig.setBare(0, true);
+    // Both meshes are within reach: triangles behind the cut and triangles of the skin.
+    const groups = new Set<number>();
+    for (const dz of [-0.008, -0.004, 0, 0.004, 0.008]) {
+      groups.add(rig.triGroup[rig.surface.closest(join.x, join.y, join.z + dz, 0.01)!.tri]);
+    }
+    expect([...groups].sort()).toEqual([0, 2]);
+    const bare = rig.surface.uvRects(join.x, join.y, join.z, 0.01, []);
+    expect(bare).toHaveLength(1);
+    expect(covered).toHaveLength(1);
+    // About the same patch of the wet map either way.
+    for (let k = 0; k < 4; k++) {
+      expect(Math.abs(bare[0][k] - covered[0][k])).toBeLessThan(0.01);
+    }
+  });
+
+  it("keeps a bare leg's state through pose changes, and still drops the second leg in solo poses", () => {
+    const { rig } = makeToeRig();
+    rig.setBare(1, true);
+    rig.setPose("crossed", { instant: true });
+    expect(shootThroughGap(rig, 0)?.leg).toBe(0);
+    const bare = shootThroughGap(rig, 1);
+    expect(bare === null || rig.triGroup[bare.tri - rig.legTris] === 2).toBe(true);
+
+    rig.setPose("single", { instant: true });
+    expect(rig.surface.active).toBe(rig.legTris);
+    const { x, z } = toeGap();
+    const hidden = rig.point(1, x + 0.01, 0.02, z);
+    expect(rig.surface.closest(hidden[0], hidden[1], hidden[2], 0.02)?.leg ?? 0).toBe(0);
+    // Changing the hidden leg re-indexes the first leg only.
+    rig.setBare(1, false);
+    expect(rig.surface.active).toBe(rig.legTris);
+    rig.setBare(1, true);
+    rig.setBare(0, true);
+    expect(rig.surface.active).toBe(rig.legTris);
+    expect(shootThroughGap(rig, 0)?.t ?? Infinity).toBeGreaterThan(0.04);
+
+    rig.setPose("together", { instant: true });
+    expect(rig.surface.active).toBe(rig.legTris * 2);
+    expect(rig.bare).toEqual([true, true]);
+    const back = rig.point(1, x + 0.01, 0.02, z);
+    const toe = rig.surface.closest(back[0], back[1], back[2], 0.02)!;
+    expect(toe.leg).toBe(1);
+    expect(rig.triGroup[toe.tri - rig.legTris]).toBe(2);
+  });
+
+  it("re-indexes the surface only when a leg's state changes", () => {
+    const { rig } = makeToeRig();
+    const rebuild = vi.spyOn(rig.surface, "rebuild");
+    rig.setBare(0, false);
+    expect(rebuild).not.toHaveBeenCalled();
+    rig.setBare(0, true);
+    expect(rebuild).toHaveBeenCalledTimes(1);
+    expect(rebuild).toHaveBeenLastCalledWith(rig.legTris * 2);
+    rig.setBare(0, true);
+    expect(rebuild).toHaveBeenCalledTimes(1);
+    rig.setBare(0, false);
+    expect(rebuild).toHaveBeenCalledTimes(2);
+  });
+
+  it("has nothing to switch without the skin", () => {
+    const { rig } = makeRig();
+    expect(rig.stockingVerts).toBe(rig.n);
+    expect(new Set(rig.triGroup)).toEqual(new Set([0]));
+    const rebuild = vi.spyOn(rig.surface, "rebuild");
+    const covered = shootThroughGap(rig, 0);
+    rig.setBare(0, true);
+    expect(rig.bare).toEqual([true, false]);
+    expect(rebuild).not.toHaveBeenCalled();
+    expect(new Set(rig.surface.skip)).toEqual(new Set([0]));
+    expect(shootThroughGap(rig, 0)).toEqual(covered);
+    expect(covered?.leg).toBe(0);
   });
 });

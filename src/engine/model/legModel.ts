@@ -5,9 +5,10 @@ import * as THREE from "three";
 import { buildAdaptiveIndex, subdivideSmooth } from "../geometry/subdivide";
 import type { SubdividedMesh } from "../geometry/subdivide";
 import { buildGeometry, computeWeldedNormals, weldVertices } from "../geometry/weld";
+import type { SurfaceMesh } from "../surface/SurfaceGrid";
 import { applyAnatomyBumps, computeLegAxisProfile, inflateThigh } from "./anatomy";
-import { buildForefoot } from "./forefoot";
-import type { ToeNail } from "./forefoot";
+import { buildForefoot, buildForefootCollision } from "./forefoot";
+import type { ForefootCollision, ToeNail } from "./forefoot";
 import { parseModelGlb } from "./glb";
 import type { ModelData } from "./glb";
 import { computeCircumference, computeLegTangents } from "./tangents";
@@ -37,7 +38,10 @@ export interface LegModel {
   skin: THREE.BufferGeometry;
   /** Smoothed circumference per 1 cm height bin. */
   circumference: Float64Array;
+  /** The stocking's collision mesh. */
   collision: CollisionMesh;
+  /** The forefoot's skin as a collision mesh, which a bare leg collides with in front of the join. */
+  forefootCollision: ForefootCollision | null;
   /** The toenails, big toe first. */
   nails: ToeNail[];
 }
@@ -97,14 +101,15 @@ export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions =
       new THREE.BufferAttribute(buildAdaptiveIndex(collision.idx, mesh.idx, fineWrapped.pos, fineWeld, 0.24), 1),
     );
   }
-  const forefoot = data.forefoot
-    ? buildForefoot(
-        data.forefoot,
-        { pos: fineWrapped.pos, nrm: stocking.attributes.normal.array, uv: mesh.uv, idx: stocking.index!.array },
-        collision,
-        circumference,
-      )
-    : null;
+  // The stocking's render mesh, which the back of the forefoot is laid onto.
+  const fine: SurfaceMesh = {
+    pos: fineWrapped.pos,
+    nrm: stocking.attributes.normal.array,
+    uv: mesh.uv,
+    idx: stocking.index!.array,
+  };
+  const forefoot = data.forefoot ? buildForefoot(data.forefoot, fine, collision, circumference) : null;
+  const forefootCollision = data.forefoot ? buildForefootCollision(data.forefoot, fine, collision) : null;
   const skin = buildGeometry(
     inflateThigh(new Float32Array(data.skinTop.positions), axisProfile),
     null,
@@ -125,6 +130,7 @@ export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions =
     circumference: circumference,
     collision: collision,
     forefoot: forefoot,
+    forefootCollision: forefootCollision,
     nails: data.forefoot?.nails ?? [],
   };
 }
