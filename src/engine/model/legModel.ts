@@ -6,6 +6,8 @@ import { buildAdaptiveIndex, subdivideSmooth } from "../geometry/subdivide";
 import type { SubdividedMesh } from "../geometry/subdivide";
 import { buildGeometry, computeWeldedNormals, weldVertices } from "../geometry/weld";
 import { applyAnatomyBumps, computeLegAxisProfile, inflateThigh } from "./anatomy";
+import { buildForefoot } from "./forefoot";
+import type { ToeNail } from "./forefoot";
 import { parseModelGlb } from "./glb";
 import type { ModelData } from "./glb";
 import { computeCircumference, computeLegTangents } from "./tangents";
@@ -29,11 +31,15 @@ export interface LegModel {
   stocking: THREE.BufferGeometry;
   /** Same attributes as `stocking`, coarse index. */
   stockingLow: THREE.BufferGeometry;
+  /** The skin of the forefoot with its separate toes (see forefoot.ts), if the model has one. */
+  forefoot: THREE.BufferGeometry | null;
   /** Bare skin above the stocking. */
   skin: THREE.BufferGeometry;
   /** Smoothed circumference per 1 cm height bin. */
   circumference: Float64Array;
   collision: CollisionMesh;
+  /** The toenails, big toe first. */
+  nails: ToeNail[];
 }
 
 /** Loads a leg model from a .glb (binary) or JSON url. */
@@ -75,8 +81,8 @@ export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions =
     skinFx = applyAnatomyBumps(fineWrapped.pos, mesh.idx, fineWeld);
   }
   const stocking = buildGeometry(fineWrapped.pos, mesh.uv, mesh.idx, fineWeld);
-  stocking.setAttribute("gapNail", new THREE.BufferAttribute(fineWrapped.gapNail, 2));
   stocking.setAttribute("skinFx", new THREE.BufferAttribute(skinFx, 2));
+  stocking.setAttribute("toeShade", new THREE.BufferAttribute(new Float32Array(fineWrapped.pos.length / 3), 1));
   computeLegTangents(stocking);
   const circumference = computeCircumference(stocking);
   const stockingLow = new THREE.BufferGeometry();
@@ -91,6 +97,14 @@ export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions =
       new THREE.BufferAttribute(buildAdaptiveIndex(collision.idx, mesh.idx, fineWrapped.pos, fineWeld, 0.24), 1),
     );
   }
+  const forefoot = data.forefoot
+    ? buildForefoot(
+        data.forefoot,
+        { pos: fineWrapped.pos, nrm: stocking.attributes.normal.array, uv: mesh.uv, idx: stocking.index!.array },
+        collision,
+        circumference,
+      )
+    : null;
   const skin = buildGeometry(
     inflateThigh(new Float32Array(data.skinTop.positions), axisProfile),
     null,
@@ -101,8 +115,8 @@ export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions =
     "stretch",
     new THREE.BufferAttribute(new Float32Array(skin.attributes.position.count).fill(1.5), 1),
   );
-  skin.setAttribute("gapNail", new THREE.BufferAttribute(new Float32Array(skin.attributes.position.count * 2), 2));
   skin.setAttribute("skinFx", new THREE.BufferAttribute(new Float32Array(skin.attributes.position.count * 2), 2));
+  skin.setAttribute("toeShade", new THREE.BufferAttribute(new Float32Array(skin.attributes.position.count), 1));
   skin.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(skin.attributes.position.count * 2).fill(-1), 2));
   return {
     stocking: stocking,
@@ -110,5 +124,7 @@ export function buildLegModel(data: ModelData, { levels = 2 }: LegModelOptions =
     skin: skin,
     circumference: circumference,
     collision: collision,
+    forefoot: forefoot,
+    nails: data.forefoot?.nails ?? [],
   };
 }

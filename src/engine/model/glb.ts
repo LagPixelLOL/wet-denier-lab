@@ -1,7 +1,9 @@
 /**
- * Minimal reader for the leg model glTF 2.0 binary: "stocking" and "skinTop" meshes plus the stocking's
- * wrapOffsets accessor referenced from meshes[0].extras.
+ * Minimal reader for the leg model glTF 2.0 binary: the "stocking", "skinTop" and "forefoot" meshes plus the
+ * stocking's wrapOffsets accessor referenced from meshes[0].extras.
  */
+
+import type { ForefootData, ToeNail } from "./forefoot";
 
 /** Raw leg model arrays, from either the binary model or the JSON model. */
 export interface ModelData {
@@ -18,9 +20,11 @@ export interface ModelData {
   wrapData?: ArrayLike<number> | null;
   /** Base64 Int16 wrap offsets (JSON model). */
   wrap?: string;
+  /** The skin of the forefoot, with its separate toes (see forefoot.ts). */
+  forefoot?: ForefootData | null;
 }
 
-type GlbArray = Int16Array | Uint16Array | Uint32Array | Float32Array;
+type GlbArray = Uint8Array | Int16Array | Uint16Array | Uint32Array | Float32Array;
 
 type GlbArrayConstructor = new (buffer: ArrayBuffer, byteOffset: number, length: number) => GlbArray;
 
@@ -31,7 +35,7 @@ interface GltfJson {
   meshes: {
     name?: string;
     primitives: { attributes: Record<string, number>; indices: number }[];
-    extras?: { wrapOffsets?: { accessor: number } };
+    extras?: { wrapOffsets?: { accessor: number }; nails?: ToeNail[] };
   }[];
 }
 
@@ -44,6 +48,7 @@ export function parseModelGlb(buffer: ArrayBuffer): ModelData {
   const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 20, jsonLength))) as GltfJson;
   const binStart = 20 + jsonLength + 8;
   const TYPED_ARRAYS: Record<number, GlbArrayConstructor> = {
+    5121: Uint8Array,
     5122: Int16Array,
     5123: Uint16Array,
     5125: Uint32Array,
@@ -73,6 +78,8 @@ export function parseModelGlb(buffer: ArrayBuffer): ModelData {
   const stockingPrim = stockingMesh.primitives[0];
   const skinPrim = meshByName("skinTop").primitives[0];
   const wrap = stockingMesh.extras?.wrapOffsets;
+  const forefootMesh = gltf.meshes.find((candidate) => candidate.name === "forefoot");
+  const forefootPrim = forefootMesh?.primitives[0];
   return {
     stocking: {
       positions: readAccessor(stockingPrim.attributes.POSITION),
@@ -84,5 +91,13 @@ export function parseModelGlb(buffer: ArrayBuffer): ModelData {
       indices: readAccessor(skinPrim.indices),
     },
     wrapData: wrap ? readAccessor(wrap.accessor) : null,
+    forefoot: forefootPrim
+      ? {
+          positions: readAccessor(forefootPrim.attributes.POSITION),
+          shade: readAccessor(forefootPrim.attributes._SHADE),
+          indices: readAccessor(forefootPrim.indices),
+          nails: forefootMesh?.extras?.nails,
+        }
+      : null,
   };
 }

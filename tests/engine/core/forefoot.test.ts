@@ -1,0 +1,713 @@
+import * as THREE from "three";
+import { describe, expect, it } from "vitest";
+import { weldVertices } from "../../../src/engine/geometry/weld";
+import { bonyAt } from "../../../src/engine/model/anatomy";
+import { buildForefoot, FOREFOOT_JOIN } from "../../../src/engine/model/forefoot";
+import type { ForefootData } from "../../../src/engine/model/forefoot";
+import { parseModelGlb } from "../../../src/engine/model/glb";
+import { buildLegModel } from "../../../src/engine/model/legModel";
+import { stretchAt } from "../../../src/engine/model/tangents";
+import { SurfaceGrid } from "../../../src/engine/surface/SurfaceGrid";
+import type { SurfaceMesh } from "../../../src/engine/surface/SurfaceGrid";
+import { legModel, modelData } from "../../helpers/model";
+import { edgeCounts, edgeVertices, tinyGlb, tinyModelData, topologyProblems } from "./fixtures";
+
+const FOREFOOT_ATTRIBUTES = ["legTangent", "normal", "position", "skinFx", "stretch", "toeShade", "uv"];
+
+function forefoot(): THREE.BufferGeometry {
+  const geometry = legModel().forefoot;
+  if (!geometry) {
+    throw new Error("the shipped model has no forefoot");
+  }
+  return geometry;
+}
+
+/** A geometry's triangles as a surface to query. */
+function surfaceOf(geometry: THREE.BufferGeometry): SurfaceGrid {
+  return new SurfaceGrid({
+    pos: geometry.attributes.position.array,
+    nrm: geometry.attributes.normal.array,
+    uv: geometry.attributes.uv.array,
+    idx: geometry.index!.array,
+  });
+}
+
+function extent(array: ArrayLike<number>): [number, number] {
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < array.length; i++) {
+    min = Math.min(min, array[i]);
+    max = Math.max(max, array[i]);
+  }
+  return [min, max];
+}
+
+const dot = (a: readonly number[], b: readonly number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+/**
+ * The connected pieces of the triangles whose three vertices all pass `keep`: vertex -> piece, for the vertices
+ * of those triangles. Vertices at the same position count as one.
+ */
+function pieces(geometry: THREE.BufferGeometry, keep: (v: number) => boolean): Map<number, number> {
+  const weld = weldVertices(geometry.attributes.position.array);
+  const indices = geometry.index!.array;
+  const parent = Int32Array.from(weld, (_, i) => i);
+  const find = (v: number): number => {
+    while (parent[v] !== v) {
+      parent[v] = parent[parent[v]];
+      v = parent[v];
+    }
+    return v;
+  };
+  const kept: number[] = [];
+  for (let t = 0; t < indices.length; t += 3) {
+    const corners = [indices[t], indices[t + 1], indices[t + 2]];
+    if (corners.every(keep)) {
+      kept.push(...corners);
+      parent[find(weld[corners[1]])] = find(weld[corners[0]]);
+      parent[find(weld[corners[2]])] = find(weld[corners[0]]);
+    }
+  }
+  return new Map(kept.map((v) => [v, find(weld[v])]));
+}
+
+describe("parseModelGlb forefoot", () => {
+  it("reads the forefoot's control cage with one shade per vertex", () => {
+    const data = modelData().forefoot!;
+    expect(data.positions).toBeInstanceOf(Float32Array);
+    expect(data.shade).toBeInstanceOf(Uint8Array);
+    expect(data.positions.length % 3).toBe(0);
+    expect(data.positions.length).toBeGreaterThan(0);
+    expect(data.shade.length).toBe(data.positions.length / 3);
+    const [minShade, maxShade] = extent(data.shade);
+    expect(minShade).toBeGreaterThanOrEqual(0);
+    expect(maxShade).toBeLessThanOrEqual(255);
+    // Most of the skin is not between two toes, some of it is.
+    expect(minShade).toBe(0);
+    expect(maxShade).toBeGreaterThan(128);
+    expect(Array.from(data.shade).filter((v) => v === 0).length).toBeGreaterThan(data.shade.length / 2);
+  });
+
+  it("stores the cage's quads as triangle pairs a b c, a c d over four different vertices", () => {
+    const data = modelData().forefoot!;
+    const { indices } = data;
+    expect(indices.length % 6).toBe(0);
+    expect(indices.length).toBeGreaterThan(0);
+    const vertexCount = data.positions.length / 3;
+    for (let q = 0; q < indices.length; q += 6) {
+      const quad = [indices[q], indices[q + 1], indices[q + 2], indices[q + 5]];
+      if (indices[q] !== indices[q + 3] || indices[q + 2] !== indices[q + 4] || new Set(quad).size !== 4) {
+        throw new Error("not a quad at " + q / 6);
+      }
+      if (quad.some((v) => v >= vertexCount)) {
+        throw new Error("out of range at " + q / 6);
+      }
+    }
+    expect(new Set(Array.from(indices)).size).toBe(vertexCount);
+  });
+
+  it("reads five toenail frames, the big toe first", () => {
+    const nails = modelData().forefoot!.nails!;
+    expect(nails.length).toBe(5);
+    for (const nail of nails) {
+      expect([nail.center.length, nail.normal.length, nail.forward.length, nail.half.length]).toEqual([3, 3, 3, 2]);
+      expect(Math.hypot(...nail.normal)).toBeCloseTo(1, 4);
+      expect(Math.hypot(...nail.forward)).toBeCloseTo(1, 4);
+      expect(dot(nail.normal, nail.forward)).toBeCloseTo(0, 4);
+      // On top of the toe, pointing forward, a few millimeters across.
+      expect(nail.normal[1]).toBeGreaterThan(0.5);
+      expect(nail.forward[2]).toBeGreaterThan(0.5);
+      expect(Math.min(...nail.half)).toBeGreaterThan(0.001);
+      expect(Math.max(...nail.half)).toBeLessThan(0.012);
+    }
+    const widths = nails.map((nail) => nail.half[0]);
+    expect(Math.max(...widths.slice(1))).toBeLessThan(widths[0]);
+    // The toes lie side by side, from the big toe outward.
+    const steps = nails.slice(1).map((nail, i) => Math.sign(nail.center[0] - nails[i].center[0]));
+    expect(new Set(steps).size).toBe(1);
+    expect(steps[0]).not.toBe(0);
+    expect(legModel().nails).toEqual(nails);
+  });
+
+  it("returns a null forefoot for a model file without that mesh", () => {
+    expect(parseModelGlb(tinyGlb()).forefoot).toBeNull();
+  });
+});
+
+const TILT = [0.6, 0.8, 0];
+
+/** A flat piece of stocking in the plane y = height with the given normal, u along x and v along z. */
+function flatStocking(height: number, normal: number[]): SurfaceMesh {
+  return {
+    pos: [-0.05, height, 0.05, 0.05, height, 0.05, 0.05, height, 0.25, -0.05, height, 0.25],
+    nrm: [...normal, ...normal, ...normal, ...normal],
+    uv: [0, 0, 1, 0, 1, 1, 0, 1],
+    idx: [0, 2, 1, 0, 3, 2],
+  };
+}
+
+/**
+ * A flat cage of 2 x 6 quads of 1 cm at height y, from z = 0.09 (behind the cut) to z = 0.15, facing up.
+ * Its front row of vertices is fully shaded.
+ */
+function flatCage(y: number): ForefootData {
+  const positions: number[] = [];
+  const shade: number[] = [];
+  const indices: number[] = [];
+  for (let k = 0; k <= 6; k++) {
+    for (let i = 0; i <= 2; i++) {
+      positions.push((i - 1) * 0.01, y, 0.09 + k * 0.01);
+      shade.push(k === 6 ? 255 : 0);
+    }
+  }
+  for (let k = 0; k < 6; k++) {
+    for (let i = 0; i < 2; i++) {
+      const [a, b, c, d] = [k * 3 + i, (k + 1) * 3 + i, (k + 1) * 3 + i + 1, k * 3 + i + 1];
+      indices.push(a, b, c, a, c, d);
+    }
+  }
+  return { positions: new Float32Array(positions), shade: new Uint8Array(shade), indices: new Uint16Array(indices) };
+}
+
+describe("buildForefoot on a flat cage", () => {
+  // The render mesh lies in the plane y = 0 and is lit at a tilt; the collision mesh lies 2 mm under it.
+  const build = (y: number): THREE.BufferGeometry =>
+    buildForefoot(flatCage(y), flatStocking(0, TILT), flatStocking(-0.002, [0, 1, 0]), [0.34 * 1.5]);
+
+  it("subdivides the cage twice", () => {
+    const geometry = build(0.005);
+    // 21 vertices, 32 edges and 12 quads become 65 vertices, 112 edges and 48 quads, then 225 vertices.
+    expect(geometry.attributes.position.count).toBe(225);
+    expect(Object.keys(geometry.attributes).sort()).toEqual(FOREFOOT_ATTRIBUTES);
+    expect(topologyProblems(geometry.index!.array, 225)).toEqual([]);
+    const [minX, maxX] = extent(geometry.attributes.position.array.filter((_, i) => i % 3 === 0));
+    const [minZ, maxZ] = extent(geometry.attributes.position.array.filter((_, i) => i % 3 === 2));
+    expect([minX, maxX, minZ, maxZ]).toEqual([-0.01, 0.01, 0.09, 0.15].map(Math.fround));
+  });
+
+  it("lays the cage onto the stocking's render mesh behind the cut and blends into its own shape", () => {
+    const positions = build(0.005).attributes.position.array;
+    const seen = { on: 0, between: 0, own: 0 };
+    const blend: [number, number][] = [];
+    for (let i = 0; i < positions.length; i += 3) {
+      const [y, z] = [positions[i + 1], positions[i + 2]];
+      blend.push([z, y]);
+      if (z <= FOREFOOT_JOIN.cut) {
+        expect(y).toBe(0);
+        seen.on++;
+      } else if (z >= FOREFOOT_JOIN.to) {
+        expect(y).toBe(Math.fround(0.005));
+        seen.own++;
+      } else {
+        expect(y).toBeGreaterThanOrEqual(0);
+        expect(y).toBeLessThanOrEqual(Math.fround(0.005));
+        seen.between++;
+      }
+    }
+    expect(Object.values(seen).every((count) => count >= 27)).toBe(true);
+    // One smooth rise from the stocking to the cage's height.
+    blend.sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < blend.length; i++) {
+      expect(blend[i][1] - blend[i - 1][1]).toBeGreaterThan(-1e-9);
+      expect(blend[i][1] - blend[i - 1][1]).toBeLessThan(0.002);
+    }
+    const middle = (FOREFOOT_JOIN.cut + FOREFOOT_JOIN.to) / 2;
+    const halfway = blend.filter(([z]) => Math.abs(z - middle) < 0.002).map(([, y]) => y);
+    expect(Math.min(...halfway)).toBeGreaterThan(0.001);
+    expect(Math.max(...halfway)).toBeLessThan(0.004);
+  });
+
+  it("is lit like the stocking behind the cut and by its own shape in front of the join", () => {
+    // A cage that lies in the stocking's plane, so its own normals point straight up.
+    const geometry = build(0);
+    const positions = geometry.attributes.position.array;
+    const normals = geometry.attributes.normal.array;
+    const tangents = geometry.attributes.legTangent.array;
+    const seen = { on: 0, between: 0, own: 0 };
+    const tilt: [number, number][] = [];
+    for (const v of new Set(geometry.index!.array)) {
+      const z = positions[v * 3 + 2];
+      const normal = [...normals.subarray(v * 3, v * 3 + 3)];
+      expect(Math.hypot(...normal)).toBeCloseTo(1, 6);
+      expect(dot(normal, [...tangents.subarray(v * 3, v * 3 + 3)])).toBeCloseTo(0, 6);
+      tilt.push([z, normal[0]]);
+      if (z <= FOREFOOT_JOIN.cut) {
+        expect(normal).toEqual(TILT.map(Math.fround));
+        seen.on++;
+      } else if (z >= FOREFOOT_JOIN.to) {
+        expect(normal).toEqual([0, 1, 0]);
+        seen.own++;
+      } else {
+        // Somewhere between the stocking's normal and its own.
+        expect(normal[2]).toBe(0);
+        expect(normal[1]).toBeGreaterThanOrEqual(Math.fround(TILT[1]));
+        seen.between++;
+      }
+    }
+    expect(Object.values(seen).every((count) => count >= 9)).toBe(true);
+    tilt.sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < tilt.length; i++) {
+      expect(tilt[i][1] - tilt[i - 1][1]).toBeLessThan(1e-6);
+    }
+    // Vertices behind the cut that no triangle uses get the stocking's normal too.
+    expect([...normals.subarray(0, 3)]).toEqual(TILT.map(Math.fround));
+  });
+
+  it("reaches a little behind the cut and drops the quads further back", () => {
+    const geometry = build(0.005);
+    const positions = geometry.attributes.position.array;
+    const indices = geometry.index!.array;
+    const { cut } = FOREFOOT_JOIN;
+    expect(indices.length % 6).toBe(0);
+    for (let q = 0; q < indices.length; q += 6) {
+      const quad = [indices[q], indices[q + 1], indices[q + 2], indices[q + 5]];
+      expect([indices[q + 3], indices[q + 4]]).toEqual([quad[0], quad[2]]);
+      expect(quad.some((v) => positions[v * 3 + 2] > cut - 0.01)).toBe(true);
+    }
+    // Rows of 8 quads of 2.5 mm, 24 of them: whole rows stay or go.
+    expect((indices.length / 6) % 8).toBe(0);
+    expect(indices.length / 6).toBeLessThan(8 * 24);
+    const used = new Set(indices);
+    let minZ = Infinity;
+    for (let v = 0; v < 225; v++) {
+      const z = positions[v * 3 + 2];
+      if (used.has(v)) {
+        minZ = Math.min(minZ, z);
+      } else {
+        expect(z).toBeLessThan(cut);
+      }
+    }
+    // Clipped at the cut, the skin leaves no gap: it starts at least a row behind it.
+    expect(minZ).toBeLessThan(cut - 0.002);
+    expect(minZ).toBeGreaterThan(cut - 0.01);
+    for (let v = 0; v < 225; v++) {
+      expect(used.has(v)).toBe(positions[v * 3 + 2] > minZ - 0.0001);
+    }
+  });
+
+  it("takes the uv from the collision mesh under each vertex", () => {
+    const geometry = build(0.005);
+    const positions = geometry.attributes.position.array;
+    const uvs = geometry.attributes.uv.array;
+    for (let i = 0; i < 225; i++) {
+      expect(uvs[i * 2]).toBeCloseTo((positions[i * 3] + 0.05) / 0.1, 5);
+      expect(uvs[i * 2 + 1]).toBeCloseTo((positions[i * 3 + 2] - 0.05) / 0.2, 5);
+    }
+  });
+
+  it("keeps the cage's shape and marks the uv as missing where no stocking is within reach", () => {
+    const geometry = build(0.05);
+    const positions = geometry.attributes.position.array;
+    expect(new Set(geometry.attributes.uv.array)).toEqual(new Set([-1]));
+    expect(new Set(positions.filter((_, i) => i % 3 === 1))).toEqual(new Set([Math.fround(0.05)]));
+    // Sideways it is where the cage near the stocking is, which only moves straight down onto it.
+    const near = build(0.005).attributes.position.array;
+    for (let i = 0; i < positions.length; i += 3) {
+      expect(positions[i]).toBeCloseTo(near[i], 9);
+      expect(positions[i + 2]).toBeCloseTo(near[i + 2], 9);
+    }
+    expect(geometry.index!.count).toBe(build(0.005).index!.count);
+    const normals = geometry.attributes.normal.array;
+    for (const v of new Set(geometry.index!.array)) {
+      expect([...normals.subarray(v * 3, v * 3 + 3)]).toEqual([0, 1, 0]);
+    }
+  });
+
+  it("subdivides the shade along with the positions, from 0..255 to 0..1", () => {
+    const geometry = build(0.005);
+    const positions = geometry.attributes.position.array;
+    const shade = geometry.attributes.toeShade.array;
+    expect(extent(shade)).toEqual([0, 1]);
+    for (let i = 0; i < 225; i++) {
+      const z = positions[i * 3 + 2];
+      if (z < 0.1349) {
+        expect(shade[i]).toBe(0);
+      } else if (z > 0.1401) {
+        expect(shade[i]).toBeGreaterThan(0);
+      }
+    }
+    // The middle of the front border, which only has shaded neighbors on the border; its ends round off.
+    const front = [...Array(225).keys()].filter((i) => positions[i * 3 + 2] === Math.fround(0.15));
+    expect(front.map((i) => shade[i])).toEqual([1, 1, 1]);
+  });
+
+  it("fills in stretch from the circumference and the bony factor, with no bump depth", () => {
+    const geometry = build(0.005);
+    const positions = geometry.attributes.position.array;
+    const normals = geometry.attributes.normal.array;
+    const skinFx = geometry.attributes.skinFx.array;
+    expect(new Set(geometry.attributes.stretch.array)).toEqual(new Set([1.5]));
+    for (let i = 0; i < 225; i++) {
+      const [x, y, z] = positions.subarray(i * 3, i * 3 + 3);
+      const [nx, ny, nz] = normals.subarray(i * 3, i * 3 + 3);
+      expect(skinFx[i * 2]).toBe(0);
+      expect(skinFx[i * 2 + 1]).toBe(Math.fround(bonyAt(x, y, z, nx, ny, nz)));
+    }
+    // The front of the cage reaches the bony region over the toes.
+    expect(extent(skinFx)[1]).toBeGreaterThan(0.01);
+  });
+});
+
+describe("buildForefoot on the shipped model", () => {
+  it("builds a geometry with the attributes the leg shader reads, one value per vertex", () => {
+    const geometry = forefoot();
+    expect(Object.keys(geometry.attributes).sort()).toEqual(FOREFOOT_ATTRIBUTES);
+    expect(Object.keys(legModel().stocking.attributes).sort()).toEqual(FOREFOOT_ATTRIBUTES);
+    const count = geometry.attributes.position.count;
+    expect(count).toBeGreaterThan(modelData().forefoot!.positions.length / 3);
+    const sizes: Record<string, number> = {};
+    for (const name of FOREFOOT_ATTRIBUTES) {
+      expect(geometry.attributes[name].count).toBe(count);
+      expect(geometry.attributes[name].array).toBeInstanceOf(Float32Array);
+      sizes[name] = geometry.attributes[name].itemSize;
+    }
+    expect(sizes).toEqual({ legTangent: 3, normal: 3, position: 3, skinFx: 2, stretch: 1, toeShade: 1, uv: 2 });
+    expect(geometry.boundingBox).not.toBeNull();
+    expect(geometry.boundingSphere).not.toBeNull();
+  });
+
+  it("indexes only existing vertices, in whole triangles", () => {
+    const geometry = forefoot();
+    const indices = geometry.index!.array;
+    expect(indices.length % 6).toBe(0);
+    expect(indices.length).toBeGreaterThan(0);
+    expect(topologyProblems(indices, geometry.attributes.position.count)).toEqual([]);
+  });
+
+  it("gives every drawn vertex a unit normal and a unit tangent perpendicular to it", () => {
+    const geometry = forefoot();
+    const normals = geometry.attributes.normal.array;
+    const tangents = geometry.attributes.legTangent.array;
+    for (const v of new Set(geometry.index!.array)) {
+      const normal = [normals[v * 3], normals[v * 3 + 1], normals[v * 3 + 2]];
+      const tangent = [tangents[v * 3], tangents[v * 3 + 1], tangents[v * 3 + 2]];
+      if (Math.abs(Math.hypot(...normal) - 1) > 1e-4 || Math.abs(Math.hypot(...tangent) - 1) > 1e-4) {
+        throw new Error("non-unit vector at " + v);
+      }
+      if (Math.abs(dot(normal, tangent)) > 1e-4) {
+        throw new Error("tangent not perpendicular to the normal at " + v);
+      }
+    }
+  });
+
+  it("keeps the toe shade within [0, 1], dark between the toes and clear where the foot joins the stocking", () => {
+    const shade = forefoot().attributes.toeShade.array;
+    const [minShade, maxShade] = extent(shade);
+    expect(minShade).toBe(0);
+    expect(maxShade).toBeLessThanOrEqual(1);
+    expect(maxShade).toBeGreaterThan(0.5);
+    expect(Array.from(shade).filter((v) => v === 0).length).toBeGreaterThan(shade.length / 8);
+    const positions = forefoot().attributes.position.array;
+    for (let i = 0; i < shade.length; i++) {
+      if (shade[i] > 0.1 && positions[i * 3 + 2] < FOREFOOT_JOIN.to) {
+        throw new Error("shade behind the toes at " + i);
+      }
+    }
+  });
+
+  it("lies on the stocking's render mesh behind the cut, lit like it", () => {
+    const model = legModel();
+    const geometry = forefoot();
+    const positions = geometry.attributes.position.array;
+    const normals = geometry.attributes.normal.array;
+    const stocking = surfaceOf(model.stocking);
+    let behind = 0;
+    for (const v of new Set(geometry.index!.array)) {
+      const [x, y, z] = positions.subarray(v * 3, v * 3 + 3);
+      if (z < FOREFOOT_JOIN.cut) {
+        behind++;
+        const hit = stocking.closest(x, y, z, 0.01);
+        if (!hit || hit.dist > 0.00005) {
+          throw new Error("vertex " + v + " is off the stocking: " + hit?.dist);
+        }
+        if (dot([hit.nx, hit.ny, hit.nz], [...normals.subarray(v * 3, v * 3 + 3)]) < 0.999) {
+          throw new Error("the normal of vertex " + v + " is not the stocking's");
+        }
+      }
+    }
+    expect(behind).toBeGreaterThan(20);
+  });
+
+  it("meets the stocking in one line where the two are clipped at the cut", () => {
+    const geometry = forefoot();
+    const positions = geometry.attributes.position.array;
+    const normals = geometry.attributes.normal.array;
+    const stocking = surfaceOf(legModel().stocking);
+    const { cut } = FOREFOOT_JOIN;
+    let crossings = 0;
+    for (const edge of edgeCounts(geometry.index!.array).keys()) {
+      const [a, b] = edgeVertices(edge);
+      const za = positions[a * 3 + 2];
+      const zb = positions[b * 3 + 2];
+      if (za < cut === zb < cut) {
+        continue;
+      }
+      crossings++;
+      const t = (cut - za) / (zb - za);
+      const at = (array: ArrayLike<number>): number[] =>
+        [0, 1, 2].map((k) => array[a * 3 + k] + (array[b * 3 + k] - array[a * 3 + k]) * t);
+      const point = at(positions);
+      const normal = at(normals);
+      const hit = stocking.closest(point[0], point[1], point[2], 0.01);
+      if (!hit || hit.dist > 0.0003) {
+        throw new Error("a step of " + hit?.dist + " m at the cut near vertex " + a);
+      }
+      if (dot([hit.nx, hit.ny, hit.nz], normal) / Math.hypot(...normal) < 0.995) {
+        throw new Error("the lighting changes at the cut near vertex " + a);
+      }
+    }
+    expect(crossings).toBeGreaterThan(50);
+  });
+
+  it("starts behind the cut all the way around the foot", () => {
+    const geometry = forefoot();
+    const positions = geometry.attributes.position.array;
+    const weld = weldVertices(positions);
+    const neighbors = new Map<number, number[]>();
+    for (const [edge, uses] of edgeCounts(geometry.index!.array, weld)) {
+      expect(uses).toBeLessThanOrEqual(2);
+      if (uses === 1) {
+        const [a, b] = edgeVertices(edge);
+        neighbors.set(a, [...(neighbors.get(a) ?? []), b]);
+        neighbors.set(b, [...(neighbors.get(b) ?? []), a]);
+      }
+    }
+    // The toes are closed: the only open border is one ring at the back.
+    const border = [...neighbors.keys()];
+    expect(border.length).toBeGreaterThan(20);
+    expect(border.filter((v) => neighbors.get(v)!.length !== 2)).toEqual([]);
+    const ring = new Set([border[0]]);
+    for (let v = neighbors.get(border[0])![0]; !ring.has(v);) {
+      ring.add(v);
+      v = neighbors.get(v)!.find((next) => !ring.has(next)) ?? v;
+    }
+    expect(ring.size).toBe(border.length);
+    // A bare leg clips the stocking and the skin at the cut: a border behind it leaves no hole.
+    const inFront = border.filter((v) => positions[v * 3 + 2] >= FOREFOOT_JOIN.cut);
+    expect(inFront.map((v) => [...positions.subarray(v * 3, v * 3 + 3)].map((c) => Math.round(c * 1e4) / 1e4))).toEqual(
+      [],
+    );
+  });
+
+  it("reaches a little behind the cut and leaves the stocking's shape in front of the join", () => {
+    const model = legModel();
+    const geometry = forefoot();
+    const positions = geometry.attributes.position.array;
+    const surface = new SurfaceGrid(model.collision);
+    let minZ = Infinity;
+    let furthest = 0;
+    for (const v of new Set(geometry.index!.array)) {
+      const z = positions[v * 3 + 2];
+      minZ = Math.min(minZ, z);
+      if (z > FOREFOOT_JOIN.to) {
+        furthest = Math.max(furthest, surface.closest(positions[v * 3], positions[v * 3 + 1], z, 0.005)?.dist ?? 0.005);
+      }
+    }
+    expect(minZ).toBeLessThan(FOREFOOT_JOIN.cut);
+    // The quads further back are dropped, so nothing reaches far behind the cut.
+    expect(minZ).toBeGreaterThan(FOREFOOT_JOIN.cut - 0.02);
+    // Between the toes the skin is millimeters under the stocking stretched across them.
+    expect(furthest).toBeGreaterThan(0.002);
+    expect(geometry.boundingBox!.max.y).toBeLessThan(FOREFOOT_JOIN.maxY);
+    expect(geometry.boundingBox!.max.z).toBeGreaterThan(0.18);
+  });
+
+  it("borrows the stocking's wet-map uvs", () => {
+    const model = legModel();
+    const geometry = forefoot();
+    const [minUv, maxUv] = extent(geometry.attributes.uv.array);
+    expect(minUv).toBeGreaterThanOrEqual(0);
+    expect(maxUv).toBeLessThanOrEqual(1);
+    // Behind the cut the drawn skin is the stocking's surface, so the uv is the one found there.
+    const positions = geometry.attributes.position.array;
+    const uvs = geometry.attributes.uv.array;
+    const surface = new SurfaceGrid(model.collision);
+    let checked = 0;
+    for (const v of new Set(geometry.index!.array)) {
+      if (positions[v * 3 + 2] < FOREFOOT_JOIN.cut) {
+        const hit = surface.closest(positions[v * 3], positions[v * 3 + 1], positions[v * 3 + 2], 0.01)!;
+        if (Math.hypot(hit.u - uvs[v * 2], hit.v - uvs[v * 2 + 1]) > 0.002) {
+          throw new Error("uv of vertex " + v + " is not the stocking's");
+        }
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(20);
+  });
+
+  it("takes the stretch from the leg's circumference and the flush from the bony regions", () => {
+    const model = legModel();
+    const geometry = forefoot();
+    const positions = geometry.attributes.position.array;
+    const normals = geometry.attributes.normal.array;
+    const stretch = geometry.attributes.stretch.array;
+    const skinFx = geometry.attributes.skinFx.array;
+    for (let i = 0; i < stretch.length; i++) {
+      const [x, y, z] = positions.subarray(i * 3, i * 3 + 3);
+      const [nx, ny, nz] = normals.subarray(i * 3, i * 3 + 3);
+      if (stretch[i] !== Math.fround(stretchAt(model.circumference, y))) {
+        throw new Error("stretch at " + i);
+      }
+      if (skinFx[i * 2] !== 0 || skinFx[i * 2 + 1] !== Math.fround(bonyAt(x, y, z, nx, ny, nz))) {
+        throw new Error("skinFx at " + i);
+      }
+    }
+    // The same stretch as the stocking at that height.
+    const stockingStretch = new Set(model.stocking.attributes.stretch.array);
+    expect([...new Set(stretch)].filter((value) => !stockingStretch.has(value))).toEqual([]);
+    const [minBony, maxBony] = extent(skinFx);
+    expect(minBony).toBe(0);
+    expect(maxBony).toBeGreaterThan(0.3);
+    expect(maxBony).toBeLessThanOrEqual(1);
+  });
+
+  it("has separate toes", () => {
+    const geometry = forefoot();
+    const positions = geometry.attributes.position.array;
+    const tips = pieces(geometry, (v) => positions[v * 3 + 2] > 0.185);
+    expect(new Set(tips.values()).size).toBeGreaterThanOrEqual(3);
+    // The whole forefoot is one piece.
+    const whole = pieces(geometry, () => true);
+    expect(new Set(whole.values()).size).toBe(1);
+  });
+
+  it("puts each toenail on the skin of its own toe", () => {
+    const model = legModel();
+    const geometry = forefoot();
+    const positions = geometry.attributes.position.array;
+    const distance = (v: number, point: readonly number[]): number =>
+      Math.hypot(positions[v * 3] - point[0], positions[v * 3 + 1] - point[1], positions[v * 3 + 2] - point[2]);
+    const skin = surfaceOf(geometry);
+    for (const nail of model.nails) {
+      const hit = skin.closest(nail.center[0], nail.center[1], nail.center[2], 0.01)!;
+      expect(hit.dist).toBeLessThan(0.001);
+      expect(dot([hit.nx, hit.ny, hit.nz], nail.normal)).toBeGreaterThan(0.9);
+    }
+    // Balls of 12 mm around the nails overlap from toe to toe, but the skin inside them does not connect.
+    const reach = 0.012;
+    const gaps = model.nails
+      .slice(1)
+      .map((nail, i) => Math.hypot(...nail.center.map((c, k) => c - model.nails[i].center[k])));
+    expect(Math.max(...gaps)).toBeLessThan(reach * 2);
+    const around = pieces(geometry, (v) => model.nails.some((nail) => distance(v, nail.center) < reach));
+    const toes = model.nails.map((nail) => {
+      let nearest = -1;
+      for (const v of around.keys()) {
+        if (nearest < 0 || distance(v, nail.center) < distance(nearest, nail.center)) {
+          nearest = v;
+        }
+      }
+      expect(distance(nearest, nail.center)).toBeLessThan(0.002);
+      return around.get(nearest);
+    });
+    expect(new Set(toes).size).toBe(5);
+  });
+});
+
+describe("buildLegModel forefoot", () => {
+  it("has no forefoot and no nails for a model without forefoot data", () => {
+    const model = buildLegModel({ ...modelData(), forefoot: null });
+    expect(model.forefoot).toBeNull();
+    expect(model.nails).toEqual([]);
+    expect(buildLegModel(tinyModelData(), { levels: 1 }).forefoot).toBeNull();
+    // The stocking does not depend on the forefoot.
+    const full = legModel().stocking;
+    expect(model.stocking.index!.array).toEqual(full.index!.array);
+    for (const name of FOREFOOT_ATTRIBUTES) {
+      expect(model.stocking.attributes[name].array).toEqual(full.attributes[name].array);
+    }
+  });
+
+  it("builds a forefoot with or without nails", () => {
+    const nails = [{ center: [0, 0, 0.15], normal: [0, 1, 0], forward: [0, 0, 1], half: [0.004, 0.004] }];
+    const without = buildLegModel({ ...tinyModelData(), forefoot: flatCage(0.005) }, { levels: 1 });
+    const withNails = buildLegModel({ ...tinyModelData(), forefoot: { ...flatCage(0.005), nails } }, { levels: 1 });
+    expect(without.nails).toEqual([]);
+    expect(withNails.nails).toBe(nails);
+    for (const model of [without, withNails]) {
+      expect(Object.keys(model.forefoot!.attributes).sort()).toEqual(FOREFOOT_ATTRIBUTES);
+      expect(model.forefoot!.attributes.position.count).toBe(225);
+    }
+  });
+});
+
+describe("stretchAt", () => {
+  const circumference = [0.34, 0.68, 0.17];
+
+  it("divides the circumference of the 1 cm bin at that height by the 0.34 m reference", () => {
+    expect(stretchAt(circumference, 0.005)).toBe(1);
+    expect(stretchAt(circumference, 0.015)).toBe(2);
+    expect(stretchAt(circumference, 0.0199)).toBe(2);
+    expect(stretchAt(circumference, 0.025)).toBe(0.5);
+    expect(stretchAt([0.1], 0)).toBe(0.1 / 0.34);
+  });
+
+  it("clamps below the floor and above the last bin", () => {
+    expect(stretchAt(circumference, -0.5)).toBe(1);
+    expect(stretchAt(circumference, -0.001)).toBe(1);
+    expect(stretchAt(circumference, 0.03)).toBe(0.5);
+    expect(stretchAt(circumference, 7)).toBe(0.5);
+  });
+
+  it("matches the stretch attribute of the stocking", () => {
+    const model = legModel();
+    const positions = model.stocking.attributes.position.array;
+    const stretch = model.stocking.attributes.stretch.array;
+    for (let i = 0; i < stretch.length; i++) {
+      if (stretch[i] !== Math.fround(stretchAt(model.circumference, positions[i * 3 + 1]))) {
+        throw new Error("stretch differs at " + i);
+      }
+    }
+  });
+});
+
+describe("bonyAt", () => {
+  const heel = [0.006, 0.028, -0.04];
+  const back = [0, -0.3, -0.95].map((c) => c / Math.hypot(0.3, 0.95));
+
+  it("is positive on the back of the heel and fades with distance", () => {
+    const center = bonyAt(heel[0], heel[1], heel[2], back[0], back[1], back[2]);
+    expect(center).toBeCloseTo(0.8, 6);
+    const near = bonyAt(heel[0] + 0.02, heel[1], heel[2], back[0], back[1], back[2]);
+    expect(near).toBeGreaterThan(0.3);
+    expect(near).toBeLessThan(center);
+    expect(bonyAt(heel[0] + 0.2, heel[1], heel[2], back[0], back[1], back[2])).toBe(0);
+    expect(bonyAt(heel[0], heel[1] + 0.3, heel[2], back[0], back[1], back[2])).toBe(0);
+    expect(bonyAt(5, 5, 5, 0, 0, 1)).toBe(0);
+  });
+
+  it("only counts skin that faces the way the bone does", () => {
+    expect(bonyAt(heel[0], heel[1], heel[2], -back[0], -back[1], -back[2])).toBe(0);
+    expect(bonyAt(heel[0], heel[1], heel[2], 1, 0, 0)).toBe(0);
+    const oblique = bonyAt(heel[0], heel[1], heel[2], 0, -1, 0);
+    expect(oblique).toBeGreaterThan(0);
+    expect(oblique).toBeLessThan(0.8);
+  });
+
+  it("is 1 on the kneecap and never leaves [0, 1]", () => {
+    expect(bonyAt(-0.003, 0.49, 0.075, 0, 0, 1)).toBe(1);
+    for (let i = 0; i < 2000; i++) {
+      const theta = i * 0.37;
+      const phi = i * 1.13;
+      const normal = [Math.sin(theta) * Math.cos(phi), Math.cos(theta), Math.sin(theta) * Math.sin(phi)];
+      const value = bonyAt(
+        Math.sin(i * 0.7) * 0.06,
+        ((i * 0.618) % 1) * 0.6,
+        Math.cos(i * 0.3) * 0.1 + 0.05,
+        normal[0],
+        normal[1],
+        normal[2],
+      );
+      if (!(value >= 0 && value <= 1)) {
+        throw new Error("out of range at " + i + ": " + value);
+      }
+    }
+  });
+
+  it("matches the bony factor the stocking was built with", () => {
+    const [minBony, maxBony] = extent(legModel().stocking.attributes.skinFx.array.filter((_, i) => i % 2 === 1));
+    expect(minBony).toBe(0);
+    expect(maxBony).toBeGreaterThan(0.9);
+    expect(maxBony).toBeLessThanOrEqual(1);
+  });
+});

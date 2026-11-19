@@ -3,7 +3,7 @@
 An interactive WebGL toy: tap the stockings to splash water. Splashes burst, wet fabric turns see-through,
 beads cling, slide and drip onto the floor. You can switch scenes (studio, bath, street, pool), poses and
 outfits (length, cuff, material, denier, color, pattern, hidden decals, or bare legs), take photos and share a link that
-restores the exact look.
+restores the exact look. The feet have real toes: bare, or seen through a stocking that stretches over them.
 
 The UI is available in Simplified Chinese (zh-CN) and US English (en-US). It follows the browser's language, and
 the globe button in the top corner switches it.
@@ -82,8 +82,8 @@ src/
   assets/               leg model (glTF binary) and the logo font subset
   engine/               everything that is not React
     app/                controller: startup, camera, input, layout, frame loop, photo, share, actions
-    model/              model loading (glb.ts) and leg sculpting
-    geometry/           welding, smooth subdivision, adaptive index
+    model/              model loading (glb.ts), leg sculpting and the forefoot with its toes
+    geometry/           welding, smooth subdivision, adaptive index, Catmull-Clark subdivision
     rig/                joints, CPU skinning, pose catalog, LegRig
     catalog/            garments, colors, presets, resolving a leg spec to shader parameters
     surface/            spatial grid for closest-point and raycast queries on the deformed legs
@@ -91,6 +91,8 @@ src/
     water/              wet map (GPU simulation in UV space) and the droplet simulation
     audio/              synthesized sound (WebAudio)
     share/              share-link encoding
+tools/
+  fit_toes.py           writes the forefoot, the toenails and the stocking's fit over the toes into the model
 tests/
   engine/               unit tests for engine modules (node environment)
   ui/                   React component tests and app integration tests (jsdom)
@@ -123,11 +125,36 @@ on the CPU (`rig/skinning.ts`) for picking, floor contact and droplets.
 highlight). `WaterSim` simulates thrown, spray, drip and rain drops, beads that cling and slide on the surface,
 and a puddle grid with ripples on the floor.
 
-**Model.** `src/assets/model/legs.glb` is a standard glTF 2.0 binary with two meshes, `stocking` and `skinTop`.
-The stocking's per-vertex fit data (`wrapOffsets`) belongs to the twice-subdivided mesh, so it is stored as an
-extra Int16 VEC4 accessor referenced from `meshes[0].extras.wrapOffsets` (with its unit and layout described
-there). `model/glb.ts` reads exactly what the app needs; any glTF viewer opens the file, showing the unfitted
-base mesh.
+**Model.** `src/assets/model/legs.glb` is a standard glTF 2.0 binary with three meshes, `stocking`, `skinTop` and
+`forefoot`. The stocking's per-vertex fit data (`wrapOffsets`) belongs to the twice-subdivided mesh, so it is
+stored as an extra Int16 VEC4 accessor referenced from `meshes[0].extras.wrapOffsets` (with its unit and layout
+described there). `model/glb.ts` reads exactly what the app needs; any glTF viewer opens the file, showing the
+unfitted base mesh.
+
+**Toes.** The stocking mesh is one closed shape stretched over the toes, so the skin under it is a mesh of its
+own: `forefoot` is the front of the foot with five separate toes, stored as a quad control cage that the app
+subdivides (Catmull-Clark, `geometry/catmullClark.ts`, `model/forefoot.ts`). Its extras hold the toenails as frames
+on the skin, which the leg shader draws as raised plates.
+
+- On a bare leg the forefoot stands in for the front of the stocking mesh. Both are cut at the same plane in the
+  shaders (`forefootClipGlsl`), and behind the cut the forefoot lies exactly on the stocking mesh, so they meet
+  without a seam.
+- Under a stocking the forefoot is drawn first and the fabric over it lets it show through by its sheerness, so
+  the toes are seen through the fabric with real depth. The fabric around the toes is fitted as a membrane
+  pulled taut over the skin: it touches the toes' tops and pads and bridges the gaps and creases between them.
+- A leg that fades out for a close-up goes back to a single surface, so only its nearest surface is drawn.
+
+`tools/fit_toes.py` (Python with numpy and scipy) writes all of this into the model file from the MakeHuman base
+mesh, which the leg came from: it places the MakeHuman foot on the model, stores its forefoot and the nails, and
+refits the stocking over the toes.
+
+```sh
+curl -LO https://raw.githubusercontent.com/makehumancommunity/makehuman/master/makehuman/data/3dobjs/base.obj
+python3 tools/fit_toes.py base.obj
+```
+
+The forefoot and the nails are rewritten on every run. The stocking is refitted once (the file records that), since
+the fit starts from the stocking as it is; to redo it, start from the model as it was before.
 
 **Debugging.** In development builds (`import.meta.env.DEV`), `window.__app` exposes the runtime, and
 `window.__advance(seconds)` steps the simulation deterministically.
@@ -214,9 +241,9 @@ Options: `--url` (render an existing page instead), `--no-build`, `--hash`, `--s
 `--allow-software`. It needs a machine with a GPU. Without one, it fails unless you pass `--allow-software`, and
 software rendering is slow (about 9 s to boot and 2-3 fps).
 
-Frame rates are capped by vsync unless you pass `--perf`, which turns the cap off so the frame times show what a
-frame really costs. To compare shader changes, make the GPU the bottleneck with a large canvas and run the same
-look before and after:
+Frame rates are capped by vsync unless you pass `--perf`. That turns the cap off and also reports `gpuMs`: how long
+the GPU takes to finish each frame, measured by reading a pixel back right after the app has drawn. To compare
+shader changes, use a large canvas and run the same look before and after:
 
 ```sh
 npm run render:check -- --perf --size 2560x1440 --dpr 2 --settle 3000 --hash '#look=1~...'
@@ -224,7 +251,7 @@ npm run render:check -- --perf --size 2560x1440 --dpr 2 --settle 3000 --hash '#l
 
 ## Credits
 
-- Leg mesh: [MakeHuman](http://www.makehumancommunity.org) (CC0)
+- Leg and forefoot meshes: [MakeHuman](http://www.makehumancommunity.org) base mesh (CC0)
 - Stocking mesh: adapted from "French lingerie stockings" by punkduck
   ([CC BY 3.0](https://creativecommons.org/licenses/by/3.0/))
 - [three.js](https://threejs.org) (MIT)

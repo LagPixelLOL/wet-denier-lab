@@ -101,10 +101,12 @@ describe("createStage construction", () => {
     expect(stage.floor.renderOrder).toBe(-5);
     expect(stage.floor.geometry.parameters).toMatchObject({ radius: 1.6, segments: 96 });
     for (const leg of stage.legs) {
-      expect(leg.group.children.map((mesh) => mesh.renderOrder)).toEqual([0, 1, 0, 1, 2, 2, 1.5]);
+      // stocking, skin, their outlines, the forefoot's skin (drawn before the stocking it shows through) with
+      // its outline, and the bow
+      expect(leg.group.children.map((mesh) => mesh.renderOrder)).toEqual([0, 1, 0, 1, 2, 2, -2, -1, 2, 1.5]);
       expect(leg.matrix).toBe(leg.group.matrix);
       expect(leg.group.matrixAutoUpdate).toBe(false);
-      expect(leg.mirror.children).toHaveLength(4);
+      expect(leg.mirror.children).toHaveLength(6);
       expect(leg.skinParts).toHaveLength(5);
       expect(leg.bow.visible).toBe(false);
       expect(leg.castScene.children).toEqual([leg.caster]);
@@ -121,6 +123,8 @@ describe("createStage construction", () => {
     expect(leg.mirror.children.map((mesh) => (mesh as THREE.Mesh).geometry)).toEqual([
       model.stockingLow,
       model.stockingLow,
+      model.forefoot,
+      model.forefoot,
       model.skin,
       model.skin,
     ]);
@@ -351,6 +355,59 @@ describe("setStocking", () => {
       ? preset.legs.map((spec, i): [string, Partial<LegSpec>] => [`${preset.id} #${i}`, spec])
       : [[preset.id, preset.both ?? {}] satisfies [string, Partial<LegSpec>]],
   );
+
+  it("draws the forefoot's skin under the stocking, and in place of the stocking's front on a bare leg", () => {
+    const { stage } = buildStage();
+    const model = legModel();
+    const leg = stage.legs[0];
+    const forefoot = leg.group.children.filter((mesh) => (mesh as THREE.Mesh).geometry === model.forefoot);
+    expect(forefoot).toEqual([leg.forefootParts[0], leg.forefootParts[1], leg.forefootOutline]);
+    expect(leg.forefootParts).toHaveLength(4);
+    expect(leg.forefootParts[1].material.polygonOffset).toBe(true);
+    expect(leg.forefootParts[1].material.uniforms.uClip.value).toBe(-1);
+    expect(leg.forefootOutline!.material.uniforms.uSilhouette.value).toBe(1);
+    const state = () => ({
+      clip: leg.fabric.uClip.value,
+      overlay: leg.fabric.uOverlay.value,
+      under: leg.forefootUnder.value,
+      shown: leg.forefootParts.map((part) => part.visible),
+      order: leg.forefootParts.map((part) => part.renderOrder),
+      line: leg.forefootOutline!.visible,
+    });
+    // Under a stocking: drawn first, and seen through the fabric.
+    stage.setStocking(0, resolveLegLook(DEFAULT_LEG_SPEC));
+    expect(state()).toEqual({
+      clip: 0,
+      overlay: 1,
+      under: 1,
+      shown: [true, true, true, true],
+      order: [-2, -1, -2, -1],
+      line: false,
+    });
+    // A fading leg goes back to a single surface.
+    stage.setLegOpacity(0, 0.5);
+    expect(state()).toMatchObject({ overlay: 0, shown: [false, false, false, false] });
+    stage.setLegOpacity(0, 0.95);
+    expect(leg.fabric.uOverlay.value).toBeCloseTo(0.5, 5);
+    expect(leg.forefootParts[0].visible).toBe(true);
+    stage.setLegOpacity(0, 1);
+    // Bare: the forefoot replaces the front of the stocking mesh and is drawn along with it, at any opacity.
+    stage.setStocking(0, resolveLegLook({ length: "bare" }));
+    for (const opacity of [1, 0.3]) {
+      stage.setLegOpacity(0, opacity);
+      expect(state()).toEqual({
+        clip: 1,
+        overlay: 0,
+        under: 0,
+        shown: [true, true, true, true],
+        order: [0, 1, 0, 1],
+        line: true,
+      });
+    }
+    // The other leg keeps its own state.
+    expect(stage.legs[1].fabric.uClip.value).toBe(0);
+    expect(stage.legs[1].bare).toBe(false);
+  });
 
   it("applies every preset leg spec to both legs", () => {
     const { stage } = buildStage();

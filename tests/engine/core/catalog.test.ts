@@ -264,6 +264,7 @@ describe("resolveLegLook", () => {
     expect(resolveLegLook()).toMatchInlineSnapshot(`
       {
         "band": 0.05,
+        "bare": 0,
         "bow": false,
         "cuff": 1,
         "cuffY": 0.7,

@@ -235,6 +235,11 @@ function sumGaussianBlobs(
   return total;
 }
 
+/** How bony (and so how flushed) the skin is at a point with the given normal, 0 to 1. */
+export function bonyAt(x: number, y: number, z: number, nx: number, ny: number, nz: number): number {
+  return Math.min(1, sumGaussianBlobs(BONY_REGIONS, x, y, z, nx, ny, nz));
+}
+
 /**
  * Displaces `positions` along the normals by the anatomy bumps, in place.
  * Returns per-vertex skinFx pairs: (bump depth, bony factor).
@@ -259,7 +264,7 @@ export function applyAnatomyBumps(
       const ny = normals[i * 3 + 1];
       const nz = normals[i * 3 + 2];
       offsets[i] = sumGaussianBlobs(ANATOMY_BUMPS, x, y, z, nx, ny, nz);
-      bony[i] = Math.min(1, sumGaussianBlobs(BONY_REGIONS, x, y, z, nx, ny, nz));
+      bony[i] = bonyAt(x, y, z, nx, ny, nz);
     }
   }
   for (let i = 0; i < vertexCount; i++) {

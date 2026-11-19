@@ -24,6 +24,8 @@ export interface LegLook {
   gloss: number;
   cuffY: number;
   hasCuff: number;
+  /** 1 when no stocking is worn. */
+  bare: number;
   cuff: number;
   band: number;
   bow: boolean;
@@ -69,6 +71,7 @@ export function resolveLegLook(input?: Partial<LegSpec>): LegLook {
     gloss: materialDef.gloss,
     cuffY: lengthDef.cuffY,
     hasCuff: isTights ? 0 : 1,
+    bare: isBare ? 1 : 0,
     cuff: cuffDef.id,
     band: lengthDef.band,
     bow: !!cuffDef.bow && !isTights,

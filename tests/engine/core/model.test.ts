@@ -95,7 +95,7 @@ describe("parseModelGlb", () => {
         "e7ecf9f5",
         "6f7a6d70",
         "0c6f6798",
-        "108fc7bb",
+        "3c9eb29b",
       ]
     `);
   });
@@ -379,12 +379,12 @@ describe("buildLegModel on the shipped model", () => {
   it("builds the render, low and skin geometries with the expected attributes", () => {
     const model = legModel();
     expect(Object.keys(model.stocking.attributes).sort()).toEqual([
-      "gapNail",
       "legTangent",
       "normal",
       "position",
       "skinFx",
       "stretch",
+      "toeShade",
       "uv",
     ]);
     for (const name of Object.keys(model.stocking.attributes)) {
@@ -394,21 +394,21 @@ describe("buildLegModel on the shipped model", () => {
     expect(model.stockingLow.boundingSphere).toBe(model.stocking.boundingSphere);
     expect(model.stockingLow.boundingBox).toBe(model.stocking.boundingBox);
     expect(Object.keys(model.skin.attributes).sort()).toEqual([
-      "gapNail",
       "legTangent",
       "normal",
       "position",
       "skinFx",
       "stretch",
+      "toeShade",
       "uv",
     ]);
   });
 
-  it("gives the bare skin constant stretch, no gap/nail/skinFx and an out-of-range uv", () => {
+  it("gives the bare skin constant stretch, no skinFx or toe shade and an out-of-range uv", () => {
     const skin = legModel().skin;
     expect(new Set(skin.attributes.stretch.array)).toEqual(new Set([1.5]));
-    expect(new Set(skin.attributes.gapNail.array)).toEqual(new Set([0]));
     expect(new Set(skin.attributes.skinFx.array)).toEqual(new Set([0]));
+    expect(new Set(skin.attributes.toeShade.array)).toEqual(new Set([0]));
     expect(new Set(skin.attributes.uv.array)).toEqual(new Set([-1]));
   });
 
@@ -429,7 +429,7 @@ describe("buildLegModel on the shipped model", () => {
     expect(maxStretch).toBeLessThan(2);
   });
 
-  it("keeps normals and tangents unit length and skinFx within [-1, 1]", () => {
+  it("keeps normals and tangents unit length, skinFx within [-1, 1] and the toe shade at zero", () => {
     const model = legModel();
     const checks: [ArrayLike<number>, number][] = [
       [model.stocking.attributes.normal.array, 3],
@@ -447,12 +447,7 @@ describe("buildLegModel on the shipped model", () => {
     const [minFx, maxFx] = extent(model.stocking.attributes.skinFx.array);
     expect(minFx).toBeGreaterThanOrEqual(-1);
     expect(maxFx).toBeLessThanOrEqual(1);
-    const gapNail = model.stocking.attributes.gapNail.array;
-    for (let i = 1; i < gapNail.length; i += 2) {
-      if (gapNail[i] < 0 || gapNail[i] > 1) {
-        throw new Error("nail out of range at " + i);
-      }
-    }
+    expect(new Set(model.stocking.attributes.toeShade.array)).toEqual(new Set([0]));
   });
 
   it("pins every built array", () => {
@@ -472,28 +467,28 @@ describe("buildLegModel on the shipped model", () => {
       {
         "circumference": "8e50a5c5",
         "collision": [
-          "52690daa",
-          "ce123479",
+          "c87dd0e8",
+          "8b0c77b5",
           "617bdd01",
           "1ed66ba3",
         ],
         "skin": {
-          "gapNail": "03a706c5",
           "legTangent": "e24426b5",
           "normal": "cf1f1e86",
           "position": "fc033ce3",
           "skinFx": "03a706c5",
           "stretch": "f1250325",
+          "toeShade": "1ed63245",
           "uv": "d0b75f45",
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "gapNail": "e2b2ffe5",
-          "legTangent": "0174e9fb",
-          "normal": "d819d4dc",
-          "position": "ee3c4102",
-          "skinFx": "cb922ef2",
+          "legTangent": "90b5841e",
+          "normal": "44898b0e",
+          "position": "36a7837a",
+          "skinFx": "9e1a2361",
           "stretch": "d320a494",
+          "toeShade": "8ec92b05",
           "uv": "736679e6",
         },
       }
@@ -527,7 +522,7 @@ describe("buildLegModel options and sources", () => {
 
   it("builds a model without wrap data using the default two levels", () => {
     const model = buildLegModel(tinyModelData());
-    expect(new Set(model.stocking.attributes.gapNail.array)).toEqual(new Set([0]));
+    expect(new Set(model.stocking.attributes.toeShade.array)).toEqual(new Set([0]));
     const vertices = model.stocking.attributes.position.count;
     expect(vertices).toBeGreaterThan(model.collision.pos.length / 3);
     expect(topologyProblems(model.stocking.index!.array, vertices)).toEqual([]);
@@ -548,9 +543,14 @@ describe("buildLegModel options and sources", () => {
     const fromJson = await loadLegModel("/legs.json", { levels: 1 });
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/legs.glb", "/legs.json"]);
     expect(fromGlb.collision.idx).toEqual(fromJson.collision.idx);
-    expect(new Set(fromGlb.stocking.attributes.gapNail.array)).toEqual(new Set([0]));
-    // Packed value 16: gap 2e-5, nail 0.
-    expect(fromJson.stocking.attributes.gapNail.array[0]).toBeCloseTo(0.00002, 9);
+    const source = tinyModelData().stocking.positions;
+    const glbPositions = fromGlb.stocking.attributes.position.array;
+    const jsonPositions = fromJson.stocking.attributes.position.array;
+    expect([...glbPositions.slice(0, 3)]).toEqual(Array.from(source).slice(0, 3));
+    // Wrap value 16: the vertices the wrap data covers move 0.16 mm along each axis.
+    for (let c = 0; c < 3; c++) {
+      expect(jsonPositions[c] - glbPositions[c]).toBeCloseTo(0.00016, 7);
+    }
   });
 });
 

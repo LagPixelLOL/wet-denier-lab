@@ -32,6 +32,14 @@ export function computeLegTangents(geometry: THREE.BufferGeometry): void {
   geometry.setAttribute("legTangent", new THREE.BufferAttribute(tangents, 3));
 }
 
+const BIN_SIZE = 0.01;
+const REF_CIRCUMFERENCE = 0.34;
+
+/** Fabric stretch at height y: the leg's circumference there (from computeCircumference) over the reference. */
+export function stretchAt(circumference: ArrayLike<number>, y: number): number {
+  return circumference[Math.min(circumference.length - 1, Math.max(0, Math.floor(y / BIN_SIZE)))] / REF_CIRCUMFERENCE;
+}
+
 /**
  * Adds a "stretch" attribute (local circumference / refCircumference) and returns the smoothed
  * circumference per 1 cm height bin.
@@ -39,11 +47,11 @@ export function computeLegTangents(geometry: THREE.BufferGeometry): void {
 export function computeCircumference(
   geometry: THREE.BufferGeometry,
   minY = 0.105,
-  refCircumference = 0.34,
+  refCircumference = REF_CIRCUMFERENCE,
 ): Float64Array {
   const positions = geometry.attributes.position.array;
   const count = positions.length / 3;
-  const binSize = 0.01;
+  const binSize = BIN_SIZE;
   const binCount = Math.ceil(1 / binSize);
   const sumX = new Float64Array(binCount);
   const sumZ = new Float64Array(binCount);
