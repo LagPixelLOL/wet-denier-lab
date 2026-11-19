@@ -168,8 +168,8 @@ describe("LegRig construction", () => {
           0.470608,
         ],
         "front": 0.307945,
-        "nrm": "f1a3a771",
-        "pos": "89d19288",
+        "nrm": "4ac30815",
+        "pos": "8a2c78fe",
       }
     `);
   });

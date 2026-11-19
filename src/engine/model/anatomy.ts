@@ -79,30 +79,33 @@ export function inflateThigh(positions: Float32Array, axisProfile: ArrayLike<num
 }
 
 /**
- * Where the instep turns up into the shin. The model rounds that corner with a wide curve, which starts far
- * down the foot and stands the top of the instep high above a slender foot's, so the foot looks thick from the
- * side. Taking the surface in by `amount` (m) at the middle of the corner (y, z), fading out over `radius` up
- * the shin, down the instep and into the foot, leaves the instep straight until close to the ankle and turns
- * it into the shin over a shorter curve. `dir` (y, z) points into the leg at the corner.
+ * The instep, from where it turns up into the shin down to the middle of the foot. The model rounds that corner
+ * with a wide curve, which starts far down the foot and stands the top of the instep high above a slender
+ * foot's, so the foot looks thick from the side. Each dent takes the surface in by `amount` (m) at (y, z),
+ * fading out over `radius`, along `dir` (y, z), which points into the leg there.
+ * The first, at the middle of the corner, leaves the instep straight until close to the ankle and turns it into
+ * the shin over a shorter curve. The second, lower down, takes off the slight rise that is left on the instep,
+ * so that on tiptoe it runs straight from the ankle to where the toes bend.
  */
-const INSTEP = {
-  y: 0.105,
-  z: 0.054,
-  radius: 0.028,
-  amount: 0.006,
-  dir: [-0.62, -0.78],
-};
+export const INSTEP = [
+  { y: 0.105, z: 0.054, radius: 0.028, amount: 0.006, dir: [-0.62, -0.78] },
+  { y: 0.076, z: 0.086, radius: 0.026, amount: 0.0015, dir: [-0.88, -0.47] },
+];
 
-/** Tightens the corner between the instep and the shin, in place. Returns `positions`. */
+/** Takes the instep in (see INSTEP), in place. Returns `positions`. */
 export function slimInstep(positions: Float32Array): Float32Array {
   for (let i = 0; i < positions.length; i += 3) {
-    const dy = (positions[i + 1] - INSTEP.y) / INSTEP.radius;
-    const dz = (positions[i + 2] - INSTEP.z) / INSTEP.radius;
-    const d2 = dy * dy + dz * dz;
-    if (d2 < 9) {
-      const amount = INSTEP.amount * Math.exp(-d2);
-      positions[i + 1] += INSTEP.dir[0] * amount;
-      positions[i + 2] += INSTEP.dir[1] * amount;
+    const y = positions[i + 1];
+    const z = positions[i + 2];
+    for (const dent of INSTEP) {
+      const dy = (y - dent.y) / dent.radius;
+      const dz = (z - dent.z) / dent.radius;
+      const d2 = dy * dy + dz * dz;
+      if (d2 < 9) {
+        const amount = dent.amount * Math.exp(-d2);
+        positions[i + 1] += dent.dir[0] * amount;
+        positions[i + 2] += dent.dir[1] * amount;
+      }
     }
   }
   return positions;

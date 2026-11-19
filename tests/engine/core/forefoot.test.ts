@@ -679,7 +679,8 @@ describe("buildForefoot on the shipped model", () => {
     let across = 0;
     for (let v = 0; v < weld.length; v++) {
       const source = weld[v];
-      if (source === v) {
+      // Behind the drawn part the skin is laid onto the stocking, where two vertices may land in one place.
+      if (source === v || !used.has(v)) {
         continue;
       }
       for (const name of FOREFOOT_ATTRIBUTES.filter((attribute) => attribute !== "uv")) {

@@ -1,7 +1,13 @@
 import { Buffer } from "node:buffer";
 import * as THREE from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyAnatomyBumps, computeLegAxisProfile, inflateThigh, slimInstep } from "../../../src/engine/model/anatomy";
+import {
+  applyAnatomyBumps,
+  computeLegAxisProfile,
+  inflateThigh,
+  INSTEP,
+  slimInstep,
+} from "../../../src/engine/model/anatomy";
 import { parseModelGlb } from "../../../src/engine/model/glb";
 import type { ModelData } from "../../../src/engine/model/glb";
 import { buildLegModel, loadLegModel } from "../../../src/engine/model/legModel";
@@ -241,34 +247,49 @@ describe("inflateThigh", () => {
 });
 
 describe("slimInstep", () => {
-  it("takes the corner between the instep and the shin in, most at its middle", () => {
-    const positions = Float32Array.of(0.01, 0.105, 0.054, -0.02, 0.092, 0.065, 0, 0.127, 0.045, 0, 0.077, 0.084);
+  const moved = (rest: number[]): number[] => {
+    const positions = Float32Array.from(rest);
     expect(slimInstep(positions)).toBe(positions);
-    // 6 mm at the middle, along (0, -0.62, -0.78).
-    expect(positions[0]).toBe(Math.fround(0.01));
-    expect(positions[1]).toBeCloseTo(0.105 - 0.62 * 0.006, 6);
-    expect(positions[2]).toBeCloseTo(0.054 - 0.78 * 0.006, 6);
-    const moved = [1, 2, 3].map((k) =>
-      Math.hypot(
-        positions[k * 3 + 1] - [0.092, 0.127, 0.077][k - 1],
-        positions[k * 3 + 2] - [0.065, 0.045, 0.084][k - 1],
-      ),
-    );
-    // Less down the instep and up the shin, and little by the middle of the foot.
-    expect(moved[0]).toBeGreaterThan(0.003);
-    expect(moved[0]).toBeLessThan(0.006);
-    expect(moved[1]).toBeGreaterThan(0.0015);
-    expect(moved[1]).toBeLessThan(moved[0]);
-    expect(moved[2]).toBeGreaterThan(0.0003);
-    expect(moved[2]).toBeLessThan(0.0015);
+    return rest.map((v, i) => positions[i] - v);
+  };
+
+  it("takes each dent's middle in by its amount along its direction, plus what the others add there", () => {
+    for (const dent of INSTEP) {
+      let dy = 0;
+      let dz = 0;
+      for (const other of INSTEP) {
+        const reach = Math.exp(-(((dent.y - other.y) / other.radius) ** 2 + ((dent.z - other.z) / other.radius) ** 2));
+        dy += other.dir[0] * other.amount * reach;
+        dz += other.dir[1] * other.amount * reach;
+      }
+      const [x, y, z] = moved([0.01, dent.y, dent.z]);
+      expect(x).toBeCloseTo(0, 8);
+      expect(y).toBeCloseTo(dy, 6);
+      expect(z).toBeCloseTo(dz, 6);
+      // Down and back, into the leg.
+      expect(y).toBeLessThan(-0.0009);
+      expect(z).toBeLessThan(-0.0005);
+    }
+  });
+
+  it("is deepest where the instep turns up into the shin, and shallow by the middle of the foot", () => {
+    const size = (rest: number[]): number => Math.hypot(...moved(rest));
+    const corner = size([0, 0.105, 0.054]);
+    expect(corner).toBeGreaterThan(0.006);
+    expect(corner).toBeLessThan(0.0065);
+    const upTheShin = size([0, 0.127, 0.045]);
+    const downTheInstep = size([0, 0.092, 0.065]);
+    const midFoot = size([0, 0.07, 0.095]);
+    expect(upTheShin).toBeGreaterThan(0.0015);
+    expect(upTheShin).toBeLessThan(downTheInstep);
+    expect(downTheInstep).toBeLessThan(corner);
+    expect(midFoot).toBeGreaterThan(0.001);
+    expect(midFoot).toBeLessThan(0.002);
   });
 
   it("leaves the shin, the toes, the sole and the heel where they are", () => {
-    const rest = [0, 0.2, 0.04, 0, 0.05, 0.16, 0, 0.002, 0.07, 0, 0.04, -0.05, 0.03, 0.5, 0.02];
-    const positions = Float32Array.from(rest);
-    slimInstep(positions);
-    for (let i = 0; i < rest.length; i++) {
-      expect(Math.abs(positions[i] - rest[i])).toBeLessThan(0.0001);
+    for (const offset of moved([0, 0.2, 0.04, 0, 0.05, 0.16, 0, 0.002, 0.07, 0, 0.04, -0.05, 0.03, 0.5, 0.02])) {
+      expect(Math.abs(offset)).toBeLessThan(0.0001);
     }
   });
 });
@@ -513,10 +534,10 @@ describe("buildLegModel on the shipped model", () => {
       ],
     }).toMatchInlineSnapshot(`
       {
-        "circumference": "96f7c233",
+        "circumference": "0434eb84",
         "collision": [
-          "ce75ab12",
-          "f7c8d04d",
+          "60b09810",
+          "f5b276f1",
           "617bdd01",
           "1ed66ba3",
         ],
@@ -531,11 +552,11 @@ describe("buildLegModel on the shipped model", () => {
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "legTangent": "45fa1d40",
-          "normal": "ffac0576",
-          "position": "9dee999b",
-          "skinFx": "79303ced",
-          "stretch": "047c0983",
+          "legTangent": "5e97a893",
+          "normal": "8a681ea5",
+          "position": "908def5b",
+          "skinFx": "4e043927",
+          "stretch": "11bcbb19",
           "toeShade": "8ec92b05",
           "uv": "736679e6",
         },
