@@ -95,7 +95,7 @@ describe("parseModelGlb", () => {
         "e7ecf9f5",
         "6f7a6d70",
         "0c6f6798",
-        "3c9eb29b",
+        "42147833",
       ]
     `);
   });
@@ -482,8 +482,8 @@ describe("buildLegModel on the shipped model", () => {
       {
         "circumference": "8e50a5c5",
         "collision": [
-          "c87dd0e8",
-          "8b0c77b5",
+          "331d3712",
+          "93e9af59",
           "617bdd01",
           "1ed66ba3",
         ],
@@ -498,10 +498,10 @@ describe("buildLegModel on the shipped model", () => {
         },
         "skinIndex": "02e47460",
         "stocking": {
-          "legTangent": "1b7e7d11",
-          "normal": "44898b0e",
-          "position": "36a7837a",
-          "skinFx": "9e1a2361",
+          "legTangent": "a8a4df33",
+          "normal": "bf1ef33e",
+          "position": "cb70d0d5",
+          "skinFx": "465a72ca",
           "stretch": "d320a494",
           "toeShade": "8ec92b05",
           "uv": "736679e6",

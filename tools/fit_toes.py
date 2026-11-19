@@ -398,8 +398,11 @@ def nail_frames(points, normals, quads, levels, toes):
 # The stocking over the skin
 # ---------------------------------------------------------------------------------------------------------------
 
-# The stocking is refitted in front of FABRIC_Z (fading in over that band) and below FABRIC_Y (fading out).
-FABRIC_Z = (0.092, 0.104)
+# The stocking is refitted in front of FABRIC_Z (fading in over that band) and below FABRIC_Y (fading out). The
+# band starts in front of the plane where the app joins the forefoot to a bare leg (FOREFOOT_JOIN.cut), so the
+# stocking keeps its smooth shape there, and ends about where the app's forefoot skin has left the stocking's
+# surface for its own shape (FOREFOOT_JOIN.to), so the fabric is clear of the skin by then.
+FABRIC_Z = (0.116, 0.132)
 FABRIC_Y = (0.075, 0.090)
 # The fabric's middle lies this far off the skin where it touches it.
 FABRIC_THICKNESS = 0.0004
@@ -411,6 +414,9 @@ def fit_fabric(stocking, triangles, weld, skin, skin_normals):
     The stocking around the toes as a membrane pulled taut over the skin: each round every vertex moves toward
     the middle of its neighbours (tension), then out of the skin if it sank in. What is left touches the skin on
     the toes' tops, tips and pads and spans the clefts between the toes and the creases under them.
+    The membrane also stays outside the stocking's own shape as it was: that shape is the fabric at rest over
+    the foot, so the fit only ever lifts it over the toes, and tension cannot draw it in behind them (which
+    left a waist across the foot where the fit begins).
     Returns the new positions and each vertex's distance from the skin.
     """
     weight = smoothstep(*FABRIC_Z, stocking[:, 2]) * (1 - smoothstep(*FABRIC_Y, stocking[:, 1]))
@@ -431,11 +437,18 @@ def fit_fabric(stocking, triangles, weld, skin, skin_normals):
         _, nearest = tree.query(points)
         return np.einsum("ij,ij->i", points - skin[nearest], skin_normals[nearest]), nearest
 
+    rest = stocking[part].copy()
+    rest_normals = welded_normals(stocking, triangles, weld).astype(np.float64)[part]
+    rest_tree = cKDTree(rest)
     position = stocking[part].copy()
     for _ in range(FABRIC_STEPS):
         total = np.zeros_like(position)
         np.add.at(total, pairs[:, 0], position[pairs[:, 1]])
         position[free] += 0.5 * (total[free] / degree[free] - position[free])
+        _, at = rest_tree.query(position)
+        inside = np.einsum("ij,ij->i", position - rest[at], rest_normals[at])
+        drawn_in = free & (inside < 0)
+        position[drawn_in] -= inside[drawn_in, None] * rest_normals[at[drawn_in]]
         off, nearest = distance(position)
         sunk = free & (off < FABRIC_THICKNESS)
         position[sunk] += (FABRIC_THICKNESS - off[sunk])[:, None] * skin_normals[nearest[sunk]]

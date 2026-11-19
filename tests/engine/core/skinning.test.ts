@@ -327,7 +327,7 @@ describe("computeFootLift", () => {
         expect(lowest).toBeCloseTo(floorY, 12);
       });
     }
-    expect(digestRounded(lifts, 9)).toMatchInlineSnapshot(`"5072d448"`);
+    expect(digestRounded(lifts, 9)).toMatchInlineSnapshot(`"f52e9ae5"`);
   });
 });
 

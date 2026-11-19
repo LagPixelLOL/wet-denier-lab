@@ -143,6 +143,8 @@ on the skin, which the leg shader draws as raised plates.
 - Under a stocking the forefoot is drawn first and the fabric over it lets it show through by its sheerness, so
   the toes are seen through the fabric with real depth. The fabric around the toes is fitted as a membrane
   pulled taut over the skin: it touches the toes' tops and pads and bridges the gaps and creases between them.
+  The fit only ever lifts the fabric off its old shape, and starts in front of the join, so the foot behind the
+  toes keeps its shape.
 - Under a stocking the skin is drawn 0.4 mm inside its surface, so fabric lying right on it always covers it.
 - Nearly opaque fabric, and a leg that fades out for a close-up, go back to a single surface, so only the
   nearest surface is drawn.
