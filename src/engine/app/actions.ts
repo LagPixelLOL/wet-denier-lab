@@ -47,6 +47,10 @@ function wearChip(key: string, value: string) {
             garter: false,
           },
     );
+  } else if (key === "toe") {
+    wear({
+      toe: value === "1",
+    });
   } else if (key === "wetColor") {
     wear({
       wetColor: value || null,

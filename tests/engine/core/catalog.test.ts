@@ -310,10 +310,12 @@ describe("resolveLegLook", () => {
           "material": "sheer",
           "pattern": "none",
           "secret": "none",
+          "toe": true,
           "wetColor": null,
         },
         "stripe": 1,
         "through": 0.1,
+        "toe": 1,
         "water": {
           "bead": 1,
           "slip": 1,
@@ -371,6 +373,12 @@ describe("resolveLegLook", () => {
     expect(resolveLegLook({ length: "over", garter: true }).garter).toBe(0);
     expect(resolveLegLook({ length: "tights", garter: true }).garter).toBe(0);
     expect(resolveLegLook({ length: "thigh", garter: false }).garter).toBe(0);
+  });
+
+  it("reinforces the toe unless the spec turns it off or the leg is bare", () => {
+    expect(resolveLegLook({}).toe).toBe(1);
+    expect(resolveLegLook({ toe: false }).toe).toBe(0);
+    expect(resolveLegLook({ length: "bare", toe: true }).toe).toBe(0);
   });
 
   it("picks a secret decal color that contrasts with the dye", () => {
@@ -473,6 +481,7 @@ describe("randomLegSpec", () => {
           "material": "sheer",
           "pattern": "pins",
           "secret": "none",
+          "toe": true,
           "wetColor": null,
         },
         {
@@ -484,6 +493,7 @@ describe("randomLegSpec", () => {
           "material": "cotton",
           "pattern": "stars",
           "secret": "none",
+          "toe": true,
           "wetColor": "sakura",
         },
         {
@@ -495,6 +505,7 @@ describe("randomLegSpec", () => {
           "material": "latex",
           "pattern": "paws",
           "secret": "none",
+          "toe": true,
           "wetColor": null,
         },
       ]

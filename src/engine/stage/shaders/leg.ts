@@ -86,7 +86,7 @@ uniform float uCaustic, uMirrorFlipY, uMirrorFalloff;
 uniform vec3 uSkinLit, uSkinShade, uSkinScatter;
 uniform vec3 uDye, uDye2, uSheenColor, uShade;
 uniform float uStripe, uDenier, uPattern, uGloss, uCuffY, uHasCuff, uIsSkin, uThrough, uSheenAmount;
-uniform float uCuffStyle, uBand, uGarter, uUnder, uOverlay, uClip;
+uniform float uCuffStyle, uBand, uGarter, uUnder, uOverlay, uClip, uToe;
 uniform float uPrint, uMirror;
 uniform vec4 uMatWet;
 uniform vec4 uMatKnit;
@@ -284,7 +284,7 @@ void main() {
   float contact = sole * (1.0 - smoothstep(0.0035, 0.0115, height));
   skinTint *= mix(vec3(1.0), vec3(1.0, 0.82, 0.80), contact) * mix(vec3(1.0), vec3(1.05, 1.03, 0.99), sole - contact);
   // Veins show faintly through the skin, where it is bare or behind fabric sheer enough to tell.
-  if (uIsSkin > 0.5 || height > uCuffY || uUnder > 0.5 || uDenier < 30.0) skinTint *= mix(vec3(1.0), vec3(0.90, 0.95, 0.985), skinVeins(vRestPos, normalize(vRestNormal)) * 0.8);
+  if (uIsSkin > 0.5 || height > uCuffY || uUnder > 0.5 || uDenier < 30.0) skinTint *= mix(vec3(1.0), vec3(0.90, 0.95, 0.985), skinVeins(vRestPos, normalize(vRestNormal)) * 0.4);
   // The sides of the toes sink into the shade between them.
   float betweenToes = vBetweenToes;
   bareSkin *= skinTint * mix(vec3(1.0), vec3(0.80, 0.62, 0.62), betweenToes);
@@ -340,7 +340,7 @@ void main() {
   if (cuffDen >= 0.0) denier = cuffDen;
   // Reinforced toe: a denser knit over the toes, closed by a seam across their tops. Hosiery has one; fabrics
   // too thick to see through do not.
-  float toeKnit = (isNet ? 0.0 : clamp(uMatKnit.x * 5.0, 0.0, 1.0)) * step(height, 0.07) * (1.0 - smoothstep(130.0, 220.0, uDenier));
+  float toeKnit = uToe * (isNet ? 0.0 : clamp(uMatKnit.x * 5.0, 0.0, 1.0)) * step(height, 0.07) * (1.0 - smoothstep(130.0, 220.0, uDenier));
   float capEdge = toeCap(vRestPos), seamAt = toeSeam(vRestPos);
   float seam = (1.0 - aaStep(0.0007, abs(seamAt))) * smoothstep(-0.35, 0.1, restNy) * (0.85 + 0.15 * sin(vRestPos.x * 7800.0)) * toeKnit;
   denier *= 1.0 + toeKnit * (0.6 * smoothstep(-0.0012, 0.0012, capEdge) + 0.4 * (1.0 - aaStep(0.0007, abs(capEdge)))) + 1.3 * seam;
@@ -366,7 +366,15 @@ void main() {
   dye = mix(dye, uWetDye.rgb, uWetDye.a * wetness);
   vec3 dyeDark = dye * (1.0 - uMatWet.y * wetness * (1.0 - 0.8 * uWetDye.a));
   vec3 fabCol = dyeDark * mix(uShade, vec3(1.0), fabLit) * hemi * mix(1.0, bumpShade, 0.6) * ribShade * (1.0 - 0.2 * bandEdge) * (1.0 - 0.15 * seam);
-  fabCol += uSheenColor * pow(grazing, uMatKnit.z) * uSheenAmount * (1.0 - wetness) * mix(0.45, 1.0, fabLit);
+  // Fuzzy fabrics (cotton, velvet) scatter light off their fibers: their sheen and the rim lights on them are
+  // softer and broken up by the fibers' grain, the knit and the ribs, where a smooth yarn gives a clean highlight.
+  float fuzz = (1.0 - smoothstep(0.1, 0.25, uGloss)) * fabric, fuzzShade = 1.0;
+  float grainSize = max(fwidth(vUv.x), fwidth(vUv.y)) * 4200.0;
+  if (uGloss < 0.25) {
+    float grain = 1.0 + clamp(1.3 - grainSize, 0.0, 1.0) * (0.55 * valueNoise(vUv * 4200.0) + 0.3 * valueNoise(vUv * vec2(9500.0, 2100.0)));
+    fuzzShade = mix(1.0, grain * ribShade * mix(1.0, knit / uKnitMean, 0.6), fuzz);
+  }
+  fabCol += uSheenColor * pow(grazing, uMatKnit.z) * uSheenAmount * (1.0 - wetness) * mix(0.45, 1.0, fabLit) * mix(1.0, 0.6, fuzz) * fuzzShade;
   fabCol += (0.5 + 0.5 * cos(6.2832 * (ndv * 0.75 + vec3(0.05, 0.38, 0.70)))) * vec3(0.040, 0.030, 0.045) * uMatWet.w * mix(0.5, 1.0, fabLit);
   vec3 dyeHue = dye / max(max(dye.r, dye.g), max(dye.b, 0.02));
   vec3 throughTint = mix(vec3(1.0), dyeHue, uThrough);
@@ -380,7 +388,8 @@ void main() {
   throughTint = mix(throughTint, vec3(1.0), wetness * 0.6);
   // Over the forefoot the skin is a surface of its own under the fabric (drawn first, with uUnder), and shows
   // through the fabric itself: "through" is how much of what lies behind this fragment stays visible.
-  float overlay = uOverlay * smoothstep(0.114, 0.128, vRestPos.z) * (1.0 - smoothstep(0.075, 0.09, height));
+  // Only fabric sheer enough to tell: a nearly opaque one paints what little shows itself, like the rest of the leg.
+  float overlay = uOverlay * smoothstep(0.114, 0.128, vRestPos.z) * (1.0 - smoothstep(0.075, 0.09, height)) * smoothstep(0.004, 0.03, sheer);
   float through = sheer * overlay * fabric;
   vec3 stockCol = fabCol * (1.0 - sheer) + seenSkin * throughTint * sheer * (1.0 - overlay);
   vec3 col = mix(bareSkin * mix(vec3(1.0), vec3(0.94, 0.88, 0.88), wetness), stockCol, fabric);
@@ -409,7 +418,7 @@ void main() {
   float knitMod = mix(1.0, knit / uKnitMean, isNet ? 0.0 : uMatKnit.x);
   float sheenStripe = (smoothstep(0.42, 0.78, aniso) * 0.7 + aniso * 0.3) * side * lobe * knitMod;
   col += uKeyColor * sheenStripe * uStripe * uGloss * 0.85 * fabric * (1.0 - 0.35 * sheer);
-  float rimShade = 1.0 - betweenToes;
+  float rimShade = (1.0 - betweenToes) * mix(1.0, 0.3, fuzz) * fuzzShade;
   col += uRimColor * rim * mix(0.55, 0.30, fabric) * rimShade;
   col += uRim2Color * smoothstep(0.55, 0.86, 1.0 - ndv) * smoothstep(-0.1, 0.4, dot(n, uRim2Dir)) * mix(0.55, 0.34, fabric) * rimShade;
   if (uCaustic > 0.0) col *= 1.0 + uCaustic * (caustics(vWorldPos.xz * 2.6 + vWorldPos.y * uMirrorFlipY * vec2(1.1, 0.6), uTime * 0.8) - 0.2) * smoothstep(0.85, 0.05, vWorldPos.y * uMirrorFlipY) * smoothstep(-0.2, 0.3, ndl);

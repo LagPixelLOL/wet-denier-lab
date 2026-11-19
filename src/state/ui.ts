@@ -12,7 +12,7 @@ export type WardrobeTab = "pose" | "preset" | "style" | "color" | "material" | "
 /** The subset of a leg spec the wardrobe sheet displays. */
 export type WardrobeSpec = Pick<
   LegSpec,
-  "length" | "cuff" | "garter" | "color" | "material" | "denier" | "pattern" | "secret" | "wetColor"
+  "length" | "cuff" | "garter" | "toe" | "color" | "material" | "denier" | "pattern" | "secret" | "wetColor"
 >;
 
 export interface UiState {

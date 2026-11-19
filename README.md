@@ -65,7 +65,8 @@ from the site root.
 - The copy-link button copies a link to the page the app is running on, of the form
   `#look=1~<pose>~<scene>~<backdrop>~<leg0>~<leg1>~<view>`. The view is the camera as
   `yaw,pitch,dist,targetX,targetY,targetZ`. It is optional, so older links without it still load and keep the
-  current camera. Opening a link applies the look and moves the camera. This also works when pasting a link into a tab that is already open, even the same link the tab already shows.
+  current camera. Each leg is `length.cuff.garter.material.denier.pattern.color.secret.wetColor`, followed by
+  `.0` when its toe is not reinforced. Opening a link applies the look and moves the camera. This also works when pasting a link into a tab that is already open, even the same link the tab already shows.
 
 ## Project structure
 
@@ -142,7 +143,11 @@ on the skin, which the leg shader draws as raised plates.
 - Under a stocking the forefoot is drawn first and the fabric over it lets it show through by its sheerness, so
   the toes are seen through the fabric with real depth. The fabric around the toes is fitted as a membrane
   pulled taut over the skin: it touches the toes' tops and pads and bridges the gaps and creases between them.
-- A leg that fades out for a close-up goes back to a single surface, so only its nearest surface is drawn.
+- Under a stocking the skin is drawn 0.4 mm inside its surface, so fabric lying right on it always covers it.
+- Nearly opaque fabric, and a leg that fades out for a close-up, go back to a single surface, so only the
+  nearest surface is drawn.
+- Hosiery has a reinforced toe by default: a denser knit over the toes, closed by a seam along their tips. The
+  wardrobe's "Toe" row turns both off together; thick fabrics and fishnets never have them.
 - Picking and water follow the same switch: a bare leg collides with the forefoot's skin (a coarser build of it,
   `LegRig.setBare`), so beads sit on the toes and run between them, while a stocking keeps its own shape. The
   skin borrows the stocking's UVs for the wet map, with the stocking's UV seams carried over.

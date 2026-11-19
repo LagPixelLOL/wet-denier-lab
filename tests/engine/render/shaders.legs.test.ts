@@ -160,6 +160,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
           "uStripe",
           "uThrough",
           "uTime",
+          "uToe",
           "uWetDye",
           "uWetMap",
           "uWetMapSlot",

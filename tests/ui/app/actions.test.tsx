@@ -236,6 +236,10 @@ describe("outfit actions", () => {
     expect(outfit.legs[0]).toMatchObject({ garter: true, length: "thigh" });
     actions.wearChip("garter", "0");
     expect(outfit.legs[0]).toMatchObject({ garter: false, length: "thigh" });
+    actions.wearChip("toe", "0");
+    expect(outfit.legs[0].toe).toBe(false);
+    actions.wearChip("toe", "1");
+    expect(outfit.legs[0].toe).toBe(true);
     actions.wearChip("wetColor", "sakura");
     expect(outfit.legs[0].wetColor).toBe("sakura");
     actions.wearChip("wetColor", "");

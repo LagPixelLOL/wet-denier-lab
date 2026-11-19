@@ -30,6 +30,8 @@ export interface LegLook {
   band: number;
   bow: boolean;
   garter: number;
+  /** 1 when the toe is reinforced. */
+  toe: number;
   /** wetClear, wetDark, shine, pearl */
   mat: [number, number, number, number];
   /** knit, rib, sheenPow, knitScale */
@@ -76,6 +78,7 @@ export function resolveLegLook(input?: Partial<LegSpec>): LegLook {
     band: lengthDef.band,
     bow: !!cuffDef.bow && !isTights,
     garter: spec.garter && spec.length === "thigh" ? 1 : 0,
+    toe: spec.toe && !isBare ? 1 : 0,
     mat: [materialDef.wetClear, materialDef.wetDark, materialDef.shine, materialDef.pearl],
     mat2: [materialDef.knit, materialDef.rib, materialDef.sheenPow, materialDef.knitScale],
     print: materialDef.print,

@@ -146,6 +146,7 @@ export type StockingUniforms = CastShadowUniforms & {
   uCuffStyle: U<number>;
   uBand: U<number>;
   uGarter: U<number>;
+  uToe: U<number>;
   uPrint: U<number>;
   /** 1 for leg 0, -1 for leg 1. */
   uMirror: U<number>;
@@ -615,6 +616,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       },
       uGarter: {
         value: defaultLook.garter,
+      },
+      uToe: {
+        value: defaultLook.toe,
       },
       uPrint: {
         value: defaultLook.print,
@@ -1183,6 +1187,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     fabric.uCuffStyle.value = look.cuff;
     fabric.uBand.value = look.band;
     fabric.uGarter.value = look.garter;
+    fabric.uToe.value = look.toe;
     fabric.uPrint.value = look.print;
     fabric.uMatWet.value.set(...look.mat);
     fabric.uMatKnit.value.set(...look.mat2);

@@ -16,20 +16,21 @@ export const NAIL_COUNT = 5;
  * outside that range away from the nails. Only worth calling near the toes. The nails come from the model as uniforms: uNailCenter (xyz, 1 / half
  * width), uNailForward (xyz toward the tip, 1 / half length) and uNailNormal.
  * toeCap(p): signed distance (m) past the edge of the stocking's reinforced toe, positive toward the toes.
- * toeSeam(p): signed distance (m) from the seam that closes the stocking across the top of the toes.
+ * toeSeam(p): signed distance (m) from the seam that closes the stocking across the toes, near their tips.
  */
 export const FOOT_GLSL = `
-// Smooth noise, -1 to 1.
-float veinNoise(vec2 q) {
+// Smooth noise, -1 to 1 (also used for the grain of fuzzy fabrics).
+float valueNoise(vec2 q) {
   vec2 cell = floor(q), f = fract(q);
   f = f * f * (3.0 - 2.0 * f);
   vec4 corner = fract(sin(vec4(dot(cell, vec2(127.1, 311.7)), dot(cell + vec2(1.0, 0.0), vec2(127.1, 311.7)), dot(cell + vec2(0.0, 1.0), vec2(127.1, 311.7)), dot(cell + vec2(1.0, 1.0), vec2(127.1, 311.7)))) * 43758.5453);
   return mix(mix(corner.x, corner.y, f.x), mix(corner.z, corner.w, f.x), f.y) * 2.0 - 1.0;
 }
-// A vein's profile: d is the distance from its center line (m), width its half width at full strength, and
-// strength (0 to 1) thins it out to nothing.
+// A vein's profile: d is the distance from its center line (m), width its half width, and strength (0 to 1)
+// thins it out to nothing. A vein lies under the skin, so it has no edge: it fades out from its center line to
+// well past its width.
 float veinAt(float d, float width, float strength) {
-  return (1.0 - smoothstep(width * 0.25, width * (0.4 + 0.6 * strength), abs(d))) * smoothstep(0.0, 0.35, strength);
+  return (1.0 - smoothstep(0.0, width * (0.7 + 1.1 * strength), abs(d))) * smoothstep(0.0, 0.35, strength);
 }
 // Veins vary along their length with a few sine waves. All veins share the waves (wave = sin, cos of the same
 // arguments) and differ by a phase, which keeps the cost the same however many veins there are.
@@ -54,7 +55,7 @@ float skinVeins(vec3 p, vec3 n) {
   if (p.y < 0.1) {
     if (n.y < 0.05 || p.z < 0.03 || p.z > 0.155) return 0.0;
     // Nothing runs straight: the whole layout is bent by noise first.
-    vec2 q = p.xz + vec2(0.0028 * veinNoise(p.xz * 70.0), 0.0025 * veinNoise(p.zx * 60.0 + 9.0)) + 0.0009 * sin(p.zx * vec2(410.0, 370.0));
+    vec2 q = p.xz + vec2(0.0028 * valueNoise(p.xz * 70.0), 0.0025 * valueNoise(p.zx * 60.0 + 9.0)) + 0.0009 * sin(p.zx * vec2(410.0, 370.0));
     vec3 along = q.y * vec3(61.0, 27.0, 0.0), alongSin = sin(along), alongCos = cos(along);
     // The arch across the instep, then the veins that leave it toward the toes and toward the ankle.
     float across = q.x - 0.002;
@@ -98,7 +99,10 @@ float toeCap(vec3 p) {
   return p.z - 0.150 + 0.25 * x + 1.5 * x * x + 0.35 * (p.y - 0.03);
 }
 float toeSeam(vec3 p) {
+  // The line of the toes' tips, a little back from them: level across the first two toes, then slanting back
+  // along the smaller ones, and curving around the big toe's inner side.
   float x = p.x + 0.03;
-  return p.z - 0.186 + 0.30 * x + 2.2 * x * x;
+  float inner = min(x, 0.0), outer = x - 0.029;
+  return p.z - 0.2068 + 12.0 * inner * inner + 0.47 * (outer + sqrt(outer * outer + 0.000036));
 }
 `;

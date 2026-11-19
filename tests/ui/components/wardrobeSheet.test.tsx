@@ -173,7 +173,7 @@ describe("WardrobeSheet style pane", () => {
 
   it("selects nothing and dims nothing without a spec", () => {
     render(<WardrobeSheet />);
-    for (const group of ["length", "cuff", "garter"]) {
+    for (const group of ["length", "cuff", "garter", "toe"]) {
       expect(selectedValues(group)).toEqual([]);
       expect(dimmedValues(group)).toEqual([]);
     }
@@ -204,6 +204,19 @@ describe("WardrobeSheet style pane", () => {
     expect(dimmedValues("cuff")).toEqual([]);
   });
 
+  it("selects the toe chip from the spec, and dims the other one where a reinforced toe does not show", () => {
+    render(<WardrobeSheet />);
+    setWardrobe({ spec: spec({ toe: true }) });
+    expect(selectedValues("toe")).toEqual(["1"]);
+    expect(dimmedValues("toe")).toEqual([]);
+    setWardrobe({ spec: spec({ toe: false }) });
+    expect(selectedValues("toe")).toEqual(["0"]);
+    setWardrobe({ spec: spec({ toe: false, material: "cotton" }) });
+    expect(dimmedValues("toe")).toEqual(["1"]);
+    setWardrobe({ spec: spec({ toe: true, pattern: "net" }) });
+    expect(dimmedValues("toe")).toEqual(["0"]);
+  });
+
   it("dims the unselected cuff chips for tights", () => {
     render(<WardrobeSheet />);
     setWardrobe({ spec: spec({ length: "tights", cuff: "rib" }) });
@@ -217,6 +230,8 @@ describe("WardrobeSheet style pane", () => {
     ["cuff", "stripes", "双条纹"],
     ["garter", "1", "要 (大腿袜)"],
     ["garter", "0", "不要"],
+    ["toe", "1", "加固 (丝袜)"],
+    ["toe", "0", "无加固"],
   ])("wears %s=%s from the %s chip", async (group, value, label) => {
     render(<WardrobeSheet />);
     await userEvent.click(within(document.querySelector<HTMLElement>(`[data-key="${group}"]`)!).getByText(label));
@@ -363,7 +378,7 @@ describe("WardrobeSheet pattern and fun panes", () => {
 });
 
 describe("WardrobeSheet bare legs", () => {
-  const FABRIC_GROUPS = ["cuff", "garter", "color", "material", "denier", "pattern", "secret", "wetColor"];
+  const FABRIC_GROUPS = ["cuff", "garter", "toe", "color", "material", "denier", "pattern", "secret", "wetColor"];
   const BARE_HINT = "光腿没穿袜子, 这些选项用不上。";
   const isDisabled = (el: HTMLElement) => (el as HTMLButtonElement).disabled && el.classList.contains("opacity-35");
 

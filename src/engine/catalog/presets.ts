@@ -10,6 +10,8 @@ export interface LegSpec {
   length: StockingLengthKey;
   cuff: CuffStyleKey;
   garter: boolean;
+  /** Reinforced toe: a denser knit over the toes with the seam that closes it (hosiery only). */
+  toe: boolean;
   material: MaterialKey;
   denier: number;
   pattern: PatternKey;
@@ -45,6 +47,7 @@ export const DEFAULT_LEG_SPEC: LegSpec = {
   length: "thigh",
   cuff: "lace",
   garter: false,
+  toe: true,
   material: "sheer",
   denier: 40,
   pattern: "none",

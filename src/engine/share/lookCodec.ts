@@ -1,6 +1,7 @@
 /**
  * Share links: #look=1~<pose>~<scene>~<backdrop>~<leg0>~<leg1>[~<view>], each leg is
- * length.cuff.garter.material.denier.pattern.color.secret.wetColor (hex colors written as x + 6 hex digits).
+ * length.cuff.garter.material.denier.pattern.color.secret.wetColor[.toe] (hex colors written as x + 6 hex
+ * digits; toe is 0 for a toe without reinforcement and is left out otherwise).
  * The optional view is the camera as yaw,pitch,dist,targetX,targetY,targetZ.
  */
 import { COLORS } from "../catalog/colors";
@@ -65,10 +66,13 @@ const packLegSpec = (spec: LegSpec): string =>
     packColor(spec.color),
     spec.secret,
     spec.wetColor ? packColor(spec.wetColor) : "-",
+    ...(spec.toe ? [] : [0]),
   ].join(".");
 
 function unpackLegSpec(packed: string | undefined): LegSpec {
-  const [length, cuff, garter, material, denier, pattern, color, secret, wetColor] = String(packed || "").split(".");
+  const [length, cuff, garter, material, denier, pattern, color, secret, wetColor, toe] = String(packed || "").split(
+    ".",
+  );
   const spec: Partial<LegSpec> = {};
   if (has(STOCKING_LENGTHS, length)) {
     spec.length = length as StockingLengthKey;
@@ -77,6 +81,7 @@ function unpackLegSpec(packed: string | undefined): LegSpec {
     spec.cuff = cuff as CuffStyleKey;
   }
   spec.garter = garter === "1";
+  spec.toe = toe !== "0";
   if (has(MATERIALS, material)) {
     spec.material = material as MaterialKey;
   }

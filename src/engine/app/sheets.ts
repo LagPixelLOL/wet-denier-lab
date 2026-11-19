@@ -19,6 +19,7 @@ export function publishWardrobe() {
         length: spec.length,
         cuff: spec.cuff,
         garter: spec.garter,
+        toe: spec.toe,
         color: spec.color,
         material: spec.material,
         denier: spec.denier,

@@ -34,6 +34,17 @@ describe("lookUrl", () => {
     );
   });
 
+  it("writes a toe without reinforcement as a tenth field, and reads a missing one as reinforced", () => {
+    const plain = withLegDefaults({ toe: false });
+    const url = lookUrl({ pose: "step", scene: "bath", backdrop: "lilac", legs: [plain, withLegDefaults()] }, PAGE);
+    expect(hashOf(url)).toBe(
+      "#look=1~step~bath~lilac~thigh.lace.0.sheer.40.none.ink.none.-.0~thigh.lace.0.sheer.40.none.ink.none.-",
+    );
+    expect(unpackLook(hashOf(url))?.legs).toEqual([plain, withLegDefaults()]);
+    expect(unpackLook("#look=1~step~bath~lilac~thigh.lace.0.sheer.40.none.ink.none.-.1")?.legs[0].toe).toBe(true);
+    expect(unpackLook("#look=1~step~bath~lilac~thigh.lace.0.sheer.40.none.ink.none.-.x")?.legs[0].toe).toBe(true);
+  });
+
   it("packs custom backdrop and wet colors as x + lowercase hex", () => {
     const url = lookUrl(
       {

@@ -16,7 +16,7 @@ import { PRESETS } from "../../engine/catalog/presets";
 import { POSE_ORDER } from "../../engine/rig/poses";
 import { useT, type MessageKey } from "../../i18n";
 import { useStore } from "../../state/useStore";
-import { ui, type WardrobeTab } from "../../state/ui";
+import { ui, type WardrobeSpec, type WardrobeTab } from "../../state/ui";
 import { CardGrid, ChipGroup, CustomColorSwatch, LabeledRow, type ChipOption } from "./primitives";
 import { hideScrollbar, paneHintClass, wardrobeSheetClass } from "./styles";
 
@@ -41,6 +41,12 @@ const CUFF_CHOICES: Choices = CUFF_STYLE_ORDER.map((key) => [key, `cuff.${key}`]
 const GARTER_CHOICES: Choices = [
   ["0", "garter.off"],
   ["1", "garter.on"],
+];
+/** Only hosiery has a reinforced toe: thick fabrics and fishnets are the same all over. */
+const hasToeOption = (spec: WardrobeSpec) => spec.pattern !== "net" && !MATERIALS[spec.material].minDenier;
+const TOE_CHOICES: Choices = [
+  ["0", "toe.off"],
+  ["1", "toe.on"],
 ];
 const MATERIAL_CHOICES: Choices = MATERIAL_ORDER.map((key) => [key, `material.${key}`]);
 const DENIER_CHIPS: ChipOption[] = DENIER_OPTIONS.map((denier) => ({ value: String(denier), label: denier + "D" }));
@@ -139,6 +145,9 @@ export function WardrobeSheet() {
             spec ? (spec.garter ? "1" : "0") : undefined,
             !!spec && spec.length !== "thigh",
           )}
+        </LabeledRow>
+        <LabeledRow label={t("row.toe")}>
+          {chips("toe", options(TOE_CHOICES), spec ? (spec.toe ? "1" : "0") : undefined, !!spec && !hasToeOption(spec))}
         </LabeledRow>
         {bareHint}
       </>
