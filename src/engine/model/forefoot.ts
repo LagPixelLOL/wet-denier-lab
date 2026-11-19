@@ -370,8 +370,7 @@ function splitUvSeams(
  * away is pressed against it, `margin` under its surface, and by `loose` the skin keeps its own shape: between
  * the toes and in the creases under them the fabric spans the gap. `facing` is the range of the cosine between
  * the skin's normal and the fabric's over which that fades, so the walls of a toe stay clear of the fabric that
- * bridges the cleft beside it. On a toe (`toes.within` of the skin between two toes, fading out over that range)
- * the skin only meets fabric at most `toes.tight` away, so the toes keep the shape they have bare; the fabric
+ * bridges the cleft beside it. On a toe (see `onToe` below) the skin only meets fabric at most `toes.tight` away, so the toes keep the shape they have bare; the fabric
  * around them is roomier than they are. The skin keeps its shape on the way: it takes the `broad` part of the move (its
  * mean over that distance) and at most `local` of the rest. Skin that ends up less than `worn` under the fabric
  * counts as wearing it, in full `edge` away from skin that does not.
@@ -382,7 +381,7 @@ export const UNDER_FIT = {
   edge: 0.003,
   broad: 0.002,
   local: 0.0003,
-  toes: { tight: 0.0006, within: [0.004, 0.009] },
+  toes: { tight: 0.0006, beside: 0.004, behind: 0.008, crease: 0.007 },
   tight: 0.004,
   loose: 0.006,
   facing: [0.45, 0.75],
@@ -412,6 +411,7 @@ function fitUnderStocking(
   positions: ArrayLike<number>,
   normals: ArrayLike<number>,
   shade: ArrayLike<number>,
+  triangles: ArrayLike<number>,
   stocking: SurfaceMesh,
 ): Float32Array {
   const count = positions.length / 3;
@@ -450,17 +450,33 @@ function fitUnderStocking(
       }
     };
   };
-  // How much each vertex belongs to a toe: 1 near the skin between two toes, 0 away from it.
-  const nearCleft = bucketsOf(toes.within[1], (i) => shade[i] > 0.2);
+  // How much each vertex belongs to a toe: 1 from where the cleft beside it begins (the rearmost skin between
+  // two toes, among that within `toes.beside` of the nearest across the foot) forward, fading out over
+  // `toes.behind` behind that.
+  const clefts: number[] = [];
+  for (let i = 0; i < count; i++) {
+    if (weld[i] === i && shade[i] > 0.2) {
+      clefts.push(i);
+    }
+  }
   const onToe = new Float32Array(count);
   for (let i = 0; i < count; i++) {
-    if (weld[i] === i) {
-      let nearest = Infinity;
-      nearCleft(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2], (_, apart) => {
-        nearest = Math.min(nearest, apart);
-      });
-      onToe[i] = 1 - smoothstep(toes.within[0], toes.within[1], Math.sqrt(nearest));
+    if (weld[i] !== i) {
+      continue;
     }
+    let beside = Infinity;
+    for (const cleft of clefts) {
+      beside = Math.min(beside, Math.abs(positions[cleft * 3] - positions[i * 3]));
+    }
+    let begin = Infinity;
+    for (const cleft of clefts) {
+      if (Math.abs(positions[cleft * 3] - positions[i * 3]) < beside + toes.beside) {
+        begin = Math.min(begin, positions[cleft * 3 + 2]);
+      }
+    }
+    // Under the foot the crease behind the toes' pads belongs to them too.
+    begin -= toes.crease * smoothstep(-0.2, 0.3, -normals[i * 3 + 1]);
+    onToe[i] = begin < Infinity ? smoothstep(begin - toes.behind, begin, positions[i * 3 + 2]) : 0;
   }
   // Where each vertex would go to lie against the fabric, and how much it is pressed that way.
   const wanted = new Float32Array(count * 3);
@@ -561,7 +577,16 @@ function fitUnderStocking(
       worn[i] = 1;
     }
   }
-  const raw = worn;
+  // Nor is a vertex worn unless its neighbours touch the fabric too: across a triangle between a vertex that
+  // does and one that does not, the fabric is already well off the skin.
+  const raw = worn.slice();
+  for (let t = 0; t < triangles.length; t += 3) {
+    const corners = [weld[triangles[t]], weld[triangles[t + 1]], weld[triangles[t + 2]]];
+    const least = Math.min(worn[corners[0]], worn[corners[1]], worn[corners[2]]);
+    for (const v of corners) {
+      raw[v] = Math.min(raw[v], least);
+    }
+  }
   const nearBare = bucketsOf(edge, (i) => raw[i] < 1);
   worn = raw.slice();
   for (let i = 0; i < count; i++) {
@@ -629,7 +654,7 @@ export function buildForefoot(
   geometry.setAttribute("toeShade", new THREE.BufferAttribute(skin.shade, 1));
   geometry.setAttribute(
     "under",
-    new THREE.BufferAttribute(fitUnderStocking(positions, normals, skin.shade, stocking), 4),
+    new THREE.BufferAttribute(fitUnderStocking(positions, normals, skin.shade, skin.triangles, stocking), 4),
   );
   return geometry;
 }
