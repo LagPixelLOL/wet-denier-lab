@@ -414,9 +414,11 @@ void main() {
   float side = smoothstep(0.86, 0.97, sqrt(max(0.0, 1.0 - restNy * restNy))) * smoothstep(0.07, 0.14, height);
   vec3 hPerp = h - fiber * tdh;
   float hdn = max(dot(n, hPerp) / max(length(hPerp), 1e-4), 0.0);
-  // The long highlight along the fibers belongs to the leg, where they run straight. Where a pose bends them,
-  // and on the foot and around the ankle where they turn, it is kept to where the surface faces the light.
-  float lobe = mix(mix(1.0, pow(hdn, 5.0), uHighlightFalloff), pow(hdn, 30.0) * 0.6, max(smoothstep(0.004, 0.05, vTangentShift), 1.0 - smoothstep(0.10, 0.18, height)));
+  // The long highlight along the fibers belongs to the leg, where they run straight. Where a pose bends them it
+  // is kept to where the surface faces the light, and on the foot and around the ankle, where they turn, it
+  // fades out: there it only ever showed as stray streaks, and the round highlights are enough.
+  float onLeg = smoothstep(0.10, 0.18, height);
+  float lobe = mix(mix(1.0, pow(hdn, 5.0), uHighlightFalloff), pow(hdn, 30.0) * 0.6, max(smoothstep(0.004, 0.05, vTangentShift), 1.0 - onLeg));
   float knitMod = mix(1.0, knit / uKnitMean, isNet ? 0.0 : uMatKnit.x);
   float sheenStripe = (smoothstep(0.42, 0.78, aniso) * 0.7 + aniso * 0.3) * side * lobe * knitMod;
   col += uKeyColor * sheenStripe * uStripe * uGloss * 0.85 * fabric * (1.0 - 0.35 * sheer);
@@ -433,7 +435,7 @@ void main() {
   wetRing *= edgeAmt;
   col *= 1.0 - wetEdge * 0.38;
   float anisoTight = pow(sqrt(max(0.0, 1.0 - tdh * tdh)), 260.0);
-  float glint = smoothstep(0.25, 0.6, anisoTight) * smoothstep(-0.2, 0.3, ndl) * lobe * mix(0.4, 1.0, lit);
+  float glint = smoothstep(0.25, 0.6, anisoTight) * smoothstep(-0.2, 0.3, ndl) * lobe * mix(0.4, 1.0, lit) * onLeg;
   if (specAmt > 0.0) {
     float spec = smoothstep(0.962, 0.982, ndh) * 1.4 + pow(ndh, 140.0) * 0.6 + pow(ndh, 22.0) * 0.22;
     float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
