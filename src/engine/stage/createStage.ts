@@ -23,6 +23,7 @@ import {
   FLOOR_SHADOW_VERTEX_SHADER,
   FLOOR_VERTEX_SHADER,
 } from "./shaders/floor";
+import { watchDrawn, type DrawnWatch } from "./drawn";
 import { legLid, type LegLid } from "./lid";
 import {
   ANKLE,
@@ -31,6 +32,8 @@ import {
   LEG_FRAGMENT_SHADER,
   LEG_VERTEX_SHADER,
   LID_BINS,
+  fadeHeight,
+  heightOfFade,
 } from "./shaders/leg";
 import { NAIL_COUNT } from "./shaders/foot";
 import { OUTLINE_FRAGMENT_SHADER, OUTLINE_VERTEX_SHADER } from "./shaders/outline";
@@ -171,6 +174,8 @@ export type StockingUniforms = CastShadowUniforms & {
   uRestFromWorld: U<THREE.Matrix4>;
   uLidC: U<THREE.Vector2>;
   uLidR: U<number[]>;
+  /** How far the eye looks into the leg from above (see lookInto): 0 not at all, 1 for all the inside shows. */
+  uInto: U<number>;
   uOpacity: U<number>;
   uWetMapSlot: U<THREE.Vector2>;
   uCastShadowMap: U<THREE.DepthTexture | null>;
@@ -220,9 +225,10 @@ export interface StageLeg {
    * leg (see addSeenThrough and setOrder).
    */
   late: THREE.Group[];
-  /** The one of them that draws the fading top. */
+  /** The one of them that draws the fading top, and the one for what of the solid leg is seen through it. */
   fadeGroup: THREE.Group;
-  /** The solid leg's depth again: for the leg drawn first, whose depth the other's curtain took out with it. */
+  throughGroup: THREE.Group;
+  /** The solid leg's depth again: for the leg drawn first, which lost some to what of the other leg is gone. */
   restore: StageMesh;
   /** The passes drawn with the leg around the stocking's own (see orderStocking). */
   aroundStocking: StageMesh[];
@@ -233,6 +239,22 @@ export interface StageLeg {
   topParts: StageMesh[];
   lowParts: StageMesh[];
   highParts: StageMesh[];
+  /**
+   * The passes drawn only while the eye looks into the leg, those drawn only while something of the solid leg is
+   * seen through its top (which `gone` tells), the materials the solid leg's color is drawn with while nothing is
+   * and while something is, and whether the one and the other are so (see lookInto).
+   */
+  intoParts: StageMesh[];
+  throughParts: StageMesh[];
+  /** The passes that find what of the solid leg is seen through its top, and whether they are drawn this time. */
+  askParts: StageMesh[];
+  ask: boolean;
+  gone: DrawnWatch;
+  solid: THREE.ShaderMaterial[];
+  into: boolean;
+  through: boolean;
+  /** Whether the other leg is the one in front (see setOrder). */
+  behind: boolean;
   /** Mirrored copy rendered into the floor reflection. */
   mirror: THREE.Group;
   rig: RigUniforms;
@@ -320,7 +342,15 @@ export interface Stage extends LegRigTarget {
 const SEEN_THROUGH_PULL = 4;
 
 /** Render orders of the groups drawn after both legs (10 and 20), in this order (see setOrder). */
-const LATE_ORDER = { restore: 25, fadeFirst: 30, fadeSecond: 40, inside: 45, last: 50 };
+const LATE_ORDER = {
+  restore: 25,
+  fadeFirst: 30,
+  fadeSecond: 40,
+  inside: 45,
+  throughFirst: 46,
+  throughSecond: 48,
+  last: 50,
+};
 
 /**
  * The leg from the ankle down, drawn in a pass of its own (see addSeenThrough), reaches up to the top of the band
@@ -330,6 +360,19 @@ const LATE_ORDER = { restore: 25, fadeFirst: 30, fadeSecond: 40, inside: 45, las
 const LOW_TO = ANKLE + ANKLE_BAND + 0.01;
 
 const HIGH_FROM = ANKLE + ANKLE_BAND - 0.01;
+
+/**
+ * How steeply the eye has to look down into a leg, as the sine of the angle between its line of sight to the
+ * middle of the leg's top and the plane where the top begins to fade, for anything of the leg to be seen through
+ * that top: from the first on, the inside begins to show, and from the second all of it (see lookInto).
+ */
+const INTO_FROM = [0.25, 0.35];
+
+/**
+ * How often (ms) a leg the eye looks into finds out whether anything of its solid surface is seen through its
+ * top, while nothing is (see lookInto).
+ */
+const ASK_EVERY = 30;
 
 /** The top of a stocking's mesh, where it fades out, begins above this height on the leg at rest. */
 const TOP_FROM = 0.6;
@@ -630,7 +673,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
   // it fades out), below LOW_TO (the leg from the ankle down, most of the mesh: the toes are fine work) or above
   // HIGH_FROM (the rest of it). The passes for those parts alone are drawn from them, so that they do not run
   // the whole leg through again.
-  const partOf = (keep: (lowest: number, highest: number) => boolean) => {
+  const partOf = (keep: (lowest: number, highest: number) => boolean, fromTop = false) => {
     const parts = new Map<THREE.BufferGeometry, THREE.BufferGeometry>();
     return (geometry: THREE.BufferGeometry): THREE.BufferGeometry => {
       let part = parts.get(geometry);
@@ -641,14 +684,17 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
         }
         const position = geometry.attributes.position;
         const index = geometry.index!.array;
-        const kept: number[] = [];
+        const kept: { top: number; corners: number[] }[] = [];
         for (let i = 0; i < index.length; i += 3) {
           const heights = [position.getY(index[i]), position.getY(index[i + 1]), position.getY(index[i + 2])];
           if (keep(Math.min(...heights), Math.max(...heights))) {
-            kept.push(index[i], index[i + 1], index[i + 2]);
+            kept.push({ top: Math.max(...heights), corners: [index[i], index[i + 1], index[i + 2]] });
           }
         }
-        part.setIndex(kept);
+        if (fromTop) {
+          kept.sort((a, b) => b.top - a.top);
+        }
+        part.setIndex(kept.flatMap((triangle) => triangle.corners));
         parts.set(geometry, part);
       }
       return part;
@@ -656,7 +702,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
   };
   const topOf = partOf((_lowest, highest) => highest > TOP_FROM);
   const bottomOf = partOf((lowest) => lowest < LOW_TO);
-  const upperOf = partOf((_lowest, highest) => highest > HIGH_FROM);
+  // The leg above the ankle has its triangles from the top down: looking into a leg from above, which is when
+  // its inside is drawn, the nearer of two walls behind each other is the higher one, and so is drawn first.
+  const upperOf = partOf((_lowest, highest) => highest > HIGH_FROM, true);
   // The leg's outline where its top begins to fade, per height that begins at (see LID_GLSL).
   const lids = new Map<number, LegLid>();
   const lidAt = (fadeStart: number): LegLid => {
@@ -779,6 +827,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       uLidR: {
         value: lidAt(defaultLook.fade0).radii,
       },
+      uInto: {
+        value: 1,
+      },
       uOpacity: {
         value: 1,
       },
@@ -824,6 +875,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     const insideGroup = lateGroup(LATE_ORDER.inside);
     const lastGroup = lateGroup(LATE_ORDER.last);
     const restoreGroup = lateGroup(LATE_ORDER.restore);
+    const throughGroup = lateGroup(LATE_ORDER.throughFirst);
     const addMesh = (
       geometry: THREE.BufferGeometry,
       material: THREE.ShaderMaterial,
@@ -888,24 +940,37 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     // the top as color alone, and the inside with a depth of its own first and its color where that is the
     // nearest (where two walls of it lie behind each other, one shows, not their sum).
     //
-    // While the leg itself is drawn, its top lays down its depth once before (`curtain`: the fading top, and the
-    // inside of the leg up there): what of the solid leg lies behind that is seen through the leg's own top, and
-    // is not drawn. (The lid in the shaders tells as much for nearly all of it, without any depth: what is left
-    // for the curtain is what the eye sees through the top's side, and right along its rim.) From the band above
-    // the ankle down the leg is drawn all the same, before the curtain (`low`): the foot is seen through its own
-    // leg's top. So the stocking's own color pass draws the leg above that band alone, after the curtain; its
-    // depth pass comes before both, for all of the solid leg, and the curtain is laid over that. Then the
-    // curtain is taken out again (drawn once more at the far end of the depth range, whatever is there), and
-    // with it went whatever depth was there: the solid leg lays its own down once more (`relaid`), and after
-    // both legs so does the leg that was drawn first (`restore`), where the other leg's curtain hung in front
-    // of it.
+    // What of the solid leg the eye sees through the leg's own top is not drawn. The lid in the shaders tells as
+    // much for most of it. What it cannot tell (what the eye sees through the top's side, under its rim where it
+    // flares, and right along the rim) is left to the curtain: everything of the leg's top that is not solid
+    // (the fading top, and the inside of the leg up there). Where that lies in front of the solid leg's depth, it
+    // marks the pixel in the stencil buffer (`curtain`: the leg's first bit), and the solid leg's color is not
+    // drawn there. Nor may its depth stay, or nothing behind it would show either: the solid leg marks where a
+    // marked pixel's depth is its own (`gone`: the leg's second bit) and its depth is taken out there (`erase`:
+    // drawn at the far end of the depth range). What lay behind it of the other leg lost its depth to it before:
+    // after both legs the leg that was drawn first lays its depth down again (`restore`), but for what is gone.
+    //
+    // What is gone comes back after everything else of the legs, as much of it as the top it is seen through has
+    // faded out: all of it through what is not there any more, nothing through the leg's inside or where the
+    // fade begins, so the solid leg under a top that flares goes over into the fade without a step. Its depth is
+    // laid down again, at the pixels of the second bit (`throughDepth`, which also sets the target's alpha to
+    // one there). The curtain in front of that depth takes the alpha down to how much shows through each part of
+    // it (`veil`: the least of them stays), and the color is drawn at that depth, weighed by the alpha
+    // (`throughColor`).
+    //
+    // From the band above the ankle down the leg is drawn all the same (`low`): the foot is seen through its own
+    // leg's top. So the stocking's own color pass draws the leg above that band alone.
     const addSeenThrough = ([depthMesh, colorMesh]: [StageMesh, StageMesh]) => {
       const variant = (
         source: StageMesh,
         defines: Record<string, number>,
         options: THREE.ShaderMaterialParameters = {},
       ): THREE.ShaderMaterial => {
-        const material = source.material.clone();
+        // The source's settings and its shaders, with the leg's own uniforms (not copies of them).
+        const material = new THREE.ShaderMaterial();
+        THREE.Material.prototype.copy.call(material, source.material);
+        material.vertexShader = source.material.vertexShader;
+        material.fragmentShader = source.material.fragmentShader;
         material.uniforms = source.material.uniforms;
         material.defines = defines;
         material.setValues(options);
@@ -923,15 +988,6 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
         group.add(mesh);
         return mesh;
       };
-      const fadeZone = { FADE_ZONE: 1 };
-      // The whole leg's color, for the floor's reflection: no curtain there.
-      const whole = variant(colorMesh, {});
-      colorMesh.material.defines = { HIGH_PART: 1 };
-      colorMesh.geometry = upperOf(colorMesh.geometry);
-      // The fading top as color alone: after both legs, and in the floor's reflection.
-      const fade = variant(colorMesh, fadeZone, { depthFunc: THREE.LessEqualDepth });
-      const curtain = variant(depthMesh, { CURTAIN: 1 });
-      const uncurtain = variant(depthMesh, { CURTAIN: 1, FAR_PLANE: 1 }, { depthFunc: THREE.AlwaysDepth });
       // The lines that come last are these same faces, pushed out sideways by the line's width: next to each
       // other in depth, so that some of a line would come out in front of the face it should be hidden behind.
       // The depth that is left for them is laid down nearer by a few pixels' worth of the face's slope.
@@ -940,21 +996,119 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
         polygonOffsetFactor: -SEEN_THROUGH_PULL,
         polygonOffsetUnits: -SEEN_THROUGH_PULL,
       };
+      const fadeZone = { FADE_ZONE: 1 };
+      // The whole leg's color, for the floor's reflection: no curtain there.
+      const whole = variant(colorMesh, {});
+      colorMesh.material.defines = { HIGH_PART: 1 };
+      colorMesh.geometry = upperOf(colorMesh.geometry);
+      // The fading top as color alone: after both legs, and in the floor's reflection.
+      const fade = variant(colorMesh, fadeZone, { depthFunc: THREE.LessEqualDepth });
+      const low = variant(colorMesh, { LOW_PART: 1 });
+      // The inside, in one pass that lays its depth down as it goes: its nearer walls come first (see upperOf),
+      // so where two lie behind each other the farther one finds the nearer one's depth there and is left out.
+      const inside = variant(
+        colorMesh,
+        { LEG_INSIDE: 1 },
+        { ...pulled, depthFunc: THREE.LessEqualDepth, depthWrite: true },
+      );
+      // The leg's two bits in the stencil buffer: where its curtain hangs in front of what is there, and where
+      // what is there is the leg's own solid surface, which is gone.
+      const [curtainBit, goneBit] = [1 << (2 * index), 2 << (2 * index)];
+      const stencil = (
+        ref: number,
+        funcMask: number,
+        writeMask = 0,
+        func: THREE.StencilFunc = THREE.EqualStencilFunc,
+      ): THREE.ShaderMaterialParameters => ({
+        stencilWrite: true,
+        stencilFunc: func,
+        stencilRef: ref,
+        stencilFuncMask: funcMask,
+        stencilWriteMask: writeMask,
+        stencilZPass: THREE.ReplaceStencilOp,
+      });
+      const curtain = variant(
+        depthMesh,
+        { CURTAIN: 1 },
+        {
+          depthFunc: THREE.LessDepth,
+          depthWrite: false,
+          ...stencil(curtainBit, 0xff, curtainBit, THREE.AlwaysStencilFunc),
+        },
+      );
+      colorMesh.material.setValues(stencil(0, curtainBit));
+      const gone = variant(
+        depthMesh,
+        {},
+        { depthFunc: THREE.EqualDepth, depthWrite: false, ...stencil(curtainBit | goneBit, curtainBit, goneBit) },
+      );
+      const erase = variant(
+        depthMesh,
+        { FAR_PLANE: 1 },
+        { depthFunc: THREE.AlwaysDepth, ...stencil(goneBit, goneBit) },
+      );
+      const restore = variant(depthMesh, {}, stencil(0, goneBit));
+      // Alpha alone: the color stays as it is.
+      const alphaOnly = {
+        colorWrite: true,
+        blending: THREE.CustomBlending,
+        blendEquation: THREE.AddEquation,
+        blendSrc: THREE.ZeroFactor,
+        blendDst: THREE.OneFactor,
+        blendSrcAlpha: THREE.OneFactor,
+      };
+      const throughDepth = variant(
+        depthMesh,
+        {},
+        { ...alphaOnly, blendDstAlpha: THREE.ZeroFactor, ...stencil(goneBit, goneBit) },
+      );
+      const veil = variant(
+        depthMesh,
+        { CURTAIN: 1, VEIL: 1 },
+        {
+          ...alphaOnly,
+          blendEquationAlpha: THREE.MinEquation,
+          blendDstAlpha: THREE.OneFactor,
+          depthFunc: THREE.LessDepth,
+          depthWrite: false,
+          ...stencil(goneBit, goneBit),
+        },
+      );
+      const throughColor = variant(
+        colorMesh,
+        { HIGH_PART: 1 },
+        {
+          blending: THREE.CustomBlending,
+          blendEquation: THREE.AddEquation,
+          blendSrc: THREE.DstAlphaFactor,
+          blendDst: THREE.OneMinusDstAlphaFactor,
+          blendSrcAlpha: THREE.ZeroFactor,
+          blendDstAlpha: THREE.OneFactor,
+          ...stencil(goneBit, goneBit),
+        },
+      );
       return {
         // With the leg (their order goes by the stocking's own passes: see orderStocking).
-        low: add(legGroup, variant(colorMesh, { LOW_PART: 1 }), 0, bottomOf),
+        low: add(legGroup, low, 0, bottomOf),
         curtain: add(legGroup, curtain, 0, topOf),
-        uncurtain: add(legGroup, uncurtain, 0, topOf),
-        relaid: add(legGroup, depthMesh.material, 0),
+        // (What of the solid leg is seen through its top may be any of it above the ankle: the shin of a leg
+        // that is bent, say.)
+        gone: add(legGroup, gone, 0, upperOf),
+        erase: add(legGroup, erase, 0, upperOf),
         // After both legs.
-        restore: add(restoreGroup, depthMesh.material, 0),
+        restore: add(restoreGroup, restore, 0),
         fade: add(fadeGroup, fade, 0, topOf),
-        inside: [
-          add(insideGroup, variant(depthMesh, { LEG_INSIDE: 1 }, pulled), 0),
-          add(insideGroup, variant(colorMesh, { LEG_INSIDE: 1 }, pulled), 1),
+        inside: add(insideGroup, inside, 0, upperOf),
+        through: [
+          add(throughGroup, throughDepth, 0, upperOf),
+          add(throughGroup, veil, 1, topOf),
+          add(throughGroup, throughColor, 2, upperOf),
         ],
         topDepth: add(lastGroup, variant(depthMesh, { CURTAIN: 1 }, pulled), 0, topOf),
         mirrored: [whole, fade],
+        // The solid leg's color: all of it in one pass while nothing of it is seen through the leg's top, and
+        // above the ankle alone, where the curtain leaves it, while something may be.
+        solid: [whole, colorMesh.material],
       };
     };
     const outlineUniforms: OutlineUniforms = {
@@ -1209,20 +1363,39 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     return {
       index: index,
       group: legGroup,
-      late: [restoreGroup, fadeGroup, insideGroup, lastGroup],
+      late: [restoreGroup, fadeGroup, insideGroup, throughGroup, lastGroup],
       fadeGroup: fadeGroup,
+      throughGroup: throughGroup,
       restore: seenThrough.restore,
-      aroundStocking: [seenThrough.low, seenThrough.curtain, seenThrough.uncurtain, seenThrough.relaid],
-      topParts: [seenThrough.curtain, seenThrough.uncurtain, seenThrough.fade, seenThrough.topDepth],
+      aroundStocking: [seenThrough.low, seenThrough.curtain, seenThrough.gone, seenThrough.erase],
+      topParts: [seenThrough.curtain, seenThrough.fade, seenThrough.through[1], seenThrough.topDepth],
+      // What is drawn only while the eye looks into the leg from above where its top begins to fade (see
+      // lookInto): what tells the solid leg seen through its own top, and the leg's inside.
+      intoParts: [seenThrough.inside],
+      askParts: [seenThrough.curtain, seenThrough.gone],
+      ask: true,
+      throughParts: [seenThrough.low, seenThrough.erase, ...seenThrough.through],
+      gone: watchDrawn(seenThrough.gone),
+      solid: seenThrough.solid,
+      into: true,
+      through: true,
+      behind: false,
       lowParts: [seenThrough.low],
-      highParts: [stockingPasses[1]],
+      highParts: [
+        stockingPasses[1],
+        seenThrough.gone,
+        seenThrough.erase,
+        seenThrough.inside,
+        seenThrough.through[0],
+        seenThrough.through[2],
+      ],
       mirror: mirrorGroup,
       rig: rigUniforms,
       fabric: stockingUniforms,
       outlineUniforms: outlineUniforms,
       stocking: stockingPasses[1],
       stockingParts: stockingParts,
-      cuffParts: [stockingPasses[0], seenThrough.relaid, seenThrough.restore, ...seenThrough.inside, stockingOutline],
+      cuffParts: [stockingPasses[0], seenThrough.restore, stockingOutline],
       stockingFrontParts: stockingFrontParts,
       bare: false,
       forefootUnder: forefootUniforms.uUnder,
@@ -1272,8 +1445,8 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
    */
   // The stocking's depth and color passes are drawn at `first` and the order after it, and around them the
   // passes that keep the solid leg from showing through its own fading top (see addSeenThrough): between them
-  // the leg from the ankle down and then the curtain, and after them the pass that takes the curtain out again
-  // and the one that lays the solid leg's depth down once more.
+  // the leg from the ankle down and then the curtain, and after them the two that take out the depth of what
+  // the curtain kept from being drawn.
   function orderStocking(leg: StageLeg, first: number): void {
     leg.stockingParts.forEach((part, i) => {
       part.renderOrder = first + (i % 2);
@@ -1321,9 +1494,77 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       legs[i].group.renderOrder = legs[i].mirror.renderOrder = front ? 20 : 10;
       // After both legs: the fading top of the leg behind, then that of the leg in front, over it.
       legs[i].fadeGroup.renderOrder = front ? LATE_ORDER.fadeSecond : LATE_ORDER.fadeFirst;
-      legs[i].restore.visible = !front;
+      legs[i].throughGroup.renderOrder = front ? LATE_ORDER.throughSecond : LATE_ORDER.throughFirst;
+      legs[i].behind = !front;
     }
+    lookAgain();
   }
+  // Nothing of a leg is seen through its own top, nor is its inside seen, unless the eye looks down into the leg:
+  // from above the plane where the top begins to fade (in the leg's own space at rest, as the lid has it: see
+  // LID_GLSL), and steeply enough for the line of sight over the near rim to reach the far wall where the inside
+  // is not yet lost in the fade (INTO_FROM, as the sine of its angle to that plane). While it does not, which is
+  // most of the time, the passes for all of that are left out (`intoParts`) and the solid leg's color is drawn
+  // in one pass. Past that angle the inside comes in gradually (uInto).
+  //
+  // And while it does, what the curtain keeps from being drawn is mostly nothing: the lid has told. The pass
+  // that marks it (`gone`) is watched: as long as it marks no pixel, the passes that deal with what is gone are
+  // left out as well (`throughParts`), the leg that was drawn first lays its depth down again only if the other
+  // leg took any of it out, and the curtain and that pass themselves are drawn only every ASK_EVERY ms
+  // (`askParts`). The GPU tells a frame or two late: all in all that is how long a part that comes to be seen
+  // through the leg's top is drawn as it is before it fades.
+  const eye = new THREE.Vector3();
+  function lookInto(amounts: number[], through: boolean[], ask: boolean[]): void {
+    legs.forEach((leg, i) => {
+      leg.fabric.uInto.value = amounts[i];
+      leg.into = amounts[i] > 0;
+      leg.through = leg.into && through[i];
+      leg.ask = leg.into && (leg.through || ask[i]);
+      for (const part of leg.intoParts) {
+        part.visible = leg.into;
+      }
+      for (const part of leg.askParts) {
+        part.visible = leg.ask;
+      }
+      for (const part of leg.throughParts) {
+        part.visible = leg.through;
+      }
+      leg.restore.visible = leg.behind && amounts[1 - i] > 0 && through[1 - i];
+      const [depth, color] = leg.stockingParts;
+      color.material = leg.solid[leg.through ? 1 : 0];
+      color.geometry = leg.through ? upperOf(depth.geometry) : depth.geometry;
+    });
+  }
+  const lookAgain = (): void =>
+    lookInto(
+      legs.map((leg) => leg.fabric.uInto.value),
+      legs.map((leg) => leg.through),
+      legs.map((leg) => leg.ask),
+    );
+  mainScene.onBeforeRender = (renderer, _scene, camera) => {
+    const now = performance.now();
+    const amounts = legs.map((leg) => {
+      eye.setFromMatrixPosition(camera.matrixWorld).applyMatrix4(leg.fabric.uRestFromWorld.value);
+      const fadeStart = leg.fabric.uFadeStart.value;
+      const [x, z] = leg.fabric.uLidC.value.toArray();
+      // The middle of the lid, on that plane.
+      const away = eye.distanceTo(tmpVec.set(x, heightOfFade(fadeStart, x, z), z));
+      return THREE.MathUtils.smoothstep(
+        (fadeHeight(eye.x, eye.y, eye.z) - fadeStart) / away,
+        INTO_FROM[0],
+        INTO_FROM[1],
+      );
+    });
+    lookInto(
+      amounts,
+      legs.map((leg, i) => {
+        if (amounts[i] <= 0) {
+          leg.gone.assume(camera);
+        }
+        return leg.gone.drawn(renderer, camera);
+      }),
+      legs.map((leg) => leg.gone.due(camera, now, ASK_EVERY)),
+    );
+  };
   setOrder(0);
   const floorCamera = new THREE.OrthographicCamera(
     floorMapRect.x,
@@ -1582,6 +1823,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     for (const part of leg.highParts) {
       part.geometry = upperOf(stockingFor(look));
     }
+    lookAgain();
     const lid = lidAt(look.fade0);
     fabric.uLidC.value.set(...lid.center);
     fabric.uLidR.value = lid.radii;
@@ -1705,6 +1947,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
    * so the next request starts over.
    */
   function restore(): void {
+    for (const leg of legs) {
+      leg.gone.assume();
+    }
     warming.clear();
     lastShadowKey = "";
     bakeShadow(true);

@@ -23,6 +23,7 @@ import { LegRig } from "../rig/LegRig";
 import { lookUrl, unpackLook } from "../share/lookCodec";
 import { createStage } from "../stage/createStage";
 import { SCENES } from "../stage/scenes";
+import { createSceneTarget } from "../stage/target";
 import { WaterSim } from "../water/WaterSim";
 import { WetMap } from "../water/WetMap";
 
@@ -142,11 +143,7 @@ export function startApp() {
   app.wideQuery = matchMedia("(min-aspect-ratio: 1/1) and (min-width: 600px)");
   app.roomyQuery = matchMedia("(min-width: 1000px) and (min-height: 600px)");
   app.finePointerQuery = matchMedia("(hover: hover) and (pointer: fine)");
-  app.sceneTarget = new THREE.WebGLRenderTarget(1, 1, {
-    type: THREE.HalfFloatType,
-    samples: 4,
-  });
-  app.sceneTarget.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
+  app.sceneTarget = createSceneTarget(1, 1);
   app.thumbCamera = new THREE.PerspectiveCamera(30, THUMB_SIZE.w / THUMB_SIZE.h, 0.02, 12);
   app.lastTime = performance.now();
   if (!IS_PROD) installDevHooks();

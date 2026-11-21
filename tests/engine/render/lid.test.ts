@@ -187,14 +187,29 @@ describe("what of a leg is seen through", () => {
     expect(lines(variant(LEG_DEPTH_FRAGMENT_SHADER, "CURTAIN"))).toEqual([
       "if (gl_FrontFacing && vFadeHeight <= uFadeStart) discard;",
     ]);
-    // ...which is taken back out drawn at the far end of the depth range.
-    expect(LEG_VERTEX_SHADER).toMatch(/#ifdef FAR_PLANE\s+[^#]*gl_Position\.z = gl_Position\.w;\s+#endif/);
-    // After both legs: the inside, its depth and its color, up to where the top begins to fade.
-    expect(lines(variant(LEG_DEPTH_FRAGMENT_SHADER, "LEG_INSIDE"))).toEqual([
-      "if (gl_FrontFacing || !aboveAnkle || vFadeHeight > uFadeStart) discard;",
+    // ...and how much of the solid leg behind it shows through each part of it: nothing through the leg's
+    // inside below the fade, and as much as the part has faded out above that. Alpha alone.
+    expect(lines(variant(LEG_DEPTH_FRAGMENT_SHADER, "VEIL"))).toEqual([
+      "float shows = !gl_FrontFacing && vFadeHeight <= uFadeStart ? 0.0 : smoothstep(uFadeStart, uFadeEnd, vFadeHeight);",
+      "gl_FragColor = vec4(0.0, 0.0, 0.0, shows * uOpacity);",
     ]);
-    expect(lines(variant(LEG_FRAGMENT_SHADER, "LEG_INSIDE"))).toEqual([
-      `if (gl_FrontFacing || ${ANKLE_FADE_GLSL} < 1.0 || vFadeHeight > uFadeStart) discard;`,
+    expect(LEG_DEPTH_FRAGMENT_SHADER).toContain("gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);");
+    // What is taken out again is drawn at the far end of the depth range.
+    expect(LEG_VERTEX_SHADER).toMatch(/#ifdef FAR_PLANE\s+[^#]*gl_Position\.z = gl_Position\.w;\s+#endif/);
+    // After both legs: the inside, up to where the top begins to fade, in the color it has before anything
+    // shines on it, and coming in as the eye begins to look down into the leg.
+    const inside = lines(variant(LEG_FRAGMENT_SHADER, "LEG_INSIDE"));
+    expect(inside).toEqual([`if (gl_FrontFacing || ${ANKLE_FADE_GLSL} < 1.0 || vFadeHeight > uFadeStart) discard;`]);
+    const early = /#ifdef LEG_INSIDE\n((?:(?!#).*\n)+)#endif\n/g;
+    const blocks = [...LEG_FRAGMENT_SHADER.matchAll(early)].map((match) => lines(match[1]));
+    expect(blocks).toHaveLength(2);
+    expect(LEG_FRAGMENT_SHADER).toMatch(
+      /#ifdef LEG_INSIDE\n[^#]*float lit = 1\.0;\n#else\n\s*float lit = 1\.0 - castShadow\(\);\n#endif/,
+    );
+    expect(blocks[1]).toEqual([
+      "float insideFade = mix(0.92, 1.0, smoothstep(uFadeStart - 0.10, uFadeStart, vFadeHeight));",
+      "gl_FragColor = vec4(col / max(1.0 - through, 0.001), (1.0 - insideFade) * uOpacity * uInto * (1.0 - through));",
+      "return;",
     ]);
   });
 

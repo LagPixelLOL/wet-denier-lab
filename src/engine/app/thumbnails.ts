@@ -12,6 +12,7 @@ import { nearerLeg } from "./scene";
 import { outfit, state } from "./state";
 import { PRESETS, withLegDefaults, type LegSpec } from "../catalog/presets";
 import { SCENE_ORDER } from "../stage/scenes";
+import { createSceneTarget } from "../stage/target";
 
 export const THUMB_SIZE = {
   w: 180,
@@ -101,11 +102,7 @@ export function renderThumb(job: ThumbJob) {
   const w = THUMB_SIZE.w;
   const h = THUMB_SIZE.h;
   if (!app.thumbTarget) {
-    app.thumbTarget = new THREE.WebGLRenderTarget(w, h, {
-      type: THREE.HalfFloatType,
-      samples: 4,
-    });
-    app.thumbTarget.depthTexture = new THREE.DepthTexture(w, h, THREE.UnsignedIntType);
+    app.thumbTarget = createSceneTarget(w, h);
     app.thumbReadTarget = new THREE.WebGLRenderTarget(w, h);
     app.thumbPixels = new Uint8Array(w * h * 4);
   }

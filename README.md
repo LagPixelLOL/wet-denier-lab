@@ -140,23 +140,43 @@ The stocking's mesh is the whole leg (above the cuff its passes draw the skin), 
   so whatever lies behind the rest of a leg (the backdrop, the floor, the other leg) is drawn and shows through.
 - _The fading top_ (its outside) comes after both legs, as color alone, the leg behind first (`setOrder`).
 - _The inside_ of a leg is all but invisible (8% from the ankle up, gone by where the top begins to fade). It also
-  comes after both legs, with a depth of its own and its color at that depth: of two walls behind each other the
-  nearer one shows, not their sum.
-- _A leg's own solid outside seen through that same leg_ (over its rim, through its fading top or through its
-  inside) is not drawn at all, from the ankle up. The foot is, and across a band above the ankle
-  (`ANKLE`, `ANKLE_BAND`) the one goes over into the other. The other leg seen through a leg is drawn.
+  comes after both legs, in one pass that lays down its depth as it goes, from the top of the leg down: looking
+  into a leg, the nearer of two walls behind each other is the higher one, so the farther one finds its depth there
+  and is left out. One wall shows, not their sum.
+- _A leg's own solid outside seen through that same leg_ shows as much as what it is seen through has faded out:
+  all of it through the top where nothing of that is left, nothing through the leg's inside or where the fade
+  begins, and in between by the fade (through several, by the least). So the solid leg under a top that flares goes
+  over into the fade without a step. That is from the ankle up. The foot is always drawn, and across a band above
+  the ankle (`ANKLE`, `ANKLE_BAND`) the one goes over into the other. The other leg seen through a leg is drawn.
 
 Two tests tell what is seen through the leg's own top. The lid (`LID_GLSL` in `stage/shaders/leg.ts`) closes the
 top with the plane where the fade begins, as far out as the leg's outline there (`legLid` in `stage/lid.ts`, in 32
 directions around its middle), and asks whether the line of sight to a point passes through it, in the leg's own
-space at rest (`uRestFromWorld`). It needs no depth, so what it leaves out hides nothing. Right under the lid it
-stops 3% short of the outline (`LID_REACH`, `LID_NEAR`), where a line of sight to the leg's own wall passes the rim
-by next to nothing. The curtain covers what the lid cannot tell: while a leg is drawn, everything of its top that
-is not solid (`CURTAIN`: the fading top, and the inside up there) lays its depth over the solid leg's, the solid
-leg's color is drawn where its depth is still the nearest, and the curtain is taken out again (drawn at the far
-end of the depth range), after which the solid leg lays its depth down once more. The leg from the ankle down is
-drawn before the curtain goes up. What the curtain alone kept from being drawn still has its depth afterwards, so
-the other leg does not show behind such a part: these are slivers along the rim.
+space at rest (`uRestFromWorld`). What does is seen through the leg's inside and is not drawn. That needs no depth,
+so what it leaves out hides nothing. Right under the lid it stops 3% short of the outline (`LID_REACH`,
+`LID_NEAR`), where a line of sight to the leg's own wall passes the rim by next to nothing.
+
+The curtain covers what the lid cannot tell (what is seen through the top's side, under its rim where it flares,
+and right along the rim). It is everything of the leg's top that is not solid: the fading top, and the inside up
+there (`CURTAIN`). The stage's target has a stencil buffer (`createSceneTarget` in `stage/target.ts`; it is not
+resolved out of the samples, which costs milliseconds), and each leg has two bits of it. While a leg is drawn, the
+curtain sets the first where it lies in front of the solid leg's depth, and the solid leg's color is not drawn
+there. Where such a pixel's depth is the solid leg's own, the second bit is set (`gone`) and the depth is taken out
+(`erase`, drawn at the far end of the depth range), so that whatever lies behind is drawn. After everything else of
+the legs, what is gone comes back by how much of it shows: its depth again, where the second bit is set, with the
+target's alpha set to one; then the curtain in front of that depth, which takes the alpha down to how far each part
+of it has faded out (`VEIL`, the least of them stays); then its color at that depth, weighed by the alpha. The leg
+from the ankle down is drawn in a pass of its own, before the curtain.
+
+Most of the time none of this is needed, and it is left out (`lookInto` in `stage/createStage.ts`, before every
+render of the scene). Nothing of a leg is seen through its top, nor is its inside seen, unless the eye looks down
+into the leg, from above the plane where the fade begins and steeply enough (`INTO_FROM`): until then only the
+solid leg (depth, then color in one pass), the fading top and the line are drawn, and past that angle the inside
+comes in gradually (`uInto`). And while the eye does look into a leg, the curtain mostly finds nothing: the pass
+that sets the second bit is watched with an occlusion query (`stage/drawn.ts`), and as long as it sets none, the
+passes that deal with what is gone are left out too, and the question is asked only every 30 ms (`ASK_EVERY`). The
+GPU answers a frame or two late: that is how long a part that comes to be seen through the leg's top is drawn as it
+is before it fades.
 
 The line around the stocking is drawn last, after the depth of both legs' insides and tops, laid down a little
 nearer (`SEEN_THROUGH_PULL`): no line on the far side of a leg seen from above. The floor's reflection draws the

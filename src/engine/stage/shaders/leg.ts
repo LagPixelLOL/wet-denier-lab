@@ -51,6 +51,10 @@ export const LID_STEP = 0.004;
 
 export const fadeHeight = (x: number, y: number, z: number): number => y - (x - 0.066) * 0.3346 + (z - 0.04) * 0.0157;
 
+/** The height on the leg at rest at which a fade height lies, above a point across x and z. */
+export const heightOfFade = (fade: number, x: number, z: number): number =>
+  fade + (x - 0.066) * 0.3346 - (z - 0.04) * 0.0157;
+
 const fadeHeightGlsl = (point: string): string =>
   `${point}.y - 0.3346 * (${point}.x - 0.066) + 0.0157 * (${point}.z - 0.04)`;
 
@@ -159,7 +163,7 @@ void main() {
 `;
 
 export const LEG_DEPTH_FRAGMENT_SHADER = `
-uniform float uFadeStart, uClip, uMirrorFlipY;
+uniform float uFadeStart, uFadeEnd, uOpacity, uClip, uMirrorFlipY;
 varying vec3 vRestPos, vWorldPos;
 varying float vFadeHeight;
 ${LID_GLSL}void main() {
@@ -168,18 +172,25 @@ ${LID_GLSL}void main() {
   // ankle). That leaves out whatever of the leg's outside, above that band, the eye would only see through the
   // leg's own top: it is not drawn at all. (In the floor's reflection the eye is not where the camera is: no
   // lid there.) And it leaves out what is seen through: the top that fades out, and the leg's all but invisible
-  // inside above the band (LEG_INSIDE). Those are drawn after both legs. CURTAIN is all of the leg but its solid
+  // inside above the band. Those are drawn after both legs. CURTAIN is all of the leg but its solid
   // outside: whatever the eye sees the solid leg through, where it does. See addSeenThrough in createStage.
+  //
+  // The passes that write a color write its alpha alone: how much of the solid leg behind shows. All of it to
+  // begin with, and through a part of the curtain (VEIL) as much as that part has faded out: nothing through
+  // the leg's inside below the fade, all of it through what has faded out altogether.
   bool aboveAnkle = ${ANKLE_FADE_GLSL} >= 1.0;
 #if defined(CURTAIN)
   if (gl_FrontFacing && vFadeHeight <= uFadeStart) discard;
-#elif defined(LEG_INSIDE)
-  if (gl_FrontFacing || !aboveAnkle || vFadeHeight > uFadeStart) discard;
 #else
   if (vFadeHeight > uFadeStart) discard;
   if (aboveAnkle && (!gl_FrontFacing || (uMirrorFlipY > 0.0 && seenThroughTop(vWorldPos, uFadeStart)))) discard;
 #endif
-  gl_FragColor = vec4(0.0);
+#ifdef VEIL
+  float shows = !gl_FrontFacing && vFadeHeight <= uFadeStart ? 0.0 : smoothstep(uFadeStart, uFadeEnd, vFadeHeight);
+  gl_FragColor = vec4(0.0, 0.0, 0.0, shows * uOpacity);
+#else
+  gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+#endif
 }
 `;
 
@@ -198,7 +209,7 @@ uniform vec4 uSecret;
 uniform vec4 uWetDye;
 uniform sampler2D uKnitTex, uWetMap, uDecalAtlas;
 uniform vec2 uWetMapSlot;
-uniform float uFadeStart, uFadeEnd, uTime, uOpacity;
+uniform float uFadeStart, uFadeEnd, uTime, uOpacity, uInto;
 uniform highp sampler2DShadow uCastShadowMap;
 uniform sampler2D uCastShadowCover;
 uniform mat4 uCastShadowMatrix;
@@ -406,7 +417,12 @@ ${LID_GLSL}void main() {
   float outline = 1.0 - clamp(ndv / max(sqrt(max(1.0 - alongView * alongView, 0.0)), 0.05), 0.0, 1.0);
   float ndl = dot(n, uKeyDir);
   float height = vRestPos.y;
+#ifdef LEG_INSIDE
+  // All but invisible: the other leg's shadow would not tell on it.
+  float lit = 1.0;
+#else
   float lit = 1.0 - castShadow();
+#endif
   float hardLit = smoothstep(-0.04, 0.10, ndl) * lit;
   vec3 hemi = mix(uFillBottom, uFillTop, n.y * uMirrorFlipY * 0.5 + 0.5);
   float rim = smoothstep(0.62, 0.86, outline) * smoothstep(0.0, 0.35, dot(n, uRimDir));
@@ -549,6 +565,14 @@ ${LID_GLSL}void main() {
   float through = sheer * overlay * fabric;
   vec3 stockCol = fabCol * (1.0 - sheer) + seenSkin * throughTint * sheer * (1.0 - overlay);
   vec3 col = mix(mix(bareSkin * mix(vec3(1.0), vec3(0.94, 0.88, 0.88), wetness), underSeen, uUnder), stockCol, fabric);
+#ifdef LEG_INSIDE
+  // The inside of the leg, from the ankle up: all but invisible, and gone by where the top begins to fade. Its
+  // color as it is so far will do: no straps, no sheen, no rim light, nothing that shines. It comes in as the
+  // eye begins to look down into the leg (see lookInto in createStage).
+  float insideFade = mix(0.92, 1.0, smoothstep(uFadeStart - 0.10, uFadeStart, vFadeHeight));
+  gl_FragColor = vec4(col / max(1.0 - through, 0.001), (1.0 - insideFade) * uOpacity * uInto * (1.0 - through));
+  return;
+#endif
   if (uGarter > 0.5 && uIsSkin < 0.5 && cuffDy > -0.014) {
     vec2 gp = vRestPos.xz - vec2(-0.004, 0.034);
     float gr = length(gp), gAng = atan(gp.x, gp.y);
