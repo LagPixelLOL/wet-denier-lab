@@ -37,17 +37,26 @@ void main() {
 `;
 
 // The leg's top fades out, and its shadow on the other leg with it: a part that is not seen casts none. The
-// shadow map holds one depth per texel, so the top thins out texel by texel (an ordered 4 x 4 pattern), which
-// the soft lookup on the other leg evens out.
+// shadow map's depth says where the leg is in the light's way, and its color how much of the light the leg takes
+// there (CASTER_COVER_FRAGMENT_SHADER): what has faded out altogether is in neither.
 export const CASTER_FRAGMENT_SHADER = `
+uniform float uFadeEnd;
+varying float vFadeHeight;
+void main() {
+  if (vFadeHeight >= uFadeEnd) discard;
+  gl_FragColor = vec4(1.0);
+}
+`;
+
+// How solid the leg is where the light passes through it (red), and that it is there at all (green). Drawn with
+// the larger value kept, so of the walls of the leg the light passes through the most solid one counts. Read
+// between texels, both thin out alike toward the leg's edge: red over green is how solid the leg is right there.
+export const CASTER_COVER_FRAGMENT_SHADER = `
 uniform float uFadeStart, uFadeEnd;
 varying float vFadeHeight;
-const int THIN_OUT[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
 void main() {
-  float fade = smoothstep(uFadeStart, uFadeEnd, vFadeHeight);
-  ivec2 cell = ivec2(gl_FragCoord.xy) & 3;
-  if (fade * 16.0 > float(THIN_OUT[cell.y * 4 + cell.x]) + 0.5) discard;
-  gl_FragColor = vec4(1.0);
+  if (vFadeHeight >= uFadeEnd) discard;
+  gl_FragColor = vec4(1.0 - smoothstep(uFadeStart, uFadeEnd, vFadeHeight), 1.0, 0.0, 1.0);
 }
 `;
 

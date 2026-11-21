@@ -20,6 +20,7 @@ import {
 import { BOW_VERTEX_SHADER } from "../../../src/engine/stage/shaders/bow";
 import { CUFF_PRESS, cuffPressAt } from "../../../src/engine/model/cuffPress";
 import { CUFF_PRESS_GLSL, LEG_VERTEX_SHADER } from "../../../src/engine/stage/shaders/leg";
+import { CASTER_COVER_FRAGMENT_SHADER, CASTER_VERTEX_SHADER } from "../../../src/engine/stage/shaders/post";
 import { OUTLINE_VERTEX_SHADER } from "../../../src/engine/stage/shaders/outline";
 import { digestRounded } from "../../helpers/digest";
 import { describeCalls } from "../../helpers/fakeRenderer";
@@ -919,6 +920,28 @@ describe("leg pose, opacity and order", () => {
     expect(leg.outlineUniforms.uLidR).toBe(leg.fabric.uLidR);
     expect(leg.caster.material.uniforms.uFadeStart).toBe(leg.fabric.uFadeStart);
     expect(leg.caster.material.uniforms.uFadeEnd).toBe(leg.fabric.uFadeEnd);
+    // The shadow map holds where the leg is in the light's way (its depth) and how solid it is there (its color:
+    // through every wall of the leg, the most solid one kept). The second pass rides along with the first.
+    const cover = leg.caster.children[0] as StageLeg["stocking"];
+    expect(leg.caster.children).toHaveLength(1);
+    expect(cover.geometry).toBe(leg.caster.geometry);
+    expect(cover.material.uniforms).toBe(leg.caster.material.uniforms);
+    expect([leg.caster.material.colorWrite, leg.caster.material.depthWrite]).toEqual([false, true]);
+    expect([cover.material.colorWrite, cover.material.depthTest, cover.material.depthWrite]).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    expect([cover.material.blending, cover.material.blendEquation]).toEqual([THREE.CustomBlending, THREE.MaxEquation]);
+    expect([cover.material.blendSrc, cover.material.blendDst]).toEqual([THREE.OneFactor, THREE.OneFactor]);
+    expect([cover.material.vertexShader, cover.material.fragmentShader]).toEqual([
+      CASTER_VERTEX_SHADER,
+      CASTER_COVER_FRAGMENT_SHADER,
+    ]);
+    // Each leg reads the other leg's map: its depth and its color.
+    const other = stage.legs[1];
+    expect(leg.fabric.uCastShadowCover.value).toBe(leg.fabric.uCastShadowMap.value!.renderTarget!.texture);
+    expect(other.fabric.uCastShadowCover.value).not.toBe(leg.fabric.uCastShadowCover.value);
     // Tights fade out lower than stockings do: another outline.
     const stockings = { center: leg.fabric.uLidC.value.toArray(), radii: leg.fabric.uLidR.value };
     expect(stockings.radii).toHaveLength(32);

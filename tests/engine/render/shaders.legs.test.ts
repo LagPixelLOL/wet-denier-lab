@@ -66,6 +66,7 @@ describe("shader catalog", () => {
         "BACKDROP_VERTEX BACKDROP_FRAGMENT SCENE=3 x1",
         "BEAD_DECAL_VERTEX BEAD_DECAL_FRAGMENT x1",
         "BOW_VERTEX BOW_FRAGMENT x2",
+        "CASTER_VERTEX CASTER_COVER_FRAGMENT x2",
         "CASTER_VERTEX CASTER_FRAGMENT x2",
         "DROPLET_VERTEX DROPLET_FRAGMENT x1",
         "FLOOR_SHADOW_VERTEX FLOOR_SHADOW_FRAGMENT x2",
@@ -290,8 +291,12 @@ describe("leg, bow, outline, shadow and post shaders", () => {
           "uRimColor",
           "uRimDir",
         ],
+        "CASTER_VERTEX CASTER_FRAGMENT": [
+          "uFadeStart",
+        ],
         "LEG_VERTEX LEG_DEPTH_FRAGMENT": [
           "uBand",
+          "uCastShadowCover",
           "uCastShadowMap",
           "uCastShadowMatrix",
           "uCastShadowStrength",
@@ -352,6 +357,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
         ],
         "LEG_VERTEX LEG_DEPTH_FRAGMENT CURTAIN=1": [
           "uBand",
+          "uCastShadowCover",
           "uCastShadowMap",
           "uCastShadowMatrix",
           "uCastShadowStrength",
@@ -412,6 +418,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
         ],
         "LEG_VERTEX LEG_DEPTH_FRAGMENT CURTAIN=1 FAR_PLANE=1": [
           "uBand",
+          "uCastShadowCover",
           "uCastShadowMap",
           "uCastShadowMatrix",
           "uCastShadowStrength",
@@ -472,6 +479,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
         ],
         "LEG_VERTEX LEG_DEPTH_FRAGMENT LEG_INSIDE=1": [
           "uBand",
+          "uCastShadowCover",
           "uCastShadowMap",
           "uCastShadowMatrix",
           "uCastShadowStrength",

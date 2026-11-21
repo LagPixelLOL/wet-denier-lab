@@ -161,8 +161,9 @@ the other leg does not show behind such a part: these are slivers along the rim.
 The line around the stocking is drawn last, after the depth of both legs' insides and tops, laid down a little
 nearer (`SEEN_THROUGH_PULL`): no line on the far side of a leg seen from above. The floor's reflection draws the
 whole leg and its fading top without any of this (the eye is not where the camera is). The shadow a leg casts on
-the other thins out with the fade (an ordered 4 x 4 pattern in `CASTER_FRAGMENT_SHADER`), so a top that is not
-there casts none.
+the other fades out with its top too: the shadow map holds how solid the leg is in the light's way next to its
+depth (`CASTER_COVER_FRAGMENT_SHADER`, the most solid of the leg's walls the light passes through), and the other
+leg's shader takes the two together (`castShadowAt`). A top that is not there casts none.
 
 **Cuff.** A stocking's cuff presses into the leg: `pressCuff` (`CUFF_PRESS_GLSL` in `stage/shaders/leg.ts`, scaled
 by `uCuffBulge`) pushes the surface out just above the cuff's edge and draws it in below. The leg's vertex shader

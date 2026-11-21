@@ -17,7 +17,11 @@ import {
   LID_STEP,
 } from "../../../src/engine/stage/shaders/leg";
 import { OUTLINE_FRAGMENT_SHADER } from "../../../src/engine/stage/shaders/outline";
-import { CASTER_FRAGMENT_SHADER, CASTER_VERTEX_SHADER } from "../../../src/engine/stage/shaders/post";
+import {
+  CASTER_COVER_FRAGMENT_SHADER,
+  CASTER_FRAGMENT_SHADER,
+  CASTER_VERTEX_SHADER,
+} from "../../../src/engine/stage/shaders/post";
 import { legModel } from "../../helpers/model";
 
 /** The shader's test (LID_GLSL), in the leg's own space at rest. */
@@ -196,10 +200,28 @@ describe("what of a leg is seen through", () => {
 
   it("casts a shadow on the other leg that fades out with the leg's top", () => {
     expect(CASTER_VERTEX_SHADER).toContain("varying float vFadeHeight;");
-    expect(CASTER_FRAGMENT_SHADER).toContain("float fade = smoothstep(uFadeStart, uFadeEnd, vFadeHeight);");
-    // One depth per texel: the top thins out by an ordered pattern, every texel of a 4 x 4 cell at its own turn.
-    const order = /int\[16\]\(([^)]*)\)/.exec(CASTER_FRAGMENT_SHADER)![1].split(",").map(Number);
-    expect([...order].sort((a, b) => a - b)).toEqual(Array.from({ length: 16 }, (_, i) => i));
-    expect(CASTER_FRAGMENT_SHADER).toContain("if (fade * 16.0 > float(THIN_OUT[cell.y * 4 + cell.x]) + 0.5) discard;");
+    // What has faded out altogether is not in the shadow map: neither its depth nor how solid it is.
+    for (const shader of [CASTER_FRAGMENT_SHADER, CASTER_COVER_FRAGMENT_SHADER]) {
+      expect(shader).toContain("if (vFadeHeight >= uFadeEnd) discard;");
+    }
+    // How solid the leg is (red) and that it is there (green): no pattern of holes, which showed in the shadow.
+    expect(CASTER_COVER_FRAGMENT_SHADER).toContain(
+      "gl_FragColor = vec4(1.0 - smoothstep(uFadeStart, uFadeEnd, vFadeHeight), 1.0, 0.0, 1.0);",
+    );
+    expect(CASTER_FRAGMENT_SHADER).not.toMatch(/gl_FragCoord|smoothstep/);
+    // The other leg's shader takes the two together at every point of the map it reads, red over green: read
+    // between texels at the leg's edge, where both thin out alike, that is still how solid the leg is there.
+    const at = /float castShadowAt\(vec2 at, float ref\) \{([^}]*)\}/.exec(LEG_FRAGMENT_SHADER)![1];
+    expect(at).toContain("vec2 cover = texture2D(uCastShadowCover, at).rg;");
+    expect(at).toContain("return (1.0 - texture(uCastShadowMap, vec3(at, ref))) * cover.r / max(cover.g, 0.004);");
+    const shadow = /float castShadow\(\) \{([^}]*)\}/.exec(LEG_FRAGMENT_SHADER)![1];
+    expect(shadow.match(/castShadowAt\(/g)).toHaveLength(5);
+    expect(shadow).not.toContain("texture(");
+    expect(shadow).toContain("return shadow / 6.0 * uCastShadowStrength;");
+    // Half solid at the leg's edge (half of the texels around are the leg's), and half as solid in its fade.
+    const solid = (cover: [number, number]) => cover[0] / Math.max(cover[1], 0.004);
+    expect(solid([0.5, 0.5])).toBe(1);
+    expect(solid([0.25, 0.5])).toBe(0.5);
+    expect(solid([0, 0])).toBe(0);
   });
 });

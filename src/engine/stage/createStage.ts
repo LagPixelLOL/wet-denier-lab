@@ -36,6 +36,7 @@ import { NAIL_COUNT } from "./shaders/foot";
 import { OUTLINE_FRAGMENT_SHADER, OUTLINE_VERTEX_SHADER } from "./shaders/outline";
 import {
   BLUR_FRAGMENT_SHADER,
+  CASTER_COVER_FRAGMENT_SHADER,
   CASTER_FRAGMENT_SHADER,
   CASTER_VERTEX_SHADER,
   COMPOSITE_FRAGMENT_SHADER,
@@ -173,6 +174,7 @@ export type StockingUniforms = CastShadowUniforms & {
   uOpacity: U<number>;
   uWetMapSlot: U<THREE.Vector2>;
   uCastShadowMap: U<THREE.DepthTexture | null>;
+  uCastShadowCover: U<THREE.Texture>;
   uCastShadowStrength: U<number>;
 };
 
@@ -786,6 +788,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       uCastShadowMap: {
         value: castTargets[1 - index].depthTexture,
       },
+      uCastShadowCover: {
+        value: castTargets[1 - index].texture,
+      },
       uCastShadowStrength: {
         value: 0,
       },
@@ -1180,6 +1185,25 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     );
     casterMesh.frustumCulled = false;
     casterMesh.matrixAutoUpdate = false;
+    // How solid the leg is in the light's way, into the shadow map's color: through every wall of the leg, the
+    // most solid one kept.
+    const casterCover = new THREE.Mesh(
+      model.stockingLow,
+      new THREE.ShaderMaterial({
+        vertexShader: CASTER_VERTEX_SHADER,
+        fragmentShader: CASTER_COVER_FRAGMENT_SHADER,
+        uniforms: casterMesh.material.uniforms,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.CustomBlending,
+        blendEquation: THREE.MaxEquation,
+        blendSrc: THREE.OneFactor,
+        blendDst: THREE.OneFactor,
+      }),
+    );
+    casterCover.frustumCulled = false;
+    casterMesh.add(casterCover);
     const castScene = new THREE.Scene();
     castScene.add(casterMesh);
     return {

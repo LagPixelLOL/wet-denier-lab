@@ -200,6 +200,7 @@ uniform sampler2D uKnitTex, uWetMap, uDecalAtlas;
 uniform vec2 uWetMapSlot;
 uniform float uFadeStart, uFadeEnd, uTime, uOpacity;
 uniform highp sampler2DShadow uCastShadowMap;
+uniform sampler2D uCastShadowCover;
 uniform mat4 uCastShadowMatrix;
 uniform float uCastShadowStrength, uCastShadowTexel;
 uniform float uHighlightFalloff, uKnitMean;
@@ -212,18 +213,25 @@ float aaStep(float edge, float x) {
   float w = fwidth(x) * 0.75;
   return smoothstep(edge - w, edge + w, x);
 }
-${CAUSTICS_GLSL}float castShadow() {
+${CAUSTICS_GLSL}// How much of the light the other leg takes at one point of its shadow map: whether it is in the light's way
+// (the map's depth), times how solid it is there (the map's color: see CASTER_COVER_FRAGMENT_SHADER), so that the
+// shadow of a leg's top fades out with it.
+float castShadowAt(vec2 at, float ref) {
+  vec2 cover = texture2D(uCastShadowCover, at).rg;
+  return (1.0 - texture(uCastShadowMap, vec3(at, ref))) * cover.r / max(cover.g, 0.004);
+}
+float castShadow() {
   if (uCastShadowStrength < 0.004) return 0.0;
   vec4 sc = uCastShadowMatrix * vec4(vWorldPos, 1.0);
   if (sc.x <= 0.0 || sc.x >= 1.0 || sc.y <= 0.0 || sc.y >= 1.0) return 0.0;
   float ref = sc.z - 0.0025;
   vec2 texel = vec2(uCastShadowTexel);
-  float lit = texture(uCastShadowMap, vec3(sc.xy, ref)) * 2.0;
-  lit += texture(uCastShadowMap, vec3(sc.xy + texel * vec2(1.5, 0.6), ref));
-  lit += texture(uCastShadowMap, vec3(sc.xy + texel * vec2(-0.6, 1.5), ref));
-  lit += texture(uCastShadowMap, vec3(sc.xy + texel * vec2(-1.5, -0.6), ref));
-  lit += texture(uCastShadowMap, vec3(sc.xy + texel * vec2(0.6, -1.5), ref));
-  return (1.0 - lit / 6.0) * uCastShadowStrength;
+  float shadow = castShadowAt(sc.xy, ref) * 2.0;
+  shadow += castShadowAt(sc.xy + texel * vec2(1.5, 0.6), ref);
+  shadow += castShadowAt(sc.xy + texel * vec2(-0.6, 1.5), ref);
+  shadow += castShadowAt(sc.xy + texel * vec2(-1.5, -0.6), ref);
+  shadow += castShadowAt(sc.xy + texel * vec2(0.6, -1.5), ref);
+  return shadow / 6.0 * uCastShadowStrength;
 }
 ${FOOT_GLSL}// Skin with a toenail on it. nail: plate, free edge, the fold of skin around the plate, and the plate's rim.
 vec3 withNail(vec3 skin, vec3 light, vec4 nail) {
