@@ -129,7 +129,7 @@ export const enUS: Messages = {
 
   "preset.classicBlack": "Classic black",
   "preset.glossyNude": "Glossy nude",
-  "preset.whiteOverKnee": "White over-knee",
+  "preset.whiteOverKnee": "White knee-length",
   "preset.blueStripes": "Blue stripes",
   "preset.schoolKnee": "School socks",
   "preset.garterNet": "Garter fishnets",
@@ -144,7 +144,7 @@ export const enUS: Messages = {
   "length.ankle": "Ankle socks",
   "length.crew": "Crew socks",
   "length.knee": "Knee-highs",
-  "length.over": "Over-knee",
+  "length.over": "Knee-length",
   "length.thigh": "Thigh-highs",
   "length.tights": "Tights",
 

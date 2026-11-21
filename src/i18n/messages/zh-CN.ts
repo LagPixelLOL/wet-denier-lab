@@ -129,7 +129,7 @@ export const zhCN = {
 
   "preset.classicBlack": "经典黑丝",
   "preset.glossyNude": "油亮肉丝",
-  "preset.whiteOverKnee": "纯白过膝",
+  "preset.whiteOverKnee": "纯白齐膝",
   "preset.blueStripes": "蓝白条纹",
   "preset.schoolKnee": "学院及膝",
   "preset.garterNet": "吊带网袜",
@@ -144,7 +144,7 @@ export const zhCN = {
   "length.ankle": "短袜",
   "length.crew": "中筒袜",
   "length.knee": "及膝袜",
-  "length.over": "过膝袜",
+  "length.over": "齐膝袜",
   "length.thigh": "大腿袜",
   "length.tights": "连裤袜",
 
