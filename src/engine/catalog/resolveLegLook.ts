@@ -99,8 +99,8 @@ export function resolveLegLook(input?: Partial<LegSpec>): LegLook {
     secret: isBare ? 0 : secretDef.id,
     secretColor: luma > 0.55 ? "#e8456e" : "#ffd7e2",
     wetDye: spec.wetColor && !isBare ? resolveColor(spec.wetColor).dye : null,
-    fade0: isTights ? 0.7 : 0.79,
-    fade1: isTights ? 0.812 : 0.868,
+    fade0: 0.79,
+    fade1: 0.868,
     water: isBare ? BARE_SKIN_WATER : materialDef.water,
     skinFrom: isBare || isTights ? Infinity : lengthDef.cuffY,
   };

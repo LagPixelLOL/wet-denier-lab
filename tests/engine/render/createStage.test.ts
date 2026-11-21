@@ -1234,10 +1234,14 @@ describe("leg pose, opacity and order", () => {
     const other = stage.legs[1];
     expect(leg.fabric.uCastShadowCover.value).toBe(leg.fabric.uCastShadowMap.value!.renderTarget!.texture);
     expect(other.fabric.uCastShadowCover.value).not.toBe(leg.fabric.uCastShadowCover.value);
-    // Tights fade out lower than stockings do: another outline.
+    // Every length fades out at the same height, and has the same outline there...
     const stockings = { center: leg.fabric.uLidC.value.toArray(), radii: leg.fabric.uLidR.value };
     expect(stockings.radii).toHaveLength(32);
     stage.setStocking(0, resolveLegLook({ length: "tights" }));
+    expect(leg.fabric.uFadeStart.value).toBe(0.79);
+    expect(leg.fabric.uLidR.value).toBe(stockings.radii);
+    // ...and a leg that fades out lower has another.
+    stage.setStocking(0, { ...resolveLegLook({ length: "tights" }), fade0: 0.7 });
     expect(leg.fabric.uFadeStart.value).toBe(0.7);
     expect(leg.fabric.uLidR.value).not.toEqual(stockings.radii);
     stage.setStocking(0, resolveLegLook({ length: "knee" }));

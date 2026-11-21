@@ -333,9 +333,9 @@ describe("resolveLegLook", () => {
     expect(resolveLegLook({ material: "sheer", denier: 70 }).denier).toBe(70);
   });
 
-  it("drops the cuff and the bow for tights, which fade out lower", () => {
+  it("drops the cuff and the bow for tights, whose legs fade out as high up as any other", () => {
     const tights = resolveLegLook({ length: "tights", cuff: "bow" });
-    expect([tights.hasCuff, tights.bow, tights.fade0, tights.fade1]).toEqual([0, false, 0.7, 0.812]);
+    expect([tights.hasCuff, tights.bow, tights.fade0, tights.fade1]).toEqual([0, false, 0.79, 0.868]);
     const bow = resolveLegLook({ length: "over", cuff: "bow" });
     expect([bow.hasCuff, bow.bow, bow.fade0, bow.fade1]).toEqual([1, true, 0.79, 0.868]);
   });
