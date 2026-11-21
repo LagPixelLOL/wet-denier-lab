@@ -157,6 +157,13 @@ How much a fabric shines by itself is set per material in `catalog/garments.ts` 
 velvet only a little less so than cotton. Latex has no sheen: it is smooth rubber, and what it shows is what it
 mirrors.
 
+Water makes a mirroring film only on a smooth surface: nylon, latex, skin. A fuzzy fabric (cotton, velvet) takes it
+into its pile and stays rough. Wet, it turns darker and loses its sheen, and of a film's shine it keeps only a trace
+(`FUZZ_WET_SHINE`), as a soft glow where it faces the lamp: no mirror-sharp highlight, no bright streak along the leg,
+no glitter, and no bright line around the wet patch (that line is the edge of the water on a smooth yarn). Both take
+drops in readily, velvet nearly as readily as cotton (`water` in `catalog/garments.ts`), so few drops stay on them
+and not for long; the ones that do shine as drops do.
+
 The rim lights and the sheen belong to the leg's outline. They go by how far the surface is turned away from the eye
 around the leg (`outline` in the leg's fragment shader), not by its angle to the line of sight: looking down or up
 along a leg, all of its surface is seen at a glancing angle, and by that angle they would cover the whole leg instead

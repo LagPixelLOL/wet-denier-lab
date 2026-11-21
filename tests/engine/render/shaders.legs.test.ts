@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { LEG_FRAGMENT_SHADER, SHINE_ENV, SHINE_KEY } from "../../../src/engine/stage/shaders/leg";
+import { MATERIALS, MATERIAL_ORDER } from "../../../src/engine/catalog/garments";
+import { FUZZ_WET_SHINE, LEG_FRAGMENT_SHADER, SHINE_ENV, SHINE_KEY } from "../../../src/engine/stage/shaders/leg";
 import { parseShader, resolveIncludes, splitDeclaratorLists } from "../../helpers/glsl";
 import {
   defineProgramSuite,
@@ -101,6 +102,49 @@ describe("leg, bow, outline, shadow and post shaders", () => {
     // The lamps' highlights by keyAmt, the surroundings by envAmt; specAmt only says whether anything shines.
     expect(LEG_FRAGMENT_SHADER).toMatch(/col \+= uKeyColor \* \([^;]*\) \* keyAmt \+ env \* fres \* 0\.9 \* envAmt;/);
     expect(LEG_FRAGMENT_SHADER).toContain("if (specAmt > 0.0) {");
+  });
+
+  describe("water on a fuzzy fabric", () => {
+    // The shader's measure of a fuzzy fabric, from its gloss.
+    const fuzz = (gloss: number) => 1 - THREE.MathUtils.smoothstep(gloss, 0.1, 0.25);
+
+    it("counts cotton and velvet as fuzzy, and no other material", () => {
+      expect(LEG_FRAGMENT_SHADER).toContain("float fuzz = (1.0 - smoothstep(0.1, 0.25, uGloss)) * fabric,");
+      for (const key of MATERIAL_ORDER) {
+        expect([key, fuzz(MATERIALS[key].gloss)]).toEqual([key, key === "cotton" || key === "velvet" ? 1 : 0]);
+      }
+    });
+
+    it("leaves only a little of a water film's shine, however much water there is", () => {
+      expect(FUZZ_WET_SHINE).toBeGreaterThan(0.01);
+      expect(FUZZ_WET_SHINE).toBeLessThan(0.1);
+      expect(LEG_FRAGMENT_SHADER).toContain(`float waterGloss = mix(1.0, ${FUZZ_WET_SHINE.toFixed(2)}, fuzz);`);
+      // Fresh hits on top of each other add up past a full film's shine: on a fuzzy fabric that is capped first.
+      expect(LEG_FRAGMENT_SHADER).toContain("waterSpec = mix(waterSpec, min(waterSpec, 1.0), fuzz) * waterGloss;");
+    });
+
+    it("shines as a soft glow: no mirror-sharp highlight, no streak along the leg, no glitter", () => {
+      // Of the highlight's parts only the broad one is left (half as strong 14 degrees off the mirror angle).
+      expect(LEG_FRAGMENT_SHADER).toContain(
+        "float spec = mix(smoothstep(0.962, 0.982, ndh) * 1.4 + pow(ndh, 140.0) * 0.6 + pow(ndh, 22.0) * 0.22, pow(ndh, 22.0), fuzz);",
+      );
+      expect(Math.cos((14.4 * Math.PI) / 180) ** 22).toBeCloseTo(0.5, 2);
+      expect(LEG_FRAGMENT_SHADER).toMatch(/float glint = [^;]* \* onLeg \* \(1\.0 - fuzz\);/);
+      // The glitter starts at 0.2: what is left of a film on a fuzzy fabric stays below that.
+      expect(LEG_FRAGMENT_SHADER).toContain(
+        "float sparkAmt = max(max(film, wetness * 0.22) * waterGloss, pearl * 0.8);",
+      );
+      expect(LEG_FRAGMENT_SHADER).toContain("if (sparkAmt > 0.2) {");
+      expect(FUZZ_WET_SHINE).toBeLessThan(0.2);
+    });
+
+    it("has no bright line around the wet patch: that is the edge of the water on a smooth yarn", () => {
+      expect(LEG_FRAGMENT_SHADER).toContain("wetRing *= edgeAmt * (1.0 - fuzz);");
+      expect(LEG_FRAGMENT_SHADER).toContain("col += uKeyColor * wetRing * 0.22 * smoothstep(-0.3, 0.4, ndl) * lit;");
+      // The darker line where the water stops stays: fabric dries to a tide line.
+      expect(LEG_FRAGMENT_SHADER).toContain("wetEdge *= edgeAmt;");
+      expect(LEG_FRAGMENT_SHADER).toContain("col *= 1.0 - wetEdge * 0.38;");
+    });
   });
 
   it("keeps the long highlight along the leg a streak where the surface faces the light", () => {

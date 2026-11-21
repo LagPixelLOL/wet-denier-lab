@@ -209,11 +209,12 @@ export const MATERIALS = {
     rib: 0,
     minDenier: 230,
     print: 1,
+    // Takes drops in nearly as readily as cotton does: few of them stay on it, and not for long.
     water: {
-      soak: 1.7,
+      soak: 2.8,
       wick: 1.5,
-      take: 1.2,
-      bead: 0.55,
+      take: 1.4,
+      bead: 0.2,
       slip: 0.8,
     },
   },

@@ -427,6 +427,24 @@ describe("resolveLegLook", () => {
     }
   });
 
+  it("has velvet take drops in nearly as readily as cotton, and far more readily than nylon", () => {
+    const [velvet, cotton, nylon] = [MATERIALS.velvet.water, MATERIALS.cotton.water, MATERIALS.matte.water];
+    // How many of the drops that hit stay on as beads, and how long a bead lasts before it has soaked in.
+    const beadsLeft = (bead: number) => Math.min(1, bead * 2);
+    const beadLife = (bead: number) => bead * bead;
+    expect(beadsLeft(velvet.bead)).toBeGreaterThan(beadsLeft(cotton.bead));
+    expect(beadsLeft(velvet.bead)).toBeLessThan(beadsLeft(cotton.bead) * 1.5);
+    expect(beadsLeft(velvet.bead)).toBeLessThan(beadsLeft(nylon.bead) * 0.5);
+    expect(beadLife(velvet.bead)).toBeLessThan(beadLife(cotton.bead) * 2);
+    expect(beadLife(velvet.bead)).toBeLessThan(beadLife(nylon.bead) * 0.05);
+    // How fast water on the surface goes into the fabric, and how much each drop wets it.
+    for (const key of ["soak", "take"] as const) {
+      expect(velvet[key]).toBeLessThan(cotton[key]);
+      expect(velvet[key]).toBeGreaterThan(cotton[key] * 0.85);
+      expect(velvet[key]).toBeGreaterThan(nylon[key] * 1.3);
+    }
+  });
+
   it("makes velvet only a little less matte than cotton, and far from the nylons", () => {
     const { velvet, cotton, matte, sheer } = MATERIALS;
     // A slightly stronger sheen than cotton's, spread a little more broadly over the surface, and a trace of

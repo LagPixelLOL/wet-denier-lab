@@ -9,6 +9,12 @@ import { FOOT_GLSL, NAIL_COUNT } from "./foot";
 /** How much of its surroundings a shiny material mirrors, next to a film of water on it (which mirrors all). */
 export const SHINE_ENV = 0.55;
 
+/**
+ * How much of a film of water's shine is left on a fuzzy fabric (cotton, velvet) when it is wet: the water goes
+ * into its pile, and what is at the surface is wet fibers.
+ */
+export const FUZZ_WET_SHINE = 0.05;
+
 /** How strong the lamps' highlights are on a shiny material, next to those on a film of water. */
 export const SHINE_KEY = 0.35;
 
@@ -472,19 +478,26 @@ void main() {
   // its surroundings in full and takes the lamps' highlights at full strength. The material is finely rough:
   // it mirrors the room less (SHINE_ENV), most of all at a glancing angle, where a mirror would turn all white,
   // and its highlights from the lamps are dimmer (SHINE_KEY).
+  // Water only makes a film on a smooth surface. A fuzzy fabric takes it into its pile and stays rough: wet, it
+  // is darker, shines only a little of what a film does (FUZZ_WET_SHINE), and that as a soft glow where it faces
+  // the lamp: no mirror-sharp highlights, no streak along the leg, no glitter, no bright line around the wet patch.
+  float waterGloss = mix(1.0, ${FUZZ_WET_SHINE.toFixed(2)}, fuzz);
   float waterSpec = max(max(film, wetness * 0.55), fresh * 0.8), shineSpec = uMatWet.z * fabric;
+  waterSpec = mix(waterSpec, min(waterSpec, 1.0), fuzz) * waterGloss;
   float specAmt = max(waterSpec, shineSpec), envAmt = max(waterSpec, shineSpec * ${SHINE_ENV.toFixed(2)});
   float keyAmt = max(waterSpec, shineSpec * ${SHINE_KEY.toFixed(2)});
   float wetEdge = smoothstep(0.06, 0.085, soak) * (1.0 - smoothstep(0.085, 0.2, soak));
   float wetRing = smoothstep(0.13, 0.17, soak) * (1.0 - smoothstep(0.17, 0.26, soak));
   float edgeAmt = mix(0.3, 1.0, fabric);
   wetEdge *= edgeAmt;
-  wetRing *= edgeAmt;
+  // The bright line around a wet patch is light caught by the edge of the water on a smooth yarn (nylon). A
+  // fuzzy fabric has none: its wet patch is only darker. (Latex takes no water in, so has no wet patch at all.)
+  wetRing *= edgeAmt * (1.0 - fuzz);
   col *= 1.0 - wetEdge * 0.38;
   float anisoTight = pow(sqrt(max(0.0, 1.0 - tdh * tdh)), 260.0);
-  float glint = smoothstep(0.25, 0.6, anisoTight) * smoothstep(-0.2, 0.3, ndl) * lobe * mix(0.4, 1.0, lit) * onLeg;
+  float glint = smoothstep(0.25, 0.6, anisoTight) * smoothstep(-0.2, 0.3, ndl) * lobe * mix(0.4, 1.0, lit) * onLeg * (1.0 - fuzz);
   if (specAmt > 0.0) {
-    float spec = smoothstep(0.962, 0.982, ndh) * 1.4 + pow(ndh, 140.0) * 0.6 + pow(ndh, 22.0) * 0.22;
+    float spec = mix(smoothstep(0.962, 0.982, ndh) * 1.4 + pow(ndh, 140.0) * 0.6 + pow(ndh, 22.0) * 0.22, pow(ndh, 22.0), fuzz);
     float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
     vec3 refl = reflect(-v, n);
     vec3 env = mix(uEnvLo, uEnvHi, smoothstep(-0.05, 0.6, refl.y * uMirrorFlipY));
@@ -495,7 +508,7 @@ void main() {
   float pearl = uMatWet.w * fabric;
   vec2 gridUv = vUv * 260.0;
   float fw = max(fwidth(gridUv.x), fwidth(gridUv.y));
-  float sparkAmt = max(max(film, wetness * 0.22), pearl * 0.8);
+  float sparkAmt = max(max(film, wetness * 0.22) * waterGloss, pearl * 0.8);
   if (sparkAmt > 0.2) {
     vec2 cell = floor(gridUv);
     vec2 rnd = fract(sin(vec2(dot(cell, vec2(127.1, 311.7)), dot(cell, vec2(269.5, 183.3)))) * 43758.5453);
