@@ -120,7 +120,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
       expect(FUZZ_WET_SHINE).toBeLessThan(0.1);
       expect(LEG_FRAGMENT_SHADER).toContain(`float waterGloss = mix(1.0, ${FUZZ_WET_SHINE.toFixed(2)}, fuzz);`);
       // Fresh hits on top of each other add up past a full film's shine: on a fuzzy fabric that is capped first.
-      expect(LEG_FRAGMENT_SHADER).toContain("waterSpec = mix(waterSpec, min(waterSpec, 1.0), fuzz) * waterGloss;");
+      expect(LEG_FRAGMENT_SHADER).toContain("waterSpec = mix(waterSpec, min(waterSpec, 1.0), fuzz) * waterGloss * ");
     });
 
     it("shines as a soft glow: no mirror-sharp highlight, no streak along the leg, no glitter", () => {
@@ -145,6 +145,16 @@ describe("leg, bow, outline, shadow and post shaders", () => {
       expect(LEG_FRAGMENT_SHADER).toContain("wetEdge *= edgeAmt;");
       expect(LEG_FRAGMENT_SHADER).toContain("col *= 1.0 - wetEdge * 0.38;");
     });
+  });
+
+  it("has water add no shine to a shiny material: no brighter patch on wet latex, no white flash where it is hit", () => {
+    expect(LEG_FRAGMENT_SHADER).toContain("float shineSpec = uMatWet.z * fabric;");
+    expect(LEG_FRAGMENT_SHADER).toContain("float waterSpec = max(max(film, wetness * 0.55), fresh * 0.8);");
+    expect(LEG_FRAGMENT_SHADER).toMatch(/waterSpec = [^;]* \* \(1\.0 - shineSpec\);/);
+    // Latex is the shiny material, and the only one: nylon and skin keep the film's shine and the flash.
+    for (const key of MATERIAL_ORDER) {
+      expect([key, MATERIALS[key].shine]).toEqual([key, key === "latex" ? 1 : 0]);
+    }
   });
 
   it("keeps the long highlight along the leg a streak where the surface faces the light", () => {
