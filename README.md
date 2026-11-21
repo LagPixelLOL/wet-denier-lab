@@ -201,7 +201,7 @@ none.
 by `uCuffBulge`) pushes the surface out just above the cuff's edge and draws it in below. How much goes by how soft
 the leg is where the cuff sits (`legSoftness` in `model/cuffPress.ts`, which `resolveLegLook` turns into the look's
 `cuffPress`): all of it at the thigh, half on the calf (crew socks), three quarters of that under the knee
-(knee-highs), and a tenth, next to nothing, at the ankle and on the knee (over-knee socks), where the leg is bone
+(knee-highs), and a tenth, next to nothing, at the ankle and on the knee (knee-length socks), where the leg is bone
 and sinew. The leg's vertex shader, the outline's and the bow's all read that one uniform, so the line and the bow
 follow the pressed shape, and the drops are told the same share (`setLegWater`). Tights have no cuff, so there is
 no press for them and the thigh keeps its own shape.
@@ -239,6 +239,21 @@ keep their own colors. The studio's rim light, which lights the legs' edges from
 throws onto them, so it dims and takes color the same way (`studioRimTint`). A film of water mirrors the room in full. A shiny material itself is finely rough and mirrors
 it at about half that (`SHINE_ENV` in `stage/shaders/leg.ts`), and takes dimmer highlights from the lamps
 (`SHINE_KEY`).
+
+The lamp follows the camera and lights the side of the legs that faces it. The rest of a leg is lit by the room
+alone (`uRoomLight`, `roomLight` in `stage/shaders/leg.ts`, which the leg, the bow and the line around the leg all
+use). In the lilac studio, the bath and the pool that is all of the light there ever was on that side, so nothing
+changes there. In front of a darker backdrop it is less (`studioRoomLight` in `stage/scenes.ts`: by how light the
+backdrop looks, not by the light it gives off in numbers, and never less than `ROOM_LIGHT_MIN`, a fifth, so that a
+leg in a black room is dark on its far side and still to be seen), and the street at night has a dim room of its
+own (`room` of the scene's light). The one goes over into the other softly, most of the way round the leg.
+
+In such a room the shadow one leg casts on the other is dark, and its edge would show as hard as the shadow map has
+it. So there it is read from the map's color instead, which holds how solid the leg is, that it is there, and how
+near the light (`CASTER_COVER_FRAGMENT_SHADER`), at one of the map's smaller, blurred levels (`SOFT_SHADOW_LEVEL`),
+smoothly (`castCoverSmooth`: a cubic curve through the texels, as straight pieces between them showed as steps
+along the edge), for a point that lies behind the other leg (`SOFT_SHADOW_BEHIND`). In a light room the shadow is
+as it was.
 
 How much a fabric shines by itself is set per material in `catalog/garments.ts` (`gloss` for the long highlight,
 `sheen` and `sheenPow` for the soft glow toward its edges, `shine` for latex). Cotton and velvet are the matte ones,

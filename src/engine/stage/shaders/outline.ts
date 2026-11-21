@@ -2,14 +2,23 @@
  * Leg outline shaders.
  */
 import { LEG_SKINNING_GLSL } from "../../rig/joints";
-import { ANKLE_FADE_GLSL, CUFF_PRESS_GLSL, FADE_HEIGHT_GLSL, LID_GLSL, LID_NEAR, forefootClipGlsl } from "./leg";
+import {
+  ANKLE_FADE_GLSL,
+  CUFF_PRESS_GLSL,
+  FADE_HEIGHT_GLSL,
+  LID_GLSL,
+  LID_NEAR,
+  ROOM_LIGHT_GLSL,
+  forefootClipGlsl,
+} from "./leg";
 
 export const OUTLINE_VERTEX_SHADER = `
 ${LEG_SKINNING_GLSL}${CUFF_PRESS_GLSL}attribute vec3 legTangent;
 uniform vec2 uResolution;
+uniform vec3 uKeyDir;
 uniform float uLineWidth, uIsSkin;
 varying vec3 vRestPos, vWorldPos;
-varying float vFadeHeight, vFacing;
+varying float vFadeHeight, vFacing, vKeyLit;
 void main() {
   mat3 jac;
   vec3 p = skinPosition(position, jac);
@@ -17,6 +26,8 @@ void main() {
   // The line goes around the surface as the leg's own passes draw it, pressed in by the cuff.
   if (uIsSkin < 0.5) pressCuff(position.y, normalize(jac * legTangent), p, n);
   vec4 world = modelMatrix * vec4(p, 1.0);
+  // How the surface the line goes around faces the lamp.
+  vKeyLit = dot(normalize(mat3(modelMatrix) * n), uKeyDir);
   vRestPos = position;
   vWorldPos = world.xyz;
   vFadeHeight = ${FADE_HEIGHT_GLSL};
@@ -37,11 +48,11 @@ export const OUTLINE_FRAGMENT_SHADER = `
 uniform vec3 uOutlineColor, uSkinOutlineColor;
 uniform float uCuffY, uHasCuff, uIsSkin, uFadeStart, uFadeEnd, uOpacity, uSilhouette, uClip;
 varying vec3 vRestPos, vWorldPos;
-varying float vFadeHeight, vFacing;
+varying float vFadeHeight, vFacing, vKeyLit;
 // The line fades out this much (m) below the leg's top, and the line around the top begins this much below
 // where the top begins to fade.
 const float LINE_FADES_BELOW = 0.03, TOP_LINE_BELOW = ${LID_NEAR[1].toFixed(3)};
-${LID_GLSL}void main() {
+${LID_GLSL}${ROOM_LIGHT_GLSL}void main() {
   ${forefootClipGlsl("vRestPos")}
 
   // The line is drawn from back faces. With uSilhouette, only where the surface really turns away from the
@@ -62,6 +73,8 @@ ${LID_GLSL}void main() {
   // the leg's depth shader).
   if (seenThroughTop(vWorldPos, uFadeStart)) alpha *= 1.0 - ${ANKLE_FADE_GLSL};
   if (alpha < 0.004) discard;
-  gl_FragColor = vec4(mix(uOutlineColor, uSkinOutlineColor, skinMix), alpha);
+  // The line is lit as the surface it goes around is: by the lamp on the side that faces it, and by the room
+  // alone on the other.
+  gl_FragColor = vec4(mix(uOutlineColor, uSkinOutlineColor, skinMix) * roomLight(vKeyLit, 1.0), alpha);
 }
 `;

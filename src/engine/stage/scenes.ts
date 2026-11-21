@@ -11,6 +11,12 @@ export interface SceneLight {
   rim: string;
   fillTop: Vec3;
   fillBottom: Vec3;
+  /**
+   * The light the surroundings throw onto the side of the legs that the key light does not reach, as a factor
+   * per channel: all of it in a light room, less where it is dark (the street at night). The studio's is for
+   * its lilac backdrop (see studioRoomLight).
+   */
+  room: Vec3;
   rim2: string;
   rim2Dir: Vec3;
   envLo: Vec3;
@@ -66,6 +72,7 @@ export const SCENES: SceneTable = {
       rim: "#d8e4ff",
       fillTop: [1, 0.99, 1],
       fillBottom: [0.8, 0.76, 0.86],
+      room: [1, 1, 1],
       rim2: "#000000",
       rim2Dir: [0, 0, 1],
       envLo: [0.55, 0.53, 0.62],
@@ -96,6 +103,7 @@ export const SCENES: SceneTable = {
       rim: "#e6f2ff",
       fillTop: [1, 0.985, 0.96],
       fillBottom: [0.84, 0.82, 0.86],
+      room: [1, 1, 1],
       rim2: "#000000",
       rim2Dir: [0, 0, 1],
       envLo: [0.62, 0.66, 0.7],
@@ -130,6 +138,7 @@ export const SCENES: SceneTable = {
       rim: "#ff5aa8",
       fillTop: [0.94, 0.92, 1],
       fillBottom: [0.8, 0.74, 0.93],
+      room: [0.6, 0.6, 0.68],
       rim2: "#3fd6ff",
       rim2Dir: [0.72, 0.18, -0.67],
       envLo: [0.16, 0.14, 0.26],
@@ -162,6 +171,7 @@ export const SCENES: SceneTable = {
       rim: "#dff6ff",
       fillTop: [1, 1, 1],
       fillBottom: [0.8, 0.9, 0.93],
+      room: [1, 1, 1],
       rim2: "#000000",
       rim2Dir: [0, 0, 1],
       envLo: [0.5, 0.7, 0.78],
@@ -335,4 +345,29 @@ export function studioEnv(env: EnvColors, backdrop: BackdropDef): EnvColors {
 export function studioRimTint(backdrop: BackdropDef): Vec3 {
   const tint = backdropTint(backdrop);
   return tint.lo.map((channel, i) => (channel + tint.hi[i]) / 2) as Vec3;
+}
+
+/**
+ * How light the room is to the eye for how much light it throws back, in linear light: the eye's own measure of
+ * lightness (about the cube root; this is the sRGB curve's exponent).
+ */
+const ROOM_LIGHT_GAMMA = 1 / 2.2;
+
+/**
+ * What is left of the room's light on the legs in a black room. Not nothing, as it would be: the dark side of a
+ * leg is to read as dark, and the leg is still to be seen.
+ */
+export const ROOM_LIGHT_MIN = 0.2;
+
+/**
+ * The light a backdrop's room throws onto the side of the legs that the lamp does not reach, as a factor per
+ * channel on what the lilac room throws (never more than that). The lamp follows the camera and lights the side
+ * that faces it. The rest of a leg is lit by the room alone: as light as ever in a pale room, dimmer in front of
+ * a dusky backdrop, and dark in a black one (ROOM_LIGHT_MIN). It goes by how light the room looks, not by the
+ * light it gives off in numbers, which is next to none for anything but a pale wall.
+ */
+export function studioRoomLight(backdrop: BackdropDef): Vec3 {
+  return studioRimTint(backdrop).map(
+    (channel) => ROOM_LIGHT_MIN + (1 - ROOM_LIGHT_MIN) * Math.min(channel ** ROOM_LIGHT_GAMMA, 1),
+  ) as Vec3;
 }

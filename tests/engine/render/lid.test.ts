@@ -15,6 +15,8 @@ import {
   LID_NEAR,
   LID_REACH,
   LID_STEP,
+  SOFT_SHADOW_BEHIND,
+  SOFT_SHADOW_LEVEL,
 } from "../../../src/engine/stage/shaders/leg";
 import { OUTLINE_FRAGMENT_SHADER } from "../../../src/engine/stage/shaders/outline";
 import {
@@ -204,7 +206,7 @@ describe("what of a leg is seen through", () => {
     const blocks = [...LEG_FRAGMENT_SHADER.matchAll(early)].map((match) => lines(match[1]));
     expect(blocks).toHaveLength(2);
     expect(LEG_FRAGMENT_SHADER).toMatch(
-      /#ifdef LEG_INSIDE\n[^#]*float lit = 1\.0;\n#else\n\s*float lit = 1\.0 - castShadow\(\);\n#endif/,
+      /#ifdef LEG_INSIDE\n[^#]*float lit = 1\.0;\n#else\n\s*float lit = 1\.0 - castShadow\([^;]*\);\n#endif/,
     );
     expect(blocks[1]).toEqual([
       "float insideFade = mix(0.92, 1.0, smoothstep(uFadeStart - 0.10, uFadeStart, vFadeHeight));",
@@ -219,20 +221,62 @@ describe("what of a leg is seen through", () => {
     for (const shader of [CASTER_FRAGMENT_SHADER, CASTER_COVER_FRAGMENT_SHADER]) {
       expect(shader).toContain("if (vFadeHeight >= uFadeEnd) discard;");
     }
-    // How solid the leg is (red) and that it is there (green): no pattern of holes, which showed in the shadow.
+    // How solid the leg is (red), that it is there (green) and how near the light (blue): no pattern of holes,
+    // which showed in the shadow.
     expect(CASTER_COVER_FRAGMENT_SHADER).toContain(
-      "gl_FragColor = vec4(1.0 - smoothstep(uFadeStart, uFadeEnd, vFadeHeight), 1.0, 0.0, 1.0);",
+      "gl_FragColor = vec4(1.0 - smoothstep(uFadeStart, uFadeEnd, vFadeHeight), 1.0, 1.0 - gl_FragCoord.z, 1.0);",
     );
     expect(CASTER_FRAGMENT_SHADER).not.toMatch(/gl_FragCoord|smoothstep/);
     // The other leg's shader takes the two together at every point of the map it reads, red over green: read
     // between texels at the leg's edge, where both thin out alike, that is still how solid the leg is there.
     const at = /float castShadowAt\(vec2 at, float ref\) \{([^}]*)\}/.exec(LEG_FRAGMENT_SHADER)![1];
-    expect(at).toContain("vec2 cover = texture2D(uCastShadowCover, at).rg;");
+    expect(at).toContain("vec2 cover = textureLod(uCastShadowCover, at, 0.0).rg;");
     expect(at).toContain("return (1.0 - texture(uCastShadowMap, vec3(at, ref))) * cover.r / max(cover.g, 0.004);");
-    const shadow = /float castShadow\(\) \{([^}]*)\}/.exec(LEG_FRAGMENT_SHADER)![1];
+    const shadow = /float castShadow\(bool wide\) \{\n((?:.*\n)*?)\}\n/.exec(LEG_FRAGMENT_SHADER)![1];
     expect(shadow.match(/castShadowAt\(/g)).toHaveLength(5);
     expect(shadow).not.toContain("texture(");
     expect(shadow).toContain("return shadow / 6.0 * uCastShadowStrength;");
+    // In a dark room, where the shadow is dark, its edge is soft: read from the map's color where that is
+    // blurred, for a point that lies behind the other leg.
+    const soft = /if \(wide\) \{\n((?:.*\n)*?)  \}\n/.exec(shadow)![1];
+    expect(soft).not.toContain("castShadowAt(");
+    expect(soft).toContain(
+      `vec3 around = castCoverSmooth(sc.xy, ${SOFT_SHADOW_LEVEL} + int(round(log2(uCastShadowTexel * 1024.0))));`,
+    );
+    // That is read as a smooth curve through the texels of the blurred level, from four lookups: read straight
+    // from texel to texel, the edge of the shadow came out in steps.
+    const smooth = /vec3 castCoverSmooth\(vec2 at, int level\) \{\n((?:.*\n)*?)\}\n/.exec(LEG_FRAGMENT_SHADER)![1];
+    expect(smooth.match(/textureLod\(uCastShadowCover, /g)).toHaveLength(4);
+    expect(smooth).toContain("vec2 size = vec2(textureSize(uCastShadowCover, level));");
+    // The weights of a cubic B-spline: they add up to one wherever the point lies between two texels, and are
+    // those of the spline at a texel (a sixth, two thirds, a sixth).
+    const weights = (f: number) => {
+      const [w0, w1, w3] = [(1 - 3 * f + 3 * f * f - f ** 3) / 6, (4 - 6 * f * f + 3 * f ** 3) / 6, f ** 3 / 6];
+      return [w0, w1, 1 - w0 - w1 - w3, w3];
+    };
+    expect(smooth).toContain(
+      "vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0, w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;",
+    );
+    expect(smooth).toContain("vec2 w3 = f3 / 6.0, w2 = 1.0 - w0 - w1 - w3;");
+    weights(0).forEach((weight, i) => expect(weight).toBeCloseTo([1 / 6, 2 / 3, 1 / 6, 0][i], 12));
+    for (const f of [0.25, 0.5, 0.9]) {
+      expect(weights(f).every((weight) => weight >= 0)).toBe(true);
+      weights(1 - f)
+        .reverse()
+        .forEach((weight, i) => expect(weight).toBeCloseTo(weights(f)[i], 12));
+    }
+    expect(soft).toContain("float behind = (sc.z - (1.0 - around.b / max(around.g, 0.004))) * uCastShadowDepth;");
+    expect(soft).toContain(
+      `return around.r * smoothstep(0.0, ${SOFT_SHADOW_BEHIND.toFixed(3)}, behind) * uCastShadowStrength;`,
+    );
+    expect(shadow.indexOf("if (wide)")).toBeLessThan(shadow.indexOf("castShadowAt("));
+    expect(LEG_FRAGMENT_SHADER).toContain(
+      "float lit = 1.0 - castShadow(min(uRoomLight.r, min(uRoomLight.g, uRoomLight.b)) < 0.999);",
+    );
+    // Blurred over 8 texels of 1024, about a centimeter for legs that fill the map, and smoothed over four of
+    // those.
+    expect(2 ** SOFT_SHADOW_LEVEL).toBe(8);
+    expect(SOFT_SHADOW_BEHIND).toBe(0.03);
     // Half solid at the leg's edge (half of the texels around are the leg's), and half as solid in its fade.
     const solid = (cover: [number, number]) => cover[0] / Math.max(cover[1], 0.004);
     expect(solid([0.5, 0.5])).toBe(1);

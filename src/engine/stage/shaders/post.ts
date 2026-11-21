@@ -48,15 +48,17 @@ void main() {
 }
 `;
 
-// How solid the leg is where the light passes through it (red), and that it is there at all (green). Drawn with
-// the larger value kept, so of the walls of the leg the light passes through the most solid one counts. Read
-// between texels, both thin out alike toward the leg's edge: red over green is how solid the leg is right there.
+// How solid the leg is where the light passes through it (red), that it is there at all (green), and how near
+// the light it is (blue: one at the near end of the light's range). Drawn with the larger value kept, so of the
+// walls of the leg the light passes through the most solid one counts, and the nearest. Read between texels,
+// all thin out alike toward the leg's edge: red over green is how solid the leg is right there, and blue over
+// green how near. The map has smaller, blurred copies of itself, for a shadow with a soft edge (see castShadow).
 export const CASTER_COVER_FRAGMENT_SHADER = `
 uniform float uFadeStart, uFadeEnd;
 varying float vFadeHeight;
 void main() {
   if (vFadeHeight >= uFadeEnd) discard;
-  gl_FragColor = vec4(1.0 - smoothstep(uFadeStart, uFadeEnd, vFadeHeight), 1.0, 0.0, 1.0);
+  gl_FragColor = vec4(1.0 - smoothstep(uFadeStart, uFadeEnd, vFadeHeight), 1.0, 1.0 - gl_FragCoord.z, 1.0);
 }
 `;
 

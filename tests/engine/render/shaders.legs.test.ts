@@ -389,6 +389,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
         "LEG_VERTEX LEG_DEPTH_FRAGMENT": [
           "uBand",
           "uCastShadowCover",
+          "uCastShadowDepth",
           "uCastShadowMap",
           "uCastShadowMatrix",
           "uCastShadowStrength",
@@ -431,6 +432,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
           "uRim2Dir",
           "uRimColor",
           "uRimDir",
+          "uRoomLight",
           "uSecret",
           "uShade",
           "uSheenAmount",
@@ -449,6 +451,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
         "LEG_VERTEX LEG_DEPTH_FRAGMENT CURTAIN=1": [
           "uBand",
           "uCastShadowCover",
+          "uCastShadowDepth",
           "uCastShadowMap",
           "uCastShadowMatrix",
           "uCastShadowStrength",
@@ -491,6 +494,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
           "uRim2Dir",
           "uRimColor",
           "uRimDir",
+          "uRoomLight",
           "uSecret",
           "uShade",
           "uSheenAmount",
@@ -509,6 +513,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
         "LEG_VERTEX LEG_DEPTH_FRAGMENT CURTAIN=1 VEIL=1": [
           "uBand",
           "uCastShadowCover",
+          "uCastShadowDepth",
           "uCastShadowMap",
           "uCastShadowMatrix",
           "uCastShadowStrength",
@@ -551,6 +556,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
           "uRim2Dir",
           "uRimColor",
           "uRimDir",
+          "uRoomLight",
           "uSecret",
           "uShade",
           "uSheenAmount",
@@ -569,6 +575,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
         "LEG_VERTEX LEG_DEPTH_FRAGMENT FAR_PLANE=1": [
           "uBand",
           "uCastShadowCover",
+          "uCastShadowDepth",
           "uCastShadowMap",
           "uCastShadowMatrix",
           "uCastShadowStrength",
@@ -611,6 +618,7 @@ describe("leg, bow, outline, shadow and post shaders", () => {
           "uRim2Dir",
           "uRimColor",
           "uRimDir",
+          "uRoomLight",
           "uSecret",
           "uShade",
           "uSheenAmount",

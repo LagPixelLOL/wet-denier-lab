@@ -13,7 +13,7 @@ import type { Vec3 } from "../rig/joints";
 import type { LegRigTarget } from "../rig/LegRig";
 import type { LegPose } from "../rig/skinning";
 import { createBowGeometry } from "./bow";
-import { BACKDROPS, SCENES, makeCustomBackdrop, studioEnv, studioRimTint } from "./scenes";
+import { BACKDROPS, SCENES, makeCustomBackdrop, studioEnv, studioRimTint, studioRoomLight } from "./scenes";
 import type { BackdropDef, SceneDef } from "./scenes";
 import { BACKDROP_FRAGMENT_SHADER, BACKDROP_VERTEX_SHADER } from "./shaders/backdrop";
 import { BOW_FRAGMENT_SHADER, BOW_VERTEX_SHADER } from "./shaders/bow";
@@ -70,6 +70,8 @@ export type LightUniforms = {
   uRimColor: U<THREE.Color>;
   uFillTop: U<THREE.Vector3>;
   uFillBottom: U<THREE.Vector3>;
+  /** The light the room throws onto what the key light does not reach (see studioRoomLight). */
+  uRoomLight: U<THREE.Vector3>;
   uRim2Dir: U<THREE.Vector3>;
   uRim2Color: U<THREE.Color>;
   uEnvLo: U<THREE.Vector3>;
@@ -133,6 +135,8 @@ export type RigUniforms = {
 export type CastShadowUniforms = {
   uCastShadowMatrix: U<THREE.Matrix4>;
   uCastShadowTexel: U<number>;
+  /** How deep the light's range is, from its near end to its far end (m). */
+  uCastShadowDepth: U<number>;
 };
 
 /** Per-leg stocking look (see LegLook). */
@@ -184,6 +188,8 @@ export type StockingUniforms = CastShadowUniforms & {
 };
 
 export type OutlineUniforms = RigUniforms & {
+  uKeyDir: U<THREE.Vector3>;
+  uRoomLight: U<THREE.Vector3>;
   uResolution: U<THREE.Vector2>;
   uLineWidth: U<number>;
   uOutlineColor: U<THREE.Color>;
@@ -437,6 +443,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     uFillBottom: {
       value: new THREE.Vector3(0.8, 0.76, 0.86),
     },
+    uRoomLight: {
+      value: new THREE.Vector3(1, 1, 1),
+    },
     uRim2Dir: {
       value: new THREE.Vector3(0, 0, 1),
     },
@@ -629,14 +638,21 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     uCastShadowTexel: {
       value: 1 / shadowMapSize,
     },
+    uCastShadowDepth: {
+      value: 1,
+    },
   };
   const lightCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 6);
   const castTargets = [0, 1].map(() => {
     const depthTexture = new THREE.DepthTexture(shadowMapSize, shadowMapSize);
     depthTexture.compareFunction = THREE.LessEqualCompare;
     depthTexture.minFilter = depthTexture.magFilter = THREE.LinearFilter;
+    // Its color has smaller, blurred copies of itself: a shadow with a soft edge is read from those.
     return new THREE.WebGLRenderTarget(shadowMapSize, shadowMapSize, {
       depthTexture: depthTexture,
+      type: THREE.HalfFloatType,
+      generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter,
     });
   });
   // Each leg samples the other leg's map through a shadow sampler, even while only one leg is shown and the maps
@@ -1132,6 +1148,8 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       };
     };
     const outlineUniforms: OutlineUniforms = {
+      uKeyDir: lightUniforms.uKeyDir,
+      uRoomLight: lightUniforms.uRoomLight,
       uResolution: backdropUniforms.uResolution,
       uLineWidth: lineWidth,
       uOutlineColor: {
@@ -1790,6 +1808,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     lightCamera.near = Math.max(0.05, minZ - 0.3);
     lightCamera.far = maxZ + 0.3;
     lightCamera.updateProjectionMatrix();
+    castShadowUniforms.uCastShadowDepth.value = lightCamera.far - lightCamera.near;
     castShadowUniforms.uCastShadowMatrix.value
       .multiplyMatrices(biasMatrix, lightCamera.projectionMatrix)
       .multiply(lightCamera.matrixWorldInverse);
@@ -1958,6 +1977,8 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       const [rimR, rimG, rimB] = studioRimTint(currentBackdrop);
       const rim = lightUniforms.uRimColor.value.set(currentScene.light.rim);
       rim.setRGB(rim.r * rimR, rim.g * rimG, rim.b * rimB);
+      // And so does the light on the side of the legs that the lamp does not reach.
+      lightUniforms.uRoomLight.value.set(...studioRoomLight(currentBackdrop));
     }
   }
   function setScene(sceneKey: string): SceneDef {
@@ -1969,6 +1990,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     lightUniforms.uRimColor.value.set(lightDef.rim);
     lightUniforms.uFillTop.value.set(...lightDef.fillTop);
     lightUniforms.uFillBottom.value.set(...lightDef.fillBottom);
+    lightUniforms.uRoomLight.value.set(...lightDef.room);
     lightUniforms.uRim2Color.value.set(lightDef.rim2);
     lightUniforms.uRim2Dir.value.set(...lightDef.rim2Dir).normalize();
     lightUniforms.uEnvLo.value.set(...lightDef.envLo);

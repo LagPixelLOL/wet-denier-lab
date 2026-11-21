@@ -16,10 +16,17 @@ import {
   makeCustomBackdrop,
   studioEnv,
   studioRimTint,
+  studioRoomLight,
 } from "../../../src/engine/stage/scenes";
-import { BOW_VERTEX_SHADER } from "../../../src/engine/stage/shaders/bow";
+import { BOW_FRAGMENT_SHADER, BOW_VERTEX_SHADER } from "../../../src/engine/stage/shaders/bow";
 import { CUFF_PRESS, cuffPressAt } from "../../../src/engine/model/cuffPress";
-import { CUFF_PRESS_GLSL, LEG_VERTEX_SHADER, LID_NEAR } from "../../../src/engine/stage/shaders/leg";
+import {
+  CUFF_PRESS_GLSL,
+  LEG_FRAGMENT_SHADER,
+  LEG_VERTEX_SHADER,
+  LID_NEAR,
+  ROOM_LIGHT_GLSL,
+} from "../../../src/engine/stage/shaders/leg";
 import { CASTER_COVER_FRAGMENT_SHADER, CASTER_VERTEX_SHADER } from "../../../src/engine/stage/shaders/post";
 import { OUTLINE_FRAGMENT_SHADER, OUTLINE_VERTEX_SHADER } from "../../../src/engine/stage/shaders/outline";
 import { digestRounded } from "../../helpers/digest";
@@ -269,6 +276,7 @@ describe("setScene", () => {
       expect(hex(light.uRim2Color.value)).toBe(def.light.rim2);
       expect(vec(light.uFillTop.value)).toEqual(def.light.fillTop);
       expect(vec(light.uFillBottom.value)).toEqual(def.light.fillBottom);
+      expect(vec(light.uRoomLight.value)).toEqual(def.light.room);
       expect(vec(light.uEnvLo.value)).toEqual(def.light.envLo);
       expect(vec(light.uEnvHi.value)).toEqual(def.light.envHi);
       expect(vec(light.uEnvAColor.value)).toEqual(def.light.envA);
@@ -376,6 +384,51 @@ describe("setBackdrop", () => {
     expect(hex(rim)).toBe(SCENES.street.light.rim);
     stage.setScene("studio");
     expect(hex(rim)).toBe(SCENES.studio.light.rim);
+  });
+
+  it("lights the side of the legs that the lamp does not reach as the studio's backdrop does, and the scenes' own way", () => {
+    const { stage } = buildStage();
+    const room = stage.uniforms.light.uRoomLight.value;
+    for (const key of [...BACKDROP_ORDER, "#000000", "#7a1020"]) {
+      stage.setBackdrop(key);
+      expect([key, room.toArray()]).toEqual([key, studioRoomLight(BACKDROPS[key] ?? makeCustomBackdrop(key))]);
+    }
+    stage.setBackdrop("#000000");
+    expect(Math.max(...room.toArray())).toBeLessThan(0.3);
+    // The street at night is a dark room of its own, whatever the studio's backdrop; the bath is a light one.
+    stage.setScene("street");
+    expect(room.toArray()).toEqual(SCENES.street.light.room);
+    stage.setBackdrop("lilac");
+    expect(room.toArray()).toEqual(SCENES.street.light.room);
+    stage.setScene("bath");
+    expect(room.toArray()).toEqual([1, 1, 1]);
+    stage.setBackdrop("#000000");
+    expect(room.toArray()).toEqual([1, 1, 1]);
+    // Back in the studio, in front of the backdrop that was chosen meanwhile.
+    stage.setScene("studio");
+    expect(room.toArray()).toEqual(studioRoomLight(makeCustomBackdrop("#000000")));
+    // The legs, the bows on them and the lines around them all read the same light.
+    for (const leg of stage.legs) {
+      expect(leg.stocking.material.uniforms.uRoomLight).toBe(stage.uniforms.light.uRoomLight);
+      expect(leg.bow.material.uniforms.uRoomLight).toBe(stage.uniforms.light.uRoomLight);
+      expect(leg.outlineUniforms.uRoomLight).toBe(stage.uniforms.light.uRoomLight);
+      expect(leg.outlineUniforms.uKeyDir).toBe(stage.uniforms.light.uKeyDir);
+    }
+    for (const shader of [LEG_FRAGMENT_SHADER, BOW_FRAGMENT_SHADER, OUTLINE_FRAGMENT_SHADER]) {
+      expect(shader).toContain(ROOM_LIGHT_GLSL);
+    }
+    // The lamp's light goes over into the room's softly, most of the way round the leg, and the other leg's
+    // shadow takes only part of the lamp's light away.
+    expect(ROOM_LIGHT_GLSL).toContain(
+      "return mix(uRoomLight, vec3(1.0), smoothstep(-0.9, 0.6, ndl) * mix(0.4, 1.0, lit));",
+    );
+    expect(LEG_FRAGMENT_SHADER).toContain("vec3 roomLit = roomLight(ndl, lit);");
+    expect(LEG_FRAGMENT_SHADER).toContain(
+      "vec3 hemi = mix(uFillBottom, uFillTop, n.y * uMirrorFlipY * 0.5 + 0.5) * roomLit;",
+    );
+    expect(BOW_FRAGMENT_SHADER).toContain("* roomLight(dot(n, uKeyDir), 1.0);");
+    expect(OUTLINE_FRAGMENT_SHADER).toContain("* roomLight(vKeyLit, 1.0), alpha);");
+    expect(OUTLINE_VERTEX_SHADER).toContain("vKeyLit = dot(normalize(mat3(modelMatrix) * n), uKeyDir);");
   });
 
   it("builds a custom backdrop from a hex color, or takes a def as is", () => {
@@ -1242,6 +1295,15 @@ describe("leg pose, opacity and order", () => {
     // Each leg reads the other leg's map: its depth and its color.
     const other = stage.legs[1];
     expect(leg.fabric.uCastShadowCover.value).toBe(leg.fabric.uCastShadowMap.value!.renderTarget!.texture);
+    // The map's color has smaller, blurred copies of itself, for a shadow with a soft edge in a dark room, and
+    // the room to hold how near the light the leg is.
+    const coverMap = leg.fabric.uCastShadowCover.value;
+    expect([coverMap.generateMipmaps, coverMap.minFilter, coverMap.type]).toEqual([
+      true,
+      THREE.LinearMipmapLinearFilter,
+      THREE.HalfFloatType,
+    ]);
+    expect(leg.fabric.uCastShadowDepth).toBe(other.fabric.uCastShadowDepth);
     expect(other.fabric.uCastShadowCover.value).not.toBe(leg.fabric.uCastShadowCover.value);
     // Every length fades out at the same height, and has the same outline there...
     const stockings = { center: leg.fabric.uLidC.value.toArray(), radii: leg.fabric.uLidR.value };

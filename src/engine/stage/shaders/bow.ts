@@ -2,7 +2,7 @@
  * Bow shaders.
  */
 import { LEG_SKINNING_GLSL } from "../../rig/joints";
-import { CUFF_PRESS_GLSL } from "./leg";
+import { CUFF_PRESS_GLSL, ROOM_LIGHT_GLSL } from "./leg";
 
 export const BOW_VERTEX_SHADER = `
 ${LEG_SKINNING_GLSL}${CUFF_PRESS_GLSL}uniform mat4 uBowMatrix;
@@ -29,13 +29,14 @@ uniform vec3 uKeyDir, uKeyColor, uFillTop, uFillBottom, uBowColor, uBowShade;
 uniform float uFadeStart, uFadeEnd, uOpacity;
 varying vec3 vWorldPos, vNormal, vLocalPos;
 varying float vFadeHeight;
-void main() {
+${ROOM_LIGHT_GLSL}void main() {
   vec3 n = normalize(vNormal);
   if (!gl_FrontFacing) n = -n;
   vec3 v = normalize(cameraPosition - vWorldPos);
   float ndv = clamp(dot(n, v), 0.0, 1.0);
   float lit = smoothstep(-0.1, 0.25, dot(n, uKeyDir));
-  vec3 hemi = mix(uFillBottom, uFillTop, n.y * 0.5 + 0.5);
+  // What the lamp does not reach is lit by the room alone.
+  vec3 hemi = mix(uFillBottom, uFillTop, n.y * 0.5 + 0.5) * roomLight(dot(n, uKeyDir), 1.0);
   vec3 col = uBowColor * mix(uBowShade, vec3(1.0), lit) * hemi;
   col += uKeyColor * 0.26 * pow(max(dot(n, normalize(uKeyDir + v)), 0.0), 18.0);
   col *= 0.80 + 0.20 * smoothstep(0.0, 0.008, abs(vLocalPos.x));

@@ -4,9 +4,11 @@ import {
   BACKDROP_ORDER,
   SCENES,
   SCENE_ORDER,
+  ROOM_LIGHT_MIN,
   makeCustomBackdrop,
   studioEnv,
   studioRimTint,
+  studioRoomLight,
 } from "../../../src/engine/stage/scenes";
 
 const HEX = /^#[0-9a-f]{6}$/;
@@ -228,6 +230,60 @@ describe("studioRimTint", () => {
     const tint = studioRimTint(backdrop);
     for (let i = 0; i < 3; i++) {
       expect(tint[i]).toBeCloseTo((env.envLo[i] + env.envHi[i]) / 2, 12);
+    }
+  });
+});
+
+describe("studioRoomLight", () => {
+  it("leaves the side of the legs that the lamp does not reach as light as it is in the lilac room", () => {
+    expect(studioRoomLight(BACKDROPS.lilac)).toEqual([1, 1, 1]);
+    expect(SCENES.studio.light.room).toEqual([1, 1, 1]);
+  });
+
+  it("is never more than that, and about as much in front of the pale backdrops, tinted their way", () => {
+    for (const key of ["sakura", "mint", "cream", "sky"] as const) {
+      const room = studioRoomLight(BACKDROPS[key]);
+      expect(Math.max(...room)).toBe(1);
+      expect(Math.min(...room)).toBeGreaterThan(0.9);
+    }
+    expect(studioRoomLight(makeCustomBackdrop("#ffffff"))).toEqual([1, 1, 1]);
+    const [red, , blue] = studioRoomLight(BACKDROPS.sakura);
+    expect(red).toBeGreaterThan(blue);
+  });
+
+  it("makes it dark in a black room, but not black: the leg is still to be seen", () => {
+    expect(ROOM_LIGHT_MIN).toBe(0.2);
+    for (const channel of studioRoomLight(makeCustomBackdrop("#000000"))) {
+      expect(channel).toBeGreaterThan(ROOM_LIGHT_MIN);
+      expect(channel).toBeLessThan(ROOM_LIGHT_MIN + 0.07);
+    }
+  });
+
+  it("goes by how light the room looks: dimmer in front of the dusk backdrop, the more the darker the room", () => {
+    const dusk = studioRoomLight(BACKDROPS.dusk);
+    // The dusk backdrop gives off a twentieth of the lilac one's light, and looks about a quarter as light.
+    expect(Math.max(...studioRimTint(BACKDROPS.dusk))).toBeLessThan(0.12);
+    expect(Math.min(...dusk)).toBeGreaterThan(0.38);
+    expect(Math.max(...dusk)).toBeLessThan(0.55);
+    // Bluish, like the room.
+    expect(dusk[2]).toBeGreaterThan(dusk[0]);
+    const greys = ["#000000", "#202020", "#404040", "#808080", "#c0c0c0"].map(
+      (hex) => studioRoomLight(makeCustomBackdrop(hex))[1],
+    );
+    expect(greys).toEqual([...greys].sort((a, b) => a - b));
+    expect(new Set(greys).size).toBe(greys.length);
+  });
+
+  it("gives the scenes a room of their own: light, but for the street at night", () => {
+    for (const key of SCENE_ORDER) {
+      const room = SCENES[key].light.room;
+      expect(room).toHaveLength(3);
+      if (key === "street") {
+        expect(Math.max(...room)).toBeLessThan(0.7);
+        expect(Math.min(...room)).toBeGreaterThan(0.5);
+      } else {
+        expect(room).toEqual([1, 1, 1]);
+      }
     }
   });
 });

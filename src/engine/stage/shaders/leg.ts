@@ -44,6 +44,29 @@ export const LID_BINS = 32;
  */
 export const LID_REACH = 0.97;
 
+/**
+ * How much light reaches a surface that faces the lamp by `ndl` (the cosine of the angle between them) and that
+ * the other leg shades by 1 - `lit`. The lamp lights the side that faces it. The rest is lit by the room alone,
+ * which in the studio is as light as its backdrop (uRoomLight, see studioRoomLight): in a dark room the side of
+ * a leg that is turned away from the lamp is dark. The one goes over into the other softly, most of the way
+ * round the leg, and a shadow from the other leg takes only part of the lamp's light away: this is how dark a
+ * leg gets, not where the edge of its shade is drawn (that is the leg's own shading, as in any room).
+ */
+export const ROOM_LIGHT_GLSL = `
+uniform vec3 uRoomLight;
+vec3 roomLight(float ndl, float lit) {
+  return mix(uRoomLight, vec3(1.0), smoothstep(-0.9, 0.6, ndl) * mix(0.4, 1.0, lit));
+}
+`;
+
+/**
+ * The soft edge of the other leg's shadow in a dark room: which level of the shadow map's color it is read from
+ * (of a map 1024 texels across: each level blurs twice as far), and how far behind the other leg a point has to
+ * lie to be in all of its shadow (m).
+ */
+export const SOFT_SHADOW_LEVEL = 3;
+export const SOFT_SHADOW_BEHIND = 0.03;
+
 /** The band of the stocking the lace cuff is drawn for (m): a thigh-high's. Other lengths scale the lace by theirs. */
 export const LACE_BAND = 0.05;
 
@@ -228,7 +251,7 @@ uniform float uFadeStart, uFadeEnd, uTime, uOpacity, uInto;
 uniform highp sampler2DShadow uCastShadowMap;
 uniform sampler2D uCastShadowCover;
 uniform mat4 uCastShadowMatrix;
-uniform float uCastShadowStrength, uCastShadowTexel;
+uniform float uCastShadowStrength, uCastShadowTexel, uCastShadowDepth;
 uniform float uHighlightFalloff, uKnitMean;
 uniform vec4 uNailCenter[${NAIL_COUNT}], uNailForward[${NAIL_COUNT}];
 uniform vec3 uNailNormal[${NAIL_COUNT}];
@@ -243,13 +266,40 @@ ${CAUSTICS_GLSL}// How much of the light the other leg takes at one point of its
 // (the map's depth), times how solid it is there (the map's color: see CASTER_COVER_FRAGMENT_SHADER), so that the
 // shadow of a leg's top fades out with it.
 float castShadowAt(vec2 at, float ref) {
-  vec2 cover = texture2D(uCastShadowCover, at).rg;
+  vec2 cover = textureLod(uCastShadowCover, at, 0.0).rg;
   return (1.0 - texture(uCastShadowMap, vec3(at, ref))) * cover.r / max(cover.g, 0.004);
 }
-float castShadow() {
+// The shadow map's color at one of its smaller, blurred levels, read smoothly: as a curve through the texels
+// around the point (a cubic B-spline, from four lookups that the sampler blends), not as straight pieces between
+// them, whose corners show as steps along a shadow's edge.
+vec3 castCoverSmooth(vec2 at, int level) {
+  vec2 size = vec2(textureSize(uCastShadowCover, level));
+  vec2 texel = at * size - 0.5, f = fract(texel);
+  texel -= f;
+  vec2 f2 = f * f, f3 = f2 * f;
+  vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0, w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+  vec2 w3 = f3 / 6.0, w2 = 1.0 - w0 - w1 - w3;
+  vec2 near = w0 + w1, far = w2 + w3;
+  vec2 atNear = (texel - 0.5 + w1 / near) / size, atFar = (texel + 1.5 + w3 / far) / size;
+  float lod = float(level);
+  vec3 top = mix(textureLod(uCastShadowCover, vec2(atFar.x, atNear.y), lod).rgb, textureLod(uCastShadowCover, atNear, lod).rgb, near.x);
+  vec3 bottom = mix(textureLod(uCastShadowCover, atFar, lod).rgb, textureLod(uCastShadowCover, vec2(atNear.x, atFar.y), lod).rgb, near.x);
+  return mix(bottom, top, near.y);
+}
+// The other leg's shadow here. In a dark room it is a dark shadow (see roomLight), and gets a soft edge
+// (wide): from the map's color alone, read where it is blurred (SOFT_SHADOW_LEVEL: how solid the leg is all
+// around the point, which is how much light it takes, and how near the light it is there), for a point that
+// lies behind the leg by more than a little (SOFT_SHADOW_BEHIND). The edge of a shadow as faint as the lilac
+// studio's needs no more than it has.
+float castShadow(bool wide) {
   if (uCastShadowStrength < 0.004) return 0.0;
   vec4 sc = uCastShadowMatrix * vec4(vWorldPos, 1.0);
   if (sc.x <= 0.0 || sc.x >= 1.0 || sc.y <= 0.0 || sc.y >= 1.0) return 0.0;
+  if (wide) {
+    vec3 around = castCoverSmooth(sc.xy, ${SOFT_SHADOW_LEVEL} + int(round(log2(uCastShadowTexel * 1024.0))));
+    float behind = (sc.z - (1.0 - around.b / max(around.g, 0.004))) * uCastShadowDepth;
+    return around.r * smoothstep(0.0, ${SOFT_SHADOW_BEHIND.toFixed(3)}, behind) * uCastShadowStrength;
+  }
   float ref = sc.z - 0.0025;
   vec2 texel = vec2(uCastShadowTexel);
   float shadow = castShadowAt(sc.xy, ref) * 2.0;
@@ -379,7 +429,7 @@ float laceCuff(float x, float depth, out float cut) {
   density = max(density, hemLine);
   return mix(12.0, 190.0, density);
 }
-${LID_GLSL}void main() {
+${LID_GLSL}${ROOM_LIGHT_GLSL}void main() {
   ${forefootClipGlsl("vRestPos")}
   // The passes for the fading top of the leg (its outside), for its inside alone, and for the solid leg up to
   // the top of the band above the ankle (LOW_PART) and from there up (HIGH_PART): see the depth shader, and
@@ -436,10 +486,12 @@ ${LID_GLSL}void main() {
   // All but invisible: the other leg's shadow would not tell on it.
   float lit = 1.0;
 #else
-  float lit = 1.0 - castShadow();
+  float lit = 1.0 - castShadow(min(uRoomLight.r, min(uRoomLight.g, uRoomLight.b)) < 0.999);
 #endif
   float hardLit = smoothstep(-0.04, 0.10, ndl) * lit;
-  vec3 hemi = mix(uFillBottom, uFillTop, n.y * uMirrorFlipY * 0.5 + 0.5);
+  float fabLit = smoothstep(-0.28, 0.34, ndl) * lit;
+  vec3 roomLit = roomLight(ndl, lit);
+  vec3 hemi = mix(uFillBottom, uFillTop, n.y * uMirrorFlipY * 0.5 + 0.5) * roomLit;
   float rim = smoothstep(0.62, 0.86, outline) * smoothstep(0.0, 0.35, dot(n, uRimDir));
   float skinLit = mix(smoothstep(-0.34, 0.46, ndl) * lit, hardLit, 0.3);
   vec3 bareSkin = mix(uSkinShade, uSkinLit, skinLit);
@@ -560,7 +612,6 @@ ${LID_GLSL}void main() {
   float knit = texture2D(uKnitTex, vUv * vec2(1150.0, 1500.0) * uMatKnit.w).r;
   float knitAmt = (isNet ? 0.0 : uMatKnit.x) * (1.0 - 0.75 * wetness);
   sheer = clamp(sheer * (1.0 + knitAmt * (0.5 - knit) * 1.6), 0.0, 1.0);
-  float fabLit = smoothstep(-0.28, 0.34, ndl) * lit;
   vec3 dyeDark = dye * (1.0 - uMatWet.y * wetness * (1.0 - 0.8 * uWetDye.a));
   // Fuzzy fabrics (cotton, velvet) scatter light off their fibers: their sheen and the rim lights on them are
   // softer and broken up by the fibers' grain, the knit and the ribs, where a smooth yarn gives a clean highlight.
@@ -576,8 +627,8 @@ ${LID_GLSL}void main() {
     float grain = 1.0 + clamp(1.3 - grainSize, 0.0, 1.0) * (0.55 * valueNoise(vUv * 4200.0) + 0.3 * valueNoise(vUv * vec2(9500.0, 2100.0)));
     fuzzShade = mix(1.0, grain * ribShade * mix(1.0, knit / uKnitMean, 0.6), fuzz);
   }
-  fabCol += uSheenColor * pow(outline, uMatKnit.z) * uSheenAmount * (1.0 - wetness) * mix(0.45, 1.0, fabLit) * mix(1.0, 0.6, fuzz) * fuzzShade;
-  fabCol += (0.5 + 0.5 * cos(6.2832 * (ndv * 0.75 + vec3(0.05, 0.38, 0.70)))) * vec3(0.040, 0.030, 0.045) * uMatWet.w * mix(0.5, 1.0, fabLit);
+  fabCol += uSheenColor * pow(outline, uMatKnit.z) * uSheenAmount * (1.0 - wetness) * mix(0.45, 1.0, fabLit) * roomLit * mix(1.0, 0.6, fuzz) * fuzzShade;
+  fabCol += (0.5 + 0.5 * cos(6.2832 * (ndv * 0.75 + vec3(0.05, 0.38, 0.70)))) * vec3(0.040, 0.030, 0.045) * uMatWet.w * mix(0.5, 1.0, fabLit) * roomLit;
   vec3 dyeHue = dye / max(max(dye.r, dye.g), max(dye.b, 0.02));
   vec3 throughTint = mix(vec3(1.0), dyeHue, uThrough);
   if (uSecret.a > 0.5) {
@@ -610,7 +661,7 @@ ${LID_GLSL}void main() {
     float strap = (1.0 - aaStep(0.0072, strapD)) * aaStep(0.004, cuffDy);
     float clip = (1.0 - aaStep(0.0098, strapD)) * aaStep(-0.011, cuffDy) * (1.0 - aaStep(0.006, cuffDy));
     vec3 strapCol = (uDye * 0.92 + 0.02) * mix(uShade, vec3(1.0), fabLit) * hemi;
-    strapCol += uSheenColor * 0.16 * (1.0 - smoothstep(0.0, 0.0072, strapD)) * mix(0.4, 1.0, fabLit);
+    strapCol += uSheenColor * 0.16 * (1.0 - smoothstep(0.0, 0.0072, strapD)) * mix(0.4, 1.0, fabLit) * roomLit;
     strapCol *= 1.0 - 0.25 * smoothstep(0.0052, 0.0072, strapD);
     vec3 clipCol = vec3(0.80, 0.80, 0.86) * mix(0.55, 1.15, fabLit) * hemi + vec3(0.5) * pow(max(dot(n, normalize(uKeyDir + v)), 0.0), 30.0);
     col *= 1.0 - 0.14 * (1.0 - smoothstep(0.0072, 0.0115, strapD)) * aaStep(0.004, cuffDy) * (1.0 - strap);
