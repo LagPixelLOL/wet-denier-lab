@@ -137,6 +137,7 @@ export type StockingUniforms = CastShadowUniforms & {
   uGloss: U<number>;
   uCuffY: U<number>;
   uHasCuff: U<number>;
+  /** How much the cuff presses into the leg (0 or 1): the skin bulges above its edge and is drawn in below it. */
   uCuffBulge: U<number>;
   /** Which side of the forefoot's join this surface is drawn on (see forefootClipGlsl). */
   uClip: U<number>;
@@ -620,7 +621,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
         value: defaultLook.hasCuff,
       },
       uCuffBulge: {
-        value: 1,
+        value: defaultLook.hasCuff,
       },
       uClip: {
         value: 0,
@@ -1300,6 +1301,8 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     fabric.uGloss.value = look.gloss;
     fabric.uCuffY.value = look.cuffY;
     fabric.uHasCuff.value = look.hasCuff;
+    // Only a cuff presses into the leg: tights have none, so their line at cuffY leaves the leg's shape alone.
+    fabric.uCuffBulge.value = look.hasCuff;
     fabric.uCuffStyle.value = look.cuff;
     fabric.uBand.value = look.band;
     fabric.uGarter.value = look.garter;

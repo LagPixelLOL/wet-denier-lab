@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
+import { STOCKING_LENGTH_ORDER } from "../../../src/engine/catalog/garments";
 import { DEFAULT_LEG_SPEC, PRESETS } from "../../../src/engine/catalog/presets";
 import type { LegSpec } from "../../../src/engine/catalog/presets";
 import { resolveLegLook } from "../../../src/engine/catalog/resolveLegLook";
@@ -62,6 +63,7 @@ function expectLookApplied(leg: StageLeg, look: LegLook, { initial = false } = {
     gloss: f.uGloss.value,
     cuffY: f.uCuffY.value,
     hasCuff: f.uHasCuff.value,
+    cuffBulge: f.uCuffBulge.value,
     cuff: f.uCuffStyle.value,
     band: f.uBand.value,
     garter: f.uGarter.value,
@@ -78,6 +80,7 @@ function expectLookApplied(leg: StageLeg, look: LegLook, { initial = false } = {
     gloss: look.gloss,
     cuffY: look.cuffY,
     hasCuff: look.hasCuff,
+    cuffBulge: look.hasCuff,
     cuff: look.cuff,
     band: look.band,
     garter: look.garter,
@@ -535,6 +538,20 @@ describe("setStocking", () => {
     expect(stage.legs[1].skinParts.every((part) => part.visible)).toBe(true);
     stage.setStocking(0, resolveLegLook({ length: "knee" }));
     expect(stage.legs[0].skinParts.every((part) => part.visible)).toBe(true);
+  });
+
+  it("presses the cuff into the leg for every length but tights, which have no cuff", () => {
+    const { stage } = buildStage();
+    const [leg, other] = stage.legs;
+    for (const length of STOCKING_LENGTH_ORDER) {
+      stage.setStocking(0, resolveLegLook({ length }));
+      expect([length, leg.fabric.uCuffBulge.value]).toEqual([length, length === "tights" ? 0 : 1]);
+      // Every pass that places the stocking's vertices reads the same uniform, so they all agree on its shape.
+      for (const part of [...leg.stockingParts, ...leg.stockingFrontParts, ...leg.forefootParts]) {
+        expect(part.material.uniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
+      }
+      expect(other.fabric.uCuffBulge.value).toBe(1);
+    }
   });
 });
 
