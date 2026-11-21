@@ -11,6 +11,7 @@ import { frontLeg, updateAwayLeg } from "./scene";
 import { pick, pourAt, splashAt } from "./splash";
 import { state } from "./state";
 import { refreshThumbs, renderThumb, thumbJobs } from "./thumbnails";
+import { AIR_DRY_RATE } from "../water/shaders/wet";
 
 export function resize() {
   const w = app.canvas.clientWidth;
@@ -181,7 +182,7 @@ export function step(now: number, fixedDt?: number) {
   if (app.dryTimer > 0) {
     app.dryTimer -= dt;
     if (app.dryTimer <= 0) {
-      app.wetmap.updateMat.uniforms.uDryRate.value = 1 / 70;
+      app.wetmap.updateMat.uniforms.uDryRate.value = AIR_DRY_RATE;
     }
   }
   app.water.update(simDt);

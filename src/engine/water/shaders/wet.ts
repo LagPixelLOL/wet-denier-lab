@@ -11,6 +11,9 @@ const POS_Y_OFFSET = 0.44;
  */
 export const SKIN_EDGE = 0.006;
 
+/** How fast the surface dries in the air by itself (the wet map's uDryRate when nothing is wiping it dry). */
+export const AIR_DRY_RATE = 1 / 70;
+
 /** A stocking top for a leg with no bare skin above its fabric (tights), or bare all over. */
 export const NO_SKIN_ABOVE = 100;
 
@@ -126,7 +129,9 @@ ${WET_SURFACE_GLSL}void main() {
   soak += wick * uWickRate * water.y * uDt;
   soak = max(0.0, soak - uDryRate * uDt);
   film = max(0.0, film - (uDryRate * 1.5 + water.z) * uDt);
-  fresh = max(0.0, fresh - uDt * 2.2);
+  // The flash of fresh water fades by itself, and adds up without limit where water keeps hitting. Wiping dry (a
+  // dry rate above the air's own) takes it along with the rest, however much has piled up.
+  fresh = max(0.0, fresh - uDt * 2.2) * exp(-max(uDryRate - ${AIR_DRY_RATE}, 0.0) * 3.0 * uDt);
   gl_FragColor = vec4(min(soak, 1.6), min(film, 1.6), fresh, 1.0);
 }
 `;

@@ -181,6 +181,10 @@ the leg at rest for that, and a drop carries its own. Around the top the one way
 narrow band (`SKIN_EDGE` in `water/shaders/wet.ts`) instead of at a line, so a drop running down from the skin is
 taken up as it reaches the fabric and a wet patch across the top is not cut off along it.
 
+Drying (the Dry button) raises the wet map's dry rate for a moment. That takes the soaked water and the film with it,
+and the white flash of freshly hit water too, which otherwise only fades at a fixed pace and piles up under a long
+pour (`AIR_DRY_RATE` is the rate when nothing is wiping).
+
 The rim lights and the sheen belong to the leg's outline. They go by how far the surface is turned away from the eye
 around the leg (`outline` in the leg's fragment shader), not by its angle to the line of sight: looking down or up
 along a leg, all of its surface is seen at a glancing angle, and by that angle they would cover the whole leg instead

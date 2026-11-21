@@ -4,6 +4,7 @@
  */
 import * as THREE from "three";
 import {
+  AIR_DRY_RATE,
   NO_SKIN_ABOVE,
   WET_BAKE_FRAGMENT_SHADER,
   WET_BAKE_VERTEX_SHADER,
@@ -151,7 +152,7 @@ export class WetMap {
           value: 0,
         },
         uDryRate: {
-          value: 1 / 70,
+          value: AIR_DRY_RATE,
         },
         uAbsorbRate: {
           value: 0.22,

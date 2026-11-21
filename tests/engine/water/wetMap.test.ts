@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BARE_SKIN_WATER, MATERIALS } from "../../../src/engine/catalog/garments";
-import { NO_SKIN_ABOVE, SKIN_EDGE, skinAbove } from "../../../src/engine/water/shaders/wet";
+import { AIR_DRY_RATE, NO_SKIN_ABOVE, SKIN_EDGE, skinAbove } from "../../../src/engine/water/shaders/wet";
 import type { SurfaceHit } from "../../../src/engine/surface/SurfaceGrid";
 import {
   WET_BAKE_FRAGMENT_SHADER,
@@ -217,6 +217,24 @@ describe("WetMap.setLegWater", () => {
     expect(WET_STAMP_FRAGMENT_SHADER).toContain(
       "gl_FragColor = vec4(vStampAmt.x * take * amt, vStampAmt.yz * amt, 0.0);",
     );
+  });
+});
+
+describe("wiping dry", () => {
+  it("takes the flash of fresh water along, however much of it has piled up", () => {
+    const { wetmap } = waterWorld();
+    // The surface dries in the air at this rate until something wipes it.
+    expect(wetmap.updateMat.uniforms.uDryRate.value).toBe(AIR_DRY_RATE);
+    expect(AIR_DRY_RATE).toBeCloseTo(1 / 70, 12);
+    expect(WET_UPDATE_FRAGMENT_SHADER).toContain(
+      `fresh = max(0.0, fresh - uDt * 2.2) * exp(-max(uDryRate - ${AIR_DRY_RATE}, 0.0) * 3.0 * uDt);`,
+    );
+    // The flash only fades by a fixed amount a second by itself, and adds up where water keeps hitting: after a
+    // long pour that leaves a white patch for seconds. What a wipe (dry rate 3.6 for 0.8 s) leaves of it:
+    const left = (dryRate: number, seconds: number) => Math.exp(-Math.max(dryRate - AIR_DRY_RATE, 0) * 3 * seconds);
+    expect(left(3.6, 0.8) * 50).toBeLessThan(0.02);
+    // In the air nothing changes: the flash fades exactly as it did.
+    expect(left(AIR_DRY_RATE, 10)).toBe(1);
   });
 });
 
