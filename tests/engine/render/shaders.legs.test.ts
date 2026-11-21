@@ -147,14 +147,19 @@ describe("leg, bow, outline, shadow and post shaders", () => {
     });
   });
 
-  it("has water add no shine to a shiny material: no brighter patch on wet latex, no white flash where it is hit", () => {
-    expect(LEG_FRAGMENT_SHADER).toContain("float shineSpec = uMatWet.z * fabric;");
+  it("has water add no shine to latex: no brighter patch where it is wet, no white flash where it is hit", () => {
+    expect(LEG_FRAGMENT_SHADER).toContain(
+      "float shineSpec = uMatWet.z * fabric, allShine = smoothstep(0.5, 1.0, uMatWet.z) * fabric;",
+    );
     expect(LEG_FRAGMENT_SHADER).toContain("float waterSpec = max(max(film, wetness * 0.55), fresh * 0.8);");
-    expect(LEG_FRAGMENT_SHADER).toMatch(/waterSpec = [^;]* \* \(1\.0 - shineSpec\);/);
-    // Latex is the shiny material, and the only one: nylon and skin keep the film's shine and the flash.
+    expect(LEG_FRAGMENT_SHADER).toMatch(/waterSpec = [^;]* \* \(1\.0 - allShine\);/);
+    // Latex is the one material that is all shine. Nylon keeps the film's shine and the flash in full, the
+    // glossy nylon too, which has a little shine of its own.
+    const allShine = (shine: number) => THREE.MathUtils.smoothstep(shine, 0.5, 1);
     for (const key of MATERIAL_ORDER) {
-      expect([key, MATERIALS[key].shine]).toEqual([key, key === "latex" ? 1 : 0]);
+      expect([key, allShine(MATERIALS[key].shine)]).toEqual([key, key === "latex" ? 1 : 0]);
     }
+    expect(MATERIALS.gloss.shine).toBeGreaterThan(0);
   });
 
   it("keeps the long highlight along the leg a streak where the surface faces the light", () => {

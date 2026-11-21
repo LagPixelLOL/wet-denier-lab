@@ -482,11 +482,12 @@ void main() {
   // is darker, shines only a little of what a film does (FUZZ_WET_SHINE), and that as a soft glow where it faces
   // the lamp: no mirror-sharp highlights, no streak along the leg, no glitter, no bright line around the wet patch.
   float waterGloss = mix(1.0, ${FUZZ_WET_SHINE.toFixed(2)}, fuzz);
-  // A shiny material mirrors as it is, and water on it adds nothing to that: no brighter patch where the film
-  // lies, no white flash where water has just hit. Those are for nylon and skin.
-  float shineSpec = uMatWet.z * fabric;
+  // A material that is all shine (latex) mirrors as it is, and water on it adds nothing to that: no brighter
+  // patch where the film lies, no white flash where water has just hit. Those are for nylon, glossy or not, and
+  // for skin.
+  float shineSpec = uMatWet.z * fabric, allShine = smoothstep(0.5, 1.0, uMatWet.z) * fabric;
   float waterSpec = max(max(film, wetness * 0.55), fresh * 0.8);
-  waterSpec = mix(waterSpec, min(waterSpec, 1.0), fuzz) * waterGloss * (1.0 - shineSpec);
+  waterSpec = mix(waterSpec, min(waterSpec, 1.0), fuzz) * waterGloss * (1.0 - allShine);
   float specAmt = max(waterSpec, shineSpec), envAmt = max(waterSpec, shineSpec * ${SHINE_ENV.toFixed(2)});
   float keyAmt = max(waterSpec, shineSpec * ${SHINE_KEY.toFixed(2)});
   float wetEdge = smoothstep(0.06, 0.085, soak) * (1.0 - smoothstep(0.085, 0.2, soak));

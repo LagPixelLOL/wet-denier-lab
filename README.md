@@ -164,7 +164,7 @@ no glitter, and no bright line around the wet patch (that line is the edge of th
 drops in readily, velvet nearly as readily as cotton (`water` in `catalog/garments.ts`), so few drops stay on them
 and not for long; the ones that do shine as drops do. Latex mirrors as it is, and water on it adds nothing to that:
 no brighter patch where the water lies and no white flash where it has just hit, only the drops. The patch and the
-flash are for nylon and skin.
+flash are for nylon (the glossy one too) and skin.
 
 The rim lights and the sheen belong to the leg's outline. They go by how far the surface is turned away from the eye
 around the leg (`outline` in the leg's fragment shader), not by its angle to the line of sight: looking down or up
