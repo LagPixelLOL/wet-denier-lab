@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { LEG_FRAGMENT_SHADER } from "../../../src/engine/stage/shaders/leg";
+import { LEG_FRAGMENT_SHADER, SHINE_ENV } from "../../../src/engine/stage/shaders/leg";
 import { parseShader, resolveIncludes, splitDeclaratorLists } from "../../helpers/glsl";
 import {
   defineProgramSuite,
@@ -88,6 +88,16 @@ describe("shader catalog", () => {
 
 describe("leg, bow, outline, shadow and post shaders", () => {
   defineProgramSuite(isStageProgram);
+
+  it("has a shiny material mirror the room less than water on it does, and take the lamps' highlights in full", () => {
+    expect(SHINE_ENV).toBeGreaterThan(0.3);
+    expect(SHINE_ENV).toBeLessThan(0.8);
+    expect(LEG_FRAGMENT_SHADER).toContain(
+      `float specAmt = max(waterSpec, shineSpec), envAmt = max(waterSpec, shineSpec * ${SHINE_ENV.toFixed(2)});`,
+    );
+    // The lamps' highlights by specAmt, the surroundings by envAmt.
+    expect(LEG_FRAGMENT_SHADER).toMatch(/col \+= uKeyColor \* \([^;]*\) \* specAmt \+ env \* fres \* 0\.9 \* envAmt;/);
+  });
 
   it("blends the cuff's density into the stocking's, never through a marker value", () => {
     // Fading the cuff's density toward a "no cuff" marker of -1 made the fabric all but transparent for a pixel

@@ -8,13 +8,13 @@ import { publishScenes, publishWardrobe } from "./sheets";
 import { homeView, orbit } from "./camera";
 import { holdPerf } from "./loop";
 import { state } from "./state";
-import { SCENES, type SceneId } from "../stage/scenes";
+import { SCENES, studioEnv, type SceneId } from "../stage/scenes";
 
 function applyScene(id: string) {
   holdPerf(1.5);
   const sceneDef = app.stage.setScene(id);
   state.scene = SCENES[id] ? id : "studio";
-  app.water.setLook(sceneDef.water);
+  updateWaterLook();
   app.water.setRainStyle(sceneDef.id === 1 ? "shower" : "rain");
   if (app.sound.setScene) {
     app.sound.setScene(state.scene);
@@ -61,8 +61,16 @@ export function setScene(id: string, opts?: { instant?: boolean }) {
 export function setBackdrop(id: string) {
   state.backdrop = id;
   app.stage.setBackdrop(id);
+  updateWaterLook();
   updateStageTone();
   publishScenes();
+}
+
+/** Drops reflect the scene's surroundings; in the studio those take the backdrop's color, as they do on the legs. */
+function updateWaterLook() {
+  const sceneDef = app.stage.sceneNow;
+  const water = sceneDef.water;
+  app.water.setLook(sceneDef.id === 0 ? { ...water, ...studioEnv(water, app.stage.backdropNow) } : water);
 }
 
 function updateStageTone() {

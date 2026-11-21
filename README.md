@@ -142,6 +142,14 @@ with the fabric by the same `cuffProfile`. So it rests on the stocking instead o
 The cuff's band is a denser knit than the stocking below it. Across the band's lower edge the fragment shader
 blends from the band's density to the stocking's, so the two join without a bright or dark line between them.
 
+**Reflections.** Shiny surfaces (wet fabric, latex, water drops) mirror their surroundings as two colors, one
+below and one above the horizon (`envLo` and `envHi` of the scene's light and of its water), plus the street's two
+neon signs. In the studio the surroundings are the backdrop: `studioEnv` (`stage/scenes.ts`) scales those colors by
+how the chosen backdrop's bottom and top compare with the lilac one's, which the studio's values are given for. So
+latex in front of the dusk backdrop mirrors a dark room, and in front of a pink one a pink room; the other scenes
+keep their own colors. A film of water mirrors the room in full. A shiny material itself is finely rough and mirrors
+it at about half that (`SHINE_ENV` in `stage/shaders/leg.ts`), while it takes the lamps' highlights in full.
+
 **Water.** `WetMap` runs a ping-pong simulation in the stocking's UV atlas (soaked water, running film, fresh-hit
 highlight). `WaterSim` simulates thrown, spray, drip and rain drops, beads that cling and slide on the surface,
 and a puddle grid with ripples on the floor.

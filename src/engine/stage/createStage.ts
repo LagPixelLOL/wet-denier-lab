@@ -13,7 +13,7 @@ import type { Vec3 } from "../rig/joints";
 import type { LegRigTarget } from "../rig/LegRig";
 import type { LegPose } from "../rig/skinning";
 import { createBowGeometry } from "./bow";
-import { BACKDROPS, SCENES, makeCustomBackdrop } from "./scenes";
+import { BACKDROPS, SCENES, makeCustomBackdrop, studioEnv } from "./scenes";
 import type { BackdropDef, SceneDef } from "./scenes";
 import { BACKDROP_FRAGMENT_SHADER, BACKDROP_VERTEX_SHADER } from "./shaders/backdrop";
 import { BOW_FRAGMENT_SHADER, BOW_VERTEX_SHADER } from "./shaders/bow";
@@ -1367,6 +1367,10 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       backdropUniforms.uGlowColor.value.set(currentBackdrop.glow);
       floorUniforms.uFloorColor.value.set(currentBackdrop.floor);
       floorUniforms.uShadowColor.value.set(currentBackdrop.shadow);
+      // What the legs reflect is the room, which takes the backdrop's color.
+      const env = studioEnv(currentScene.light, currentBackdrop);
+      lightUniforms.uEnvLo.value.set(...env.envLo);
+      lightUniforms.uEnvHi.value.set(...env.envHi);
     }
   }
   function setScene(sceneKey: string): SceneDef {

@@ -6,6 +6,9 @@ import { LEG_SKINNING_GLSL } from "../../rig/joints";
 import { CAUSTICS_GLSL } from "./backdrop";
 import { FOOT_GLSL, NAIL_COUNT } from "./foot";
 
+/** How much of its surroundings a shiny material mirrors, next to a film of water on it (which mirrors all). */
+export const SHINE_ENV = 0.55;
+
 export const fadeHeight = (x: number, y: number, z: number): number => y - (x - 0.066) * 0.3346 + (z - 0.04) * 0.0157;
 
 export const FADE_HEIGHT_GLSL = "position.y - 0.3346 * (position.x - 0.066) + 0.0157 * (position.z - 0.04)";
@@ -454,7 +457,11 @@ void main() {
   col += uRim2Color * smoothstep(0.55, 0.86, 1.0 - ndv) * smoothstep(-0.1, 0.4, dot(n, uRim2Dir)) * mix(0.55, 0.34, fabric) * rimShade;
   if (uCaustic > 0.0) col *= 1.0 + uCaustic * (caustics(vWorldPos.xz * 2.6 + vWorldPos.y * uMirrorFlipY * vec2(1.1, 0.6), uTime * 0.8) - 0.2) * smoothstep(0.85, 0.05, vWorldPos.y * uMirrorFlipY) * smoothstep(-0.2, 0.3, ndl);
   float ndh = max(dot(n, h), 0.0);
-  float specAmt = max(max(max(film, wetness * 0.55), fresh * 0.8), uMatWet.z * fabric);
+  // What shines: water on the surface, and a shiny material itself (latex). Water is a smooth film and mirrors
+  // its surroundings in full. The material is finely rough: it takes the lamps' highlights as water does, but
+  // mirrors the room less (SHINE_ENV), most of all at a glancing angle, where a mirror would turn all white.
+  float waterSpec = max(max(film, wetness * 0.55), fresh * 0.8), shineSpec = uMatWet.z * fabric;
+  float specAmt = max(waterSpec, shineSpec), envAmt = max(waterSpec, shineSpec * ${SHINE_ENV.toFixed(2)});
   float wetEdge = smoothstep(0.06, 0.085, soak) * (1.0 - smoothstep(0.085, 0.2, soak));
   float wetRing = smoothstep(0.13, 0.17, soak) * (1.0 - smoothstep(0.17, 0.26, soak));
   float edgeAmt = mix(0.3, 1.0, fabric);
@@ -469,7 +476,7 @@ void main() {
     vec3 refl = reflect(-v, n);
     vec3 env = mix(uEnvLo, uEnvHi, smoothstep(-0.05, 0.6, refl.y * uMirrorFlipY));
     env += uEnvAColor * pow(max(dot(refl, uEnvADir), 0.0), 5.0) + uEnvBColor * pow(max(dot(refl, uEnvBDir), 0.0), 5.0);
-    col += (uKeyColor * (spec * mix(0.4, 1.0, lit) + glint * 1.15) + env * fres * 0.9) * specAmt;
+    col += uKeyColor * (spec * mix(0.4, 1.0, lit) + glint * 1.15) * specAmt + env * fres * 0.9 * envAmt;
   }
   col += uKeyColor * wetRing * 0.22 * smoothstep(-0.3, 0.4, ndl) * lit;
   float pearl = uMatWet.w * fabric;

@@ -8,7 +8,14 @@ import type { LegLook } from "../../../src/engine/catalog/resolveLegLook";
 import { LegRig } from "../../../src/engine/rig/LegRig";
 import { computeBowMatrix } from "../../../src/engine/stage/bow";
 import type { Stage, StageLeg } from "../../../src/engine/stage/createStage";
-import { BACKDROPS, BACKDROP_ORDER, SCENES, SCENE_ORDER, makeCustomBackdrop } from "../../../src/engine/stage/scenes";
+import {
+  BACKDROPS,
+  BACKDROP_ORDER,
+  SCENES,
+  SCENE_ORDER,
+  makeCustomBackdrop,
+  studioEnv,
+} from "../../../src/engine/stage/scenes";
 import { BOW_VERTEX_SHADER } from "../../../src/engine/stage/shaders/bow";
 import { CUFF_PRESS_GLSL, LEG_VERTEX_SHADER } from "../../../src/engine/stage/shaders/leg";
 import { OUTLINE_VERTEX_SHADER } from "../../../src/engine/stage/shaders/outline";
@@ -290,6 +297,37 @@ describe("setBackdrop", () => {
         [bg.uTopColor, bg.uBottomColor, bg.uGlowColor, floor.uFloorColor, floor.uShadowColor].map((u) => hex(u.value)),
       ).toEqual([def.top, def.bottom, def.glow, def.floor, def.shadow]);
     }
+  });
+
+  it("has the legs reflect a room of the backdrop's color in the studio, and each other scene its own", () => {
+    const { stage } = buildStage();
+    const light = stage.uniforms.light;
+    const studio = SCENES.studio.light;
+    for (const key of [...BACKDROP_ORDER, "#7a1020"]) {
+      stage.setBackdrop(key);
+      const env = studioEnv(studio, stage.backdropNow);
+      expect([key, vec(light.uEnvLo.value), vec(light.uEnvHi.value)]).toEqual([key, env.envLo, env.envHi]);
+    }
+    stage.setBackdrop("lilac");
+    expect([vec(light.uEnvLo.value), vec(light.uEnvHi.value)]).toEqual([studio.envLo, studio.envHi]);
+    // Another scene has its own surroundings whatever the studio's backdrop is, also when it is changed there.
+    stage.setBackdrop("dusk");
+    const dusk = studioEnv(studio, BACKDROPS.dusk);
+    stage.setScene("pool");
+    expect([vec(light.uEnvLo.value), vec(light.uEnvHi.value)]).toEqual([
+      SCENES.pool.light.envLo,
+      SCENES.pool.light.envHi,
+    ]);
+    stage.setBackdrop("sakura");
+    expect([vec(light.uEnvLo.value), vec(light.uEnvHi.value)]).toEqual([
+      SCENES.pool.light.envLo,
+      SCENES.pool.light.envHi,
+    ]);
+    // Back in the studio the backdrop chosen meanwhile counts.
+    stage.setScene("studio");
+    const sakura = studioEnv(studio, BACKDROPS.sakura);
+    expect([vec(light.uEnvLo.value), vec(light.uEnvHi.value)]).toEqual([sakura.envLo, sakura.envHi]);
+    expect(sakura).not.toEqual(dusk);
   });
 
   it("builds a custom backdrop from a hex color, or takes a def as is", () => {

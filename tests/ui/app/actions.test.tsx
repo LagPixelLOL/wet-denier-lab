@@ -4,9 +4,11 @@ import { currentView, homeView, orbit, orbitBy, panBy } from "../../../src/engin
 import { hideHint } from "../../../src/engine/app/hud";
 import { currentLook } from "../../../src/engine/app/outfit";
 import { app } from "../../../src/engine/app/runtime";
+import { setScene } from "../../../src/engine/app/scene";
 import { outfit, state } from "../../../src/engine/app/state";
 import { PRESETS, withLegDefaults } from "../../../src/engine/catalog/presets";
 import { lookUrl, type CameraView } from "../../../src/engine/share/lookCodec";
+import { BACKDROPS, SCENES, studioEnv, type BackdropDef } from "../../../src/engine/stage/scenes";
 import { ui } from "../../../src/state/ui";
 import { bootApp, type Harness } from "../../helpers/appHarness";
 import { seedRandom } from "../../helpers/random";
@@ -377,6 +379,34 @@ describe("scene actions", () => {
     expect(document.documentElement.style.getPropertyValue("--stage")).toBe(app.stage.backdropNow.bottom);
     actions.backdrop("lilac");
     expect(document.body).not.toHaveClass("dim");
+  });
+
+  it("has the legs and the drops reflect a room of the backdrop's color", () => {
+    const legs = app.stage.uniforms.light;
+    const drops = app.water.material.uniforms;
+    const seen = () => [legs.uEnvLo, legs.uEnvHi, drops.uEnvLo, drops.uEnvHi].map((u) => u.value.toArray());
+    const studio = SCENES.studio;
+    const room = (backdrop: BackdropDef) => {
+      const [onLegs, onDrops] = [studioEnv(studio.light, backdrop), studioEnv(studio.water, backdrop)];
+      return [onLegs.envLo, onLegs.envHi, onDrops.envLo, onDrops.envHi];
+    };
+    expect(seen()).toEqual([studio.light.envLo, studio.light.envHi, studio.water.envLo, studio.water.envHi]);
+    actions.backdrop("dusk");
+    expect(seen()).toEqual(room(BACKDROPS.dusk));
+    // Dark, where the bright studio is not.
+    expect(Math.max(...seen().flat())).toBeLessThan(0.3);
+    actions.backdrop("#7a1020");
+    expect(seen()).toEqual(room(app.stage.backdropNow));
+    // Another scene keeps its own surroundings, and the studio takes the backdrop again afterwards.
+    setScene("pool", { instant: true });
+    const pool = SCENES.pool;
+    expect(seen()).toEqual([pool.light.envLo, pool.light.envHi, pool.water.envLo, pool.water.envHi]);
+    actions.backdrop("mint");
+    expect(seen()).toEqual([pool.light.envLo, pool.light.envHi, pool.water.envLo, pool.water.envHi]);
+    setScene("studio", { instant: true });
+    expect(seen()).toEqual(room(BACKDROPS.mint));
+    actions.backdrop("lilac");
+    expect(seen()).toEqual([studio.light.envLo, studio.light.envHi, studio.water.envLo, studio.water.envHi]);
   });
 });
 

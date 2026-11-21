@@ -278,3 +278,35 @@ export function makeCustomBackdrop(hex: string): BackdropDef {
     dark: luma < 0.3,
   };
 }
+
+const srgbToLinear = (channel: number): number =>
+  channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+
+/** A hex color as linear rgb, which is what the shaders work in. */
+const linearRgb = (hex: string): Vec3 => {
+  const value = parseInt(hex.slice(1), 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255].map((c) => srgbToLinear(c / 255)) as Vec3;
+};
+
+/** The surroundings that shiny surfaces reflect: below and above the horizon, in linear light. */
+export interface EnvColors {
+  envLo: Vec3;
+  envHi: Vec3;
+}
+
+/**
+ * The surroundings a shiny surface reflects in the studio, for a backdrop. The studio's own colors (`env`) are
+ * those of the lilac backdrop: for another one they change as the backdrop does, the lower part with its
+ * bottom color and the upper part with its top color. So latex in front of a dark backdrop mirrors a dark
+ * room, and in front of a pink one a pink room.
+ */
+export function studioEnv(env: EnvColors, backdrop: BackdropDef): EnvColors {
+  const scaled = (color: Vec3, to: string, from: string): Vec3 => {
+    const [target, reference] = [linearRgb(to), linearRgb(from)];
+    return color.map((channel, i) => channel * (target[i] / reference[i])) as Vec3;
+  };
+  return {
+    envLo: scaled(env.envLo, backdrop.bottom, BACKDROPS.lilac.bottom),
+    envHi: scaled(env.envHi, backdrop.top, BACKDROPS.lilac.top),
+  };
+}
