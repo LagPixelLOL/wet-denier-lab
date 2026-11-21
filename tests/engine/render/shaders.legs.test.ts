@@ -147,19 +147,40 @@ describe("leg, bow, outline, shadow and post shaders", () => {
     });
   });
 
-  it("has water add no shine to latex: no brighter patch where it is wet, no white flash where it is hit", () => {
-    expect(LEG_FRAGMENT_SHADER).toContain(
-      "float shineSpec = uMatWet.z * fabric, allShine = smoothstep(0.5, 1.0, uMatWet.z) * fabric;",
-    );
-    expect(LEG_FRAGMENT_SHADER).toContain("float waterSpec = max(max(film, wetness * 0.55), fresh * 0.8);");
-    expect(LEG_FRAGMENT_SHADER).toMatch(/waterSpec = [^;]* \* \(1\.0 - allShine\);/);
-    // Latex is the one material that is all shine. Nylon keeps the film's shine and the flash in full, the
-    // glossy nylon too, which has a little shine of its own.
+  describe("water and latex", () => {
+    // The shader's measure of a material that is all shine.
     const allShine = (shine: number) => THREE.MathUtils.smoothstep(shine, 0.5, 1);
-    for (const key of MATERIAL_ORDER) {
-      expect([key, allShine(MATERIALS[key].shine)]).toEqual([key, key === "latex" ? 1 : 0]);
-    }
-    expect(MATERIALS.gloss.shine).toBeGreaterThan(0);
+
+    it("counts latex as all shine, and no other material: it is also the one that takes no water in", () => {
+      expect(LEG_FRAGMENT_SHADER).toContain("float allShine = smoothstep(0.5, 1.0, uMatWet.z) * fabric;");
+      for (const key of MATERIAL_ORDER) {
+        const { shine, water } = MATERIALS[key];
+        expect([key, allShine(shine)]).toEqual([key, key === "latex" ? 1 : 0]);
+        expect([key, water.soak === 0 && water.take === 0]).toEqual([key, key === "latex"]);
+      }
+      // The glossy nylon has a little shine of its own, and stays a nylon.
+      expect(MATERIALS.gloss.shine).toBeGreaterThan(0);
+    });
+
+    it("adds no shine: no brighter patch where the latex is wet, no white flash where it is hit", () => {
+      expect(LEG_FRAGMENT_SHADER).toContain("float waterSpec = max(max(film, wetness * 0.55), fresh * 0.8);");
+      expect(LEG_FRAGMENT_SHADER).toMatch(/waterSpec = [^;]* \* \(1\.0 - allShine\);/);
+    });
+
+    it("shows nothing of what another fabric, or the bare leg, soaked up before the latex went on", () => {
+      // The wet map keeps it, for the skin above the stocking and for when the other fabric is back. On the
+      // latex there is no wet patch, no line around one (bright or dark), and no hidden print brought out by it.
+      expect(LEG_FRAGMENT_SHADER).toContain("wetness *= 1.0 - allShine;");
+      expect(LEG_FRAGMENT_SHADER).toContain("float edgeAmt = mix(0.3, 1.0, fabric) * (1.0 - allShine);");
+      expect(LEG_FRAGMENT_SHADER).toContain("wetEdge *= edgeAmt;");
+      expect(LEG_FRAGMENT_SHADER).toContain("wetRing *= edgeAmt * (1.0 - fuzz);");
+      expect(LEG_FRAGMENT_SHADER).toContain("max(soak * (1.0 - allShine), wet.g * 0.6)");
+      // It is set once the cuff has decided where the fabric ends, and before anything of the fabric uses it.
+      const at = (text: string) => LEG_FRAGMENT_SHADER.indexOf(text);
+      expect(at("fabric *= 1.0 - cut;")).toBeGreaterThan(0);
+      expect(at("wetness *= 1.0 - allShine;")).toBeGreaterThan(at("fabric *= 1.0 - cut;"));
+      expect(at("denier *= 1.0 - uMatWet.x * wetness;")).toBeGreaterThan(at("wetness *= 1.0 - allShine;"));
+    });
   });
 
   it("keeps the long highlight along the leg a streak where the surface faces the light", () => {

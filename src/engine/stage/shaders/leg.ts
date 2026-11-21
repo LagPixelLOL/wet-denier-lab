@@ -377,6 +377,10 @@ void main() {
     fabric *= 1.0 - cut;
     bareSkin *= mix(vec3(1.0), vec3(0.90, 0.80, 0.80), cut * exp(-max(cuffDy, 0.0) / 0.0045) * 0.75);
   }
+  // A material that is all shine (latex) takes no water in. What another fabric on this leg soaked up before
+  // stays in the wet map, for when that fabric is back, but shows on the skin only: latex has no wet patch.
+  float allShine = smoothstep(0.5, 1.0, uMatWet.z) * fabric;
+  wetness *= 1.0 - allShine;
   float open, accent;
   float patMul = patternDensity(vUv * vec2(uMirror, 1.0), legArcLength(vRestPos), open, accent);
   bool isNet = uPattern > 2.5 && uPattern < 3.5;
@@ -425,7 +429,7 @@ void main() {
   vec3 dyeHue = dye / max(max(dye.r, dye.g), max(dye.b, 0.02));
   vec3 throughTint = mix(vec3(1.0), dyeHue, uThrough);
   if (uSecret.a > 0.5) {
-    float secret = atlasPattern(vUv * vec2(uMirror, 1.0), uSecret.a - 1.0, 0.034, 0.72) * smoothstep(0.09, 0.26, max(soak, wet.g * 0.6));
+    float secret = atlasPattern(vUv * vec2(uMirror, 1.0), uSecret.a - 1.0, 0.034, 0.72) * smoothstep(0.09, 0.26, max(soak * (1.0 - allShine), wet.g * 0.6));
     fabCol = mix(fabCol, uSecret.rgb * mix(vec3(0.72, 0.66, 0.76), vec3(1.0), fabLit) * hemi, secret * 0.92);
     sheer *= 1.0 - 0.9 * secret;
   }
@@ -482,20 +486,19 @@ void main() {
   // is darker, shines only a little of what a film does (FUZZ_WET_SHINE), and that as a soft glow where it faces
   // the lamp: no mirror-sharp highlights, no streak along the leg, no glitter, no bright line around the wet patch.
   float waterGloss = mix(1.0, ${FUZZ_WET_SHINE.toFixed(2)}, fuzz);
-  // A material that is all shine (latex) mirrors as it is, and water on it adds nothing to that: no brighter
-  // patch where the film lies, no white flash where water has just hit. Those are for nylon, glossy or not, and
-  // for skin.
-  float shineSpec = uMatWet.z * fabric, allShine = smoothstep(0.5, 1.0, uMatWet.z) * fabric;
+  // A material that is all shine mirrors as it is, and water on it adds nothing to that: no brighter patch where
+  // the film lies, no white flash where water has just hit. Those are for nylon, glossy or not, and for skin.
+  float shineSpec = uMatWet.z * fabric;
   float waterSpec = max(max(film, wetness * 0.55), fresh * 0.8);
   waterSpec = mix(waterSpec, min(waterSpec, 1.0), fuzz) * waterGloss * (1.0 - allShine);
   float specAmt = max(waterSpec, shineSpec), envAmt = max(waterSpec, shineSpec * ${SHINE_ENV.toFixed(2)});
   float keyAmt = max(waterSpec, shineSpec * ${SHINE_KEY.toFixed(2)});
   float wetEdge = smoothstep(0.06, 0.085, soak) * (1.0 - smoothstep(0.085, 0.2, soak));
   float wetRing = smoothstep(0.13, 0.17, soak) * (1.0 - smoothstep(0.17, 0.26, soak));
-  float edgeAmt = mix(0.3, 1.0, fabric);
+  float edgeAmt = mix(0.3, 1.0, fabric) * (1.0 - allShine);
   wetEdge *= edgeAmt;
   // The bright line around a wet patch is light caught by the edge of the water on a smooth yarn (nylon). A
-  // fuzzy fabric has none: its wet patch is only darker. (Latex takes no water in, so has no wet patch at all.)
+  // fuzzy fabric has none: its wet patch is only darker. (Latex has no wet patch at all.)
   wetRing *= edgeAmt * (1.0 - fuzz);
   col *= 1.0 - wetEdge * 0.38;
   float anisoTight = pow(sqrt(max(0.0, 1.0 - tdh * tdh)), 260.0);
