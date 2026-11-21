@@ -285,12 +285,19 @@ void main() {
   }
   vec3 v = normalize(cameraPosition - vWorldPos);
   float ndv = clamp(dot(n, v), 0.0, 1.0);
+  // How far the surface is turned away from the eye around the leg: 0 where it faces the eye as much as the
+  // leg can from there, 1 at the leg's outline. The rim light and the fabric's sheen go by this, not by the
+  // angle to the line of sight (1 - ndv): looking down or up along the leg, all of its surface is seen at a
+  // glancing angle, and what belongs to its outline would spread over the whole leg.
+  vec3 fiber = normalize(vTangent - n * dot(n, vTangent));
+  float alongView = dot(fiber, v);
+  float outline = 1.0 - clamp(ndv / max(sqrt(max(1.0 - alongView * alongView, 0.0)), 0.05), 0.0, 1.0);
   float ndl = dot(n, uKeyDir);
   float height = vRestPos.y;
   float lit = 1.0 - castShadow();
   float hardLit = smoothstep(-0.04, 0.10, ndl) * lit;
   vec3 hemi = mix(uFillBottom, uFillTop, n.y * uMirrorFlipY * 0.5 + 0.5);
-  float rim = smoothstep(0.62, 0.86, 1.0 - ndv) * smoothstep(0.0, 0.35, dot(n, uRimDir));
+  float rim = smoothstep(0.62, 0.86, outline) * smoothstep(0.0, 0.35, dot(n, uRimDir));
   float skinLit = mix(smoothstep(-0.34, 0.46, ndl) * lit, hardLit, 0.3);
   vec3 bareSkin = mix(uSkinShade, uSkinLit, skinLit);
   float terminator = smoothstep(-0.30, -0.02, ndl) * (1.0 - smoothstep(-0.02, 0.26, ndl));
@@ -407,7 +414,7 @@ void main() {
     float grain = 1.0 + clamp(1.3 - grainSize, 0.0, 1.0) * (0.55 * valueNoise(vUv * 4200.0) + 0.3 * valueNoise(vUv * vec2(9500.0, 2100.0)));
     fuzzShade = mix(1.0, grain * ribShade * mix(1.0, knit / uKnitMean, 0.6), fuzz);
   }
-  fabCol += uSheenColor * pow(grazing, uMatKnit.z) * uSheenAmount * (1.0 - wetness) * mix(0.45, 1.0, fabLit) * mix(1.0, 0.6, fuzz) * fuzzShade;
+  fabCol += uSheenColor * pow(outline, uMatKnit.z) * uSheenAmount * (1.0 - wetness) * mix(0.45, 1.0, fabLit) * mix(1.0, 0.6, fuzz) * fuzzShade;
   fabCol += (0.5 + 0.5 * cos(6.2832 * (ndv * 0.75 + vec3(0.05, 0.38, 0.70)))) * vec3(0.040, 0.030, 0.045) * uMatWet.w * mix(0.5, 1.0, fabLit);
   vec3 dyeHue = dye / max(max(dye.r, dye.g), max(dye.b, 0.02));
   vec3 throughTint = mix(vec3(1.0), dyeHue, uThrough);
@@ -441,7 +448,6 @@ void main() {
     col = mix(col, clipCol, clip);
   }
   vec3 h = normalize(uKeyDir + v);
-  vec3 fiber = normalize(vTangent - n * dot(n, vTangent));
   float tdh = dot(fiber, h);
   float aniso = pow(sqrt(max(0.0, 1.0 - tdh * tdh)), 55.0) * smoothstep(-0.15, 0.35, ndl) * lit;
   float side = smoothstep(0.86, 0.97, sqrt(max(0.0, 1.0 - restNy * restNy))) * smoothstep(0.07, 0.14, height);
@@ -459,7 +465,7 @@ void main() {
   col += uKeyColor * sheenStripe * uStripe * uGloss * 0.55 * fabric * (1.0 - 0.35 * sheer);
   float rimShade = (1.0 - betweenToes) * mix(1.0, 0.3, fuzz) * fuzzShade;
   col += uRimColor * rim * mix(0.55, 0.30, fabric) * rimShade;
-  col += uRim2Color * smoothstep(0.55, 0.86, 1.0 - ndv) * smoothstep(-0.1, 0.4, dot(n, uRim2Dir)) * mix(0.55, 0.34, fabric) * rimShade;
+  col += uRim2Color * smoothstep(0.55, 0.86, outline) * smoothstep(-0.1, 0.4, dot(n, uRim2Dir)) * mix(0.55, 0.34, fabric) * rimShade;
   if (uCaustic > 0.0) col *= 1.0 + uCaustic * (caustics(vWorldPos.xz * 2.6 + vWorldPos.y * uMirrorFlipY * vec2(1.1, 0.6), uTime * 0.8) - 0.2) * smoothstep(0.85, 0.05, vWorldPos.y * uMirrorFlipY) * smoothstep(-0.2, 0.3, ndl);
   float ndh = max(dot(n, h), 0.0);
   // What shines: water on the surface, and a shiny material itself (latex). Water is a smooth film: it mirrors

@@ -154,7 +154,14 @@ it at about half that (`SHINE_ENV` in `stage/shaders/leg.ts`), and takes dimmer 
 
 How much a fabric shines by itself is set per material in `catalog/garments.ts` (`gloss` for the long highlight,
 `sheen` and `sheenPow` for the soft glow toward its edges, `shine` for latex). Cotton and velvet are the matte ones,
-velvet only a little less so than cotton.
+velvet only a little less so than cotton. Latex has no sheen: it is smooth rubber, and what it shows is what it
+mirrors.
+
+The rim lights and the sheen belong to the leg's outline. They go by how far the surface is turned away from the eye
+around the leg (`outline` in the leg's fragment shader), not by its angle to the line of sight: looking down or up
+along a leg, all of its surface is seen at a glancing angle, and by that angle they would cover the whole leg instead
+of its edges. Seen from the side the two measures are the same. The mirror reflection and the fabric's sheerness do
+go by the true angle, since a shiny surface does reflect more, and a fabric is denser, seen along it.
 
 A custom backdrop is built from the one color picked (`makeCustomBackdrop`): the wall's bottom, its top and the
 floor are that color lifted toward white, a light color most of the way (a pastel, like the built-in pale

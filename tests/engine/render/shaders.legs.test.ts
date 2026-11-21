@@ -114,6 +114,67 @@ describe("leg, bow, outline, shadow and post shaders", () => {
     expect(LEG_FRAGMENT_SHADER).toMatch(/float glint = [^;]* \* lobe \* /);
   });
 
+  describe("what belongs to the leg's outline", () => {
+    // The shader's measure, for a round leg along `axis`, a surface normal across it and a direction to the eye.
+    const outline = (normal: number[], axis: number[], toEye: number[]): number => {
+      const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      const unit = (a: number[]) => a.map((c) => c / Math.hypot(...a));
+      const [n, v] = [unit(normal), unit(toEye)];
+      const fiber = unit(axis.map((c, i) => c - n[i] * dot(n, axis)));
+      const ndv = Math.min(Math.max(dot(n, v), 0), 1);
+      const alongView = dot(fiber, v);
+      return 1 - Math.min(Math.max(ndv / Math.max(Math.sqrt(Math.max(1 - alongView * alongView, 0)), 0.05), 0), 1);
+    };
+    const up = [0, 1, 0];
+    const around = (degrees: number) => [Math.sin((degrees * Math.PI) / 180), 0, Math.cos((degrees * Math.PI) / 180)];
+    const from = (elevation: number) => [
+      0,
+      Math.sin((elevation * Math.PI) / 180),
+      Math.cos((elevation * Math.PI) / 180),
+    ];
+
+    it("is the angle to the line of sight for a leg seen from the side", () => {
+      for (const turned of [0, 20, 45, 70, 89]) {
+        expect(outline(around(turned), up, from(0))).toBeCloseTo(1 - Math.cos((turned * Math.PI) / 180), 12);
+      }
+    });
+
+    it("stays at the leg's outline when the leg is seen from above or below", () => {
+      for (const elevation of [66, -66, 40, -38]) {
+        // The middle of the leg as seen from there is not at its outline, however flat the view onto it...
+        expect(outline(around(0), up, from(elevation))).toBeCloseTo(0, 12);
+        // ...and the further round the leg, the nearer its outline, exactly as from the side.
+        for (const turned of [20, 45, 70, 89]) {
+          expect(outline(around(turned), up, from(elevation))).toBeCloseTo(1 - Math.cos((turned * Math.PI) / 180), 9);
+        }
+      }
+      // Going by the angle to the line of sight, the whole leg counted as outline from 66 degrees up: even its
+      // middle was three fifths of the way there.
+      expect(1 - Math.cos((66 * Math.PI) / 180)).toBeGreaterThan(0.59);
+    });
+
+    it("does not blow up for a leg seen straight along its length", () => {
+      for (const turned of [0, 45, 89]) {
+        const value = outline(around(turned), up, from(89.9));
+        expect(value).toBeGreaterThanOrEqual(0);
+        expect(value).toBeLessThanOrEqual(1);
+      }
+    });
+
+    it("drives the rim lights and the fabric's sheen, and nothing that depends on the true angle", () => {
+      expect(LEG_FRAGMENT_SHADER).toContain(
+        "float outline = 1.0 - clamp(ndv / max(sqrt(max(1.0 - alongView * alongView, 0.0)), 0.05), 0.0, 1.0);",
+      );
+      expect(LEG_FRAGMENT_SHADER).toContain("float rim = smoothstep(0.62, 0.86, outline) *");
+      expect(LEG_FRAGMENT_SHADER).toContain("col += uRim2Color * smoothstep(0.55, 0.86, outline) *");
+      expect(LEG_FRAGMENT_SHADER).toContain("fabCol += uSheenColor * pow(outline, uMatKnit.z) * uSheenAmount");
+      // A mirror-like surface does reflect more at a glancing angle all over, and fabric is denser seen along it.
+      expect(LEG_FRAGMENT_SHADER).toContain("float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);");
+      expect(LEG_FRAGMENT_SHADER).toContain("float transView = pow(trans0, 1.0 / max(ndv, 0.035));");
+      expect(LEG_FRAGMENT_SHADER).not.toMatch(/smoothstep\([^)]*, 1\.0 - ndv\)/);
+    });
+  });
+
   it("blends the cuff's density into the stocking's, never through a marker value", () => {
     // Fading the cuff's density toward a "no cuff" marker of -1 made the fabric all but transparent for a pixel
     // along the cuff's lower edge, where the skin then showed as a bright dotted line.

@@ -197,9 +197,9 @@ export const MATERIALS = {
   },
   // Only a little less matte than cotton: a slightly stronger, slightly broader sheen and a trace of gloss.
   velvet: {
-    gloss: 0.1,
-    sheen: 0.7,
-    sheenPow: 1.8,
+    gloss: 0.03,
+    sheen: 0.55,
+    sheenPow: 1.9,
     wetClear: 0.1,
     wetDark: 0.6,
     shine: 0,
@@ -238,9 +238,10 @@ export const MATERIALS = {
       slip: 0.6,
     },
   },
+  // Smooth rubber: no fibers to glow at a glancing angle (sheen), only what it mirrors (shine).
   latex: {
     gloss: 0.7,
-    sheen: 0.5,
+    sheen: 0,
     sheenPow: 3,
     wetClear: 0,
     wetDark: 0,

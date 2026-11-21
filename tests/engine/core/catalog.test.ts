@@ -408,9 +408,23 @@ describe("resolveLegLook", () => {
     const look = resolveLegLook({ material: "velvet", color: "wine", pattern: "stars", secret: "paws", cuff: "rib" });
     expect(look.sheenAmt).toBeCloseTo(COLORS.wine.sheenAmt * MATERIALS.velvet.sheen, 12);
     expect(look.mat).toEqual([0.1, 0.6, 0, 0]);
-    expect(look.mat2).toEqual([0.18, 0, 1.8, 1]);
+    expect(look.mat2).toEqual([0.18, 0, 1.9, 1]);
     expect(look.water).toBe(MATERIALS.velvet.water);
     expect([look.pattern, look.secret, look.cuff]).toEqual([8, 3, 3]);
+  });
+
+  it("gives latex no fiber sheen: it is smooth rubber, and what it shows is what it mirrors", () => {
+    const { latex } = MATERIALS;
+    // The sheen is the glow of fine fibers at the fabric's edges. On latex it was a flat grey wash that made it
+    // look matte, most of all seen from above.
+    expect(latex.sheen).toBe(0);
+    expect(latex.shine).toBe(1);
+    expect(resolveLegLook({ material: "latex" }).sheenAmt).toBe(0);
+    for (const key of MATERIAL_ORDER) {
+      if (key !== "latex") {
+        expect([key, MATERIALS[key].sheen > 0]).toEqual([key, true]);
+      }
+    }
   });
 
   it("makes velvet only a little less matte than cotton, and far from the nylons", () => {
@@ -418,10 +432,10 @@ describe("resolveLegLook", () => {
     // A slightly stronger sheen than cotton's, spread a little more broadly over the surface, and a trace of
     // the long highlight where cotton has none.
     expect(velvet.sheen).toBeGreaterThan(cotton.sheen);
-    expect(velvet.sheen).toBeLessThan(cotton.sheen * 1.6);
+    expect(velvet.sheen).toBeLessThan(cotton.sheen * 1.2);
     expect(velvet.sheenPow).toBeLessThan(cotton.sheenPow);
     expect(velvet.sheenPow).toBeGreaterThan(cotton.sheenPow - 0.5);
-    expect([cotton.gloss, velvet.gloss]).toEqual([0, 0.1]);
+    expect([cotton.gloss, velvet.gloss]).toEqual([0, 0.03]);
     expect([cotton.shine, velvet.shine]).toEqual([0, 0]);
     // Below the matte nylon in sheen and gloss, let alone the sheer one.
     expect(velvet.sheen).toBeLessThan(matte.sheen);
