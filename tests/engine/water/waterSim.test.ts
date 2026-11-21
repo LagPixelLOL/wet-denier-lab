@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MATERIALS } from "../../../src/engine/catalog/garments";
+import { BARE_SKIN_WATER, MATERIALS } from "../../../src/engine/catalog/garments";
 import { SCENES } from "../../../src/engine/stage/scenes";
 import type { SurfaceHit } from "../../../src/engine/surface/SurfaceGrid";
+import { SKIN_EDGE } from "../../../src/engine/water/shaders/wet";
 import type { Bead, FreeDrop, ThrownDrop, WaterSim } from "../../../src/engine/water/WaterSim";
 import { digest, digestRounded } from "../../helpers/digest";
 import { legModel, toeGap } from "../../helpers/model";
@@ -32,7 +33,7 @@ function surfacePoint(world: WaterWorld, leg = 0, y = 0.33, z = 0.06): SurfaceHi
 }
 
 function bead(
-  hit: Pick<SurfaceHit, "x" | "y" | "z" | "nx" | "ny" | "nz" | "leg">,
+  hit: Pick<SurfaceHit, "x" | "y" | "z" | "nx" | "ny" | "nz" | "leg"> & { ry?: number },
   r: number,
   extra: Partial<Bead> = {},
 ): Bead {
@@ -54,6 +55,7 @@ function bead(
     lz: hit.z,
     wob: 0,
     soakT: 0,
+    restY: hit.ry ?? hit.y,
     ...extra,
   };
 }
@@ -363,6 +365,59 @@ describe("beads", () => {
     expect(thirsty.r).toBeCloseTo(0.001 - (0.1 * 0.000035) / 0.16 ** 2, 12);
   });
 
+  it("behave as on bare skin above a stocking's top, whatever the stocking is made of", () => {
+    const world = waterWorld();
+    const { water } = world;
+    const top = 0.5;
+    water.setLegWater(0, MATERIALS.cotton.water, top);
+    const skin = { bead: BARE_SKIN_WATER.bead, slip: BARE_SKIN_WATER.slip };
+    const cotton = { bead: MATERIALS.cotton.water.bead, slip: MATERIALS.cotton.water.slip };
+    expect({ ...water.waterAt(0, top + 0.1) }).toEqual(skin);
+    expect({ ...water.waterAt(0, top + SKIN_EDGE) }).toEqual(skin);
+    expect({ ...water.waterAt(0, top - SKIN_EDGE) }).toEqual(cotton);
+    expect({ ...water.waterAt(0, 0.1) }).toEqual(cotton);
+    // Right at the top it is halfway between the two, so nothing jumps as a bead crosses it.
+    const edge = { ...water.waterAt(0, top) };
+    expect(edge.bead).toBeCloseTo((skin.bead + cotton.bead) / 2, 12);
+    expect(edge.slip).toBeCloseTo((skin.slip + cotton.slip) / 2, 12);
+    // The other leg, tights and a bare leg have no such line: the leg's own water all the way up.
+    expect({ ...water.waterAt(1, 0.8) }).toEqual({ bead: 1, slip: 1 });
+    water.setLegWater(0, MATERIALS.cotton.water);
+    expect({ ...water.waterAt(0, 0.8) }).toEqual(cotton);
+
+    // A bead soaks into cotton in no time, and lasts on the skin above it as it does on a bare leg.
+    water.setLegWater(0, MATERIALS.cotton.water, top);
+    const [onSkin, onCotton] = [surfacePoint(world, 0, 0.6, 0.06), surfacePoint(world, 0, 0.4, 0.06)];
+    const [high, low] = [bead(onSkin, 0.001), bead(onCotton, 0.001)];
+    water.beads.push(high, low);
+    water.update(0.1);
+    expect(low.r).toBeCloseTo(0.001 - (0.1 * 0.000035) / cotton.bead ** 2, 12);
+    expect(high.r).toBeCloseTo(0.001 - (0.1 * 0.000035) / skin.bead ** 2, 12);
+  });
+
+  it("take on the fabric's ways once they have run down from the skin onto the stocking", () => {
+    const world = waterWorld();
+    const { water } = world;
+    const start = surfacePoint(world, 0, 0.6, 0.06);
+    const top = start.ry - 0.01;
+    water.setLegWater(0, MATERIALS.cotton.water, top);
+    // Big enough to slide on skin, where it would last for minutes.
+    const b = bead(start, 0.0022);
+    water.beads.push(b);
+    let seconds = 0;
+    let lowest = start.ry;
+    while (water.beads.includes(b) && seconds < 20) {
+      water.update(DT);
+      seconds += DT;
+      lowest = Math.min(lowest, b.restY);
+    }
+    // It ran down to the stocking's top, was held by the cotton there, and soaked in within seconds.
+    expect(lowest).toBeLessThan(top + SKIN_EDGE);
+    expect(lowest).toBeGreaterThan(top - 0.03);
+    expect(seconds).toBeLessThan(12);
+    expect((0.0022 - 0.00045) / (0.000035 / BARE_SKIN_WATER.bead ** 2)).toBeGreaterThan(100);
+  });
+
   it("drip off overhangs", () => {
     const world = waterWorld();
     world.rig.setPose("tiptoe", { instant: true });
@@ -559,6 +614,7 @@ describe("free drops", () => {
       const b: Bead = {
         ...{ x: hit.x, y: hit.y, z: hit.z, nx: hit.nx, ny: hit.ny, nz: hit.nz },
         ...{ leg: 0, vx: 0, vy: 0, vz: 0, r, age: 1, lx: hit.x, ly: hit.y, lz: hit.z, wob: 0, soakT: 0 },
+        restY: hit.y,
       };
       water.beads.push(b);
       return b;

@@ -51,7 +51,13 @@ export interface LegLook {
   skinVisible: boolean;
   fade0: number;
   fade1: number;
+  /** How the leg takes water where it wears the stocking (all over, if it is bare). */
   water: MaterialWater;
+  /**
+   * The height at rest from which up the leg is bare skin above its stocking, and takes water as skin does.
+   * Infinity when there is none (tights) and for a bare leg, whose `water` is the skin's already.
+   */
+  skinFrom: number;
 }
 
 // Unknown keys can still arrive at runtime (e.g. hand-edited specs), hence the fallbacks below.
@@ -98,5 +104,6 @@ export function resolveLegLook(input?: Partial<LegSpec>): LegLook {
     fade0: isTights ? 0.7 : 0.79,
     fade1: isTights ? 0.812 : 0.868,
     water: isBare ? BARE_SKIN_WATER : materialDef.water,
+    skinFrom: isBare || isTights ? Infinity : lengthDef.cuffY,
   };
 }

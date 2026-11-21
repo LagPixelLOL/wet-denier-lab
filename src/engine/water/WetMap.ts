@@ -4,6 +4,7 @@
  */
 import * as THREE from "three";
 import {
+  NO_SKIN_ABOVE,
   WET_BAKE_FRAGMENT_SHADER,
   WET_BAKE_VERTEX_SHADER,
   WET_QUAD_VERTEX_SHADER,
@@ -11,7 +12,7 @@ import {
   WET_STAMP_VERTEX_SHADER,
   WET_UPDATE_FRAGMENT_SHADER,
 } from "./shaders/wet";
-import type { MaterialWater } from "../catalog/garments";
+import { BARE_SKIN_WATER, type MaterialWater } from "../catalog/garments";
 import type { SurfaceGrid, UvRect } from "../surface/SurfaceGrid";
 
 /** The per-leg stage data WetMap reads: skinning uniforms and the leg group matrix. */
@@ -56,8 +57,6 @@ export class WetMap {
   declare stampScene: THREE.Scene;
   /** Stamps queued for the next update. */
   declare count: number;
-  /** Per-leg soak multiplier. */
-  declare take: number[];
   /** Upper bound on remaining wetness; the update is skipped once it reaches zero. */
   declare wetBound: number;
   declare boxes: WetBox[];
@@ -125,6 +124,8 @@ export class WetMap {
       this.bakeScene.add(mesh);
       return mesh;
     });
+    // The height at rest where each leg's fabric ends and its bare skin begins.
+    const legTop = { value: new THREE.Vector2(NO_SKIN_ABOVE, NO_SKIN_ABOVE) };
     this.updateMat = new THREE.ShaderMaterial({
       vertexShader: WET_QUAD_VERTEX_SHADER,
       fragmentShader: WET_UPDATE_FRAGMENT_SHADER,
@@ -164,6 +165,10 @@ export class WetMap {
         uLegWater: {
           value: [new THREE.Vector4(1, 1, 0, 0), new THREE.Vector4(1, 1, 0, 0)],
         },
+        uSkinWater: {
+          value: new THREE.Vector4(BARE_SKIN_WATER.soak, BARE_SKIN_WATER.wick, BARE_SKIN_WATER.shed || 0, 0),
+        },
+        uLegTop: legTop,
       },
     });
     this.quadScene = new THREE.Scene();
@@ -190,6 +195,14 @@ export class WetMap {
         uPosMap: {
           value: this.posRT.texture,
         },
+        // How much of a drop's water soaks in: per leg for its fabric, and for bare skin.
+        uLegTake: {
+          value: new THREE.Vector2(1, 1),
+        },
+        uSkinTake: {
+          value: BARE_SKIN_WATER.take,
+        },
+        uLegTop: legTop,
       },
       depthTest: false,
       depthWrite: false,
@@ -204,7 +217,6 @@ export class WetMap {
     stampMesh.frustumCulled = false;
     this.stampScene.add(stampMesh);
     this.count = 0;
-    this.take = [1, 1];
     this.wetBound = 0;
     this.boxes = legs.map((_leg, legIndex): WetBox => {
       let minU = 1;
@@ -246,9 +258,14 @@ export class WetMap {
   get texture(): THREE.Texture {
     return this.a.texture;
   }
-  setLegWater(legIndex: number, water: MaterialWater): void {
+  /**
+   * How a leg takes water: `water` for what it wears (or for its skin, if it is bare), and bare skin's way above
+   * `top`, the height at rest where a stocking ends. Leave `top` out for tights and for a bare leg.
+   */
+  setLegWater(legIndex: number, water: MaterialWater, top = NO_SKIN_ABOVE): void {
     this.updateMat.uniforms.uLegWater.value[legIndex].set(water.soak, water.wick, water.shed || 0, 0);
-    this.take[legIndex] = water.take;
+    this.stampMat.uniforms.uLegTake.value.setComponent(legIndex, water.take);
+    this.stampMat.uniforms.uLegTop.value.setComponent(legIndex, Math.min(top, NO_SKIN_ABOVE));
   }
   bake(withFlow = true): void {
     const renderer = this.renderer;
@@ -305,7 +322,7 @@ export class WetMap {
       );
       this.attr.aA.array.set([x, y, z, radius], offset);
       this.attr.aB.array.set([x2, y2, z2, roughness], offset);
-      this.attr.aAmt.array.set([soak * this.take[rect[0] >= 0.5 ? 1 : 0], film, fresh, seed], offset);
+      this.attr.aAmt.array.set([soak, film, fresh, seed], offset);
     }
   }
   update(dt: number): void {

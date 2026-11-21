@@ -300,6 +300,7 @@ describe("resolveLegLook", () => {
         ],
         "sheen": "#b8b2cf",
         "sheenAmt": 0.26,
+        "skinFrom": 0.7,
         "skinVisible": true,
         "spec": {
           "color": "ink",
@@ -425,6 +426,15 @@ describe("resolveLegLook", () => {
         expect([key, MATERIALS[key].sheen > 0]).toEqual([key, true]);
       }
     }
+  });
+
+  it("says where a stocking ends and bare skin begins, for how the leg takes water", () => {
+    expect(resolveLegLook({ length: "thigh" }).skinFrom).toBe(STOCKING_LENGTHS.thigh.cuffY);
+    expect(resolveLegLook({ length: "knee", material: "cotton" }).skinFrom).toBe(STOCKING_LENGTHS.knee.cuffY);
+    // Tights leave no skin of the leg bare, and a bare leg takes water as skin all over already.
+    expect(resolveLegLook({ length: "tights" }).skinFrom).toBe(Infinity);
+    const bare = resolveLegLook({ length: "bare", material: "cotton" });
+    expect([bare.skinFrom, bare.water]).toEqual([Infinity, BARE_SKIN_WATER]);
   });
 
   it("has velvet take drops in nearly as readily as cotton, and far more readily than nylon", () => {

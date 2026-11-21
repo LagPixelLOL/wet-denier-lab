@@ -41,8 +41,8 @@ function refreshLeg(leg: number) {
   if (app.rig.setBare(leg, !!resolved.bare)) {
     app.water.reseat(leg);
   }
-  app.wetmap.setLegWater(leg, resolved.water);
-  app.water.setLegWater(leg, resolved.water);
+  app.wetmap.setLegWater(leg, resolved.water, resolved.skinFrom);
+  app.water.setLegWater(leg, resolved.water, resolved.skinFrom);
 }
 
 export function previewPreset(index: number | null) {

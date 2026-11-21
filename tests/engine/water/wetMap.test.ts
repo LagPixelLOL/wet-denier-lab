@@ -1,7 +1,14 @@
 import * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MATERIALS } from "../../../src/engine/catalog/garments";
+import { BARE_SKIN_WATER, MATERIALS } from "../../../src/engine/catalog/garments";
+import { NO_SKIN_ABOVE, SKIN_EDGE, skinAbove } from "../../../src/engine/water/shaders/wet";
 import type { SurfaceHit } from "../../../src/engine/surface/SurfaceGrid";
+import {
+  WET_BAKE_FRAGMENT_SHADER,
+  WET_BAKE_VERTEX_SHADER,
+  WET_STAMP_FRAGMENT_SHADER,
+  WET_UPDATE_FRAGMENT_SHADER,
+} from "../../../src/engine/water/shaders/wet";
 import type { WetMap } from "../../../src/engine/water/WetMap";
 import { digest } from "../../helpers/digest";
 import { describeCalls } from "../../helpers/fakeRenderer";
@@ -139,19 +146,82 @@ describe("WetMap.bake", () => {
 });
 
 describe("WetMap.setLegWater", () => {
-  it("feeds soak, wick and shed to the update shader and keeps the take factor", () => {
+  it("feeds soak, wick and shed to the update shader and the take factor to the stamps", () => {
     const { wetmap } = waterWorld();
+    const take = wetmap.stampMat.uniforms.uLegTake.value;
     wetmap.setLegWater(1, MATERIALS.latex.water);
     expect(wetmap.updateMat.uniforms.uLegWater.value[1].toArray()).toEqual([0, 0, 0.55, 0]);
-    expect(wetmap.take).toEqual([1, 0]);
+    expect(take.toArray()).toEqual([1, 0]);
     wetmap.setLegWater(0, MATERIALS.cotton.water);
     expect(wetmap.updateMat.uniforms.uLegWater.value[0].toArray()).toEqual([3.2, 2.6, 0, 0]);
-    expect(wetmap.take).toEqual([1.5, 0]);
+    expect(take.toArray()).toEqual([1.5, 0]);
+  });
+
+  it("has the skin above a stocking's top take water as bare skin does", () => {
+    const { wetmap } = waterWorld();
+    const { updateMat, stampMat } = wetmap;
+    // Bare skin's way with water is always at hand, for both the simulation and the stamps.
+    const skin = BARE_SKIN_WATER;
+    expect(updateMat.uniforms.uSkinWater.value.toArray()).toEqual([skin.soak, skin.wick, skin.shed, 0]);
+    expect(stampMat.uniforms.uSkinTake.value).toBe(skin.take);
+    // Where each leg's fabric ends: one value, shared by the two shaders. None to begin with.
+    const top = updateMat.uniforms.uLegTop;
+    expect(stampMat.uniforms.uLegTop).toBe(top);
+    expect(top.value.toArray()).toEqual([NO_SKIN_ABOVE, NO_SKIN_ABOVE]);
+    wetmap.setLegWater(0, MATERIALS.cotton.water, 0.7);
+    wetmap.setLegWater(1, MATERIALS.velvet.water, 0.425);
+    expect(top.value.toArray()).toEqual([0.7, 0.425]);
+    // Tights and a bare leg have no skin of another kind above: left out, or Infinity, the top is out of reach.
+    wetmap.setLegWater(0, MATERIALS.cotton.water);
+    wetmap.setLegWater(1, BARE_SKIN_WATER, Infinity);
+    expect(top.value.toArray()).toEqual([NO_SKIN_ABOVE, NO_SKIN_ABOVE]);
+    expect(NO_SKIN_ABOVE).toBeGreaterThan(10);
+  });
+
+  it("goes from the fabric's way with water to the skin's over a narrow band around the top, not at a line", () => {
+    const top = 0.7;
+    expect(skinAbove(0.2, top)).toBe(0);
+    expect(skinAbove(top - SKIN_EDGE, top)).toBe(0);
+    expect(skinAbove(top, top)).toBeCloseTo(0.5, 12);
+    expect(skinAbove(top + SKIN_EDGE, top)).toBe(1);
+    expect(skinAbove(0.85, top)).toBe(1);
+    const steps = Array.from({ length: 21 }, (_, i) => skinAbove(top - SKIN_EDGE + (i / 20) * 2 * SKIN_EDGE, top));
+    steps.slice(1).forEach((value, i) => {
+      expect(value).toBeGreaterThan(steps[i]);
+      expect(value - steps[i]).toBeLessThan(0.08);
+    });
+    // A few millimeters of a leg about 0.87 tall.
+    expect(SKIN_EDGE).toBeGreaterThan(0.002);
+    expect(SKIN_EDGE).toBeLessThan(0.015);
+    expect(skinAbove(0.85, NO_SKIN_ABOVE)).toBe(0);
+    // The shaders use the same band.
+    for (const shader of [WET_UPDATE_FRAGMENT_SHADER, WET_STAMP_FRAGMENT_SHADER]) {
+      expect(shader).toContain(
+        `return smoothstep(top - ${SKIN_EDGE.toFixed(3)}, top + ${SKIN_EDGE.toFixed(3)}, posAlpha - 1.0);`,
+      );
+    }
+  });
+
+  it("keeps each texel's height on the leg at rest next to its position, to tell skin from fabric by", () => {
+    expect(WET_BAKE_VERTEX_SHADER).toContain("vBakeRestY = position.y;");
+    expect(WET_BAKE_FRAGMENT_SHADER).toContain("1.0 + max(vBakeRestY, 0.0));");
+    // Alpha still says whether a texel has surface: nothing reads it as a plain 0 or 1 weight any more.
+    expect(WET_UPDATE_FRAGMENT_SHADER).not.toMatch(/float w = texture2D\(uPosMap/);
+    expect(WET_UPDATE_FRAGMENT_SHADER.match(/hasSurface\(texture2D\(uPosMap/g)).toHaveLength(3);
+    expect(WET_UPDATE_FRAGMENT_SHADER).toContain(
+      "vec4 water = mix(vUv.x < 0.5 ? uLegWater[0] : uLegWater[1], uSkinWater, skinAbove(vUv, valid));",
+    );
+    expect(WET_STAMP_FRAGMENT_SHADER).toContain(
+      "float take = mix(vUv.x < 0.5 ? uLegTake.x : uLegTake.y, uSkinTake, skinAbove(vUv, posTex.a));",
+    );
+    expect(WET_STAMP_FRAGMENT_SHADER).toContain(
+      "gl_FragColor = vec4(vStampAmt.x * take * amt, vStampAmt.yz * amt, 0.0);",
+    );
   });
 });
 
 describe("WetMap.stamp", () => {
-  it("queues one instance per UV island the spot touches, padded and scaled by the leg's take", () => {
+  it("queues one instance per UV island the spot touches, padded, with the water as it fell", () => {
     const world = waterWorld();
     const { wetmap } = world;
     const hit = surfacePoint(world, 1);
@@ -173,8 +243,8 @@ describe("WetMap.stamp", () => {
         ),
       );
       expect(at("aA", i)).toEqual(Array.from(new Float32Array([hit.x, hit.y, hit.z, 0.01])));
-      // leg 1 lives in the right half of the atlas, so cotton's take applies
-      expect(at("aAmt", i).slice(0, 3)).toEqual(Array.from(new Float32Array([0.8 * 1.5, 0.5, 1])));
+      // How much of it soaks in is the stamp shader's to say, texel by texel: fabric, or the skin above it.
+      expect(at("aAmt", i).slice(0, 3)).toEqual(Array.from(new Float32Array([0.8, 0.5, 1])));
       expect(at("aB", i)[3]).toBeCloseTo(0.7, 6);
     });
     // bound grows by 1.5 x soak + film + 0.2 (independent of the take factor)

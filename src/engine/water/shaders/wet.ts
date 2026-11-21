@@ -5,12 +5,32 @@ import { LEG_SKINNING_GLSL } from "../../rig/joints";
 
 const POS_Y_OFFSET = 0.44;
 
+/**
+ * Half the height of the band, around the top of a stocking, over which the way the surface takes water goes from
+ * the fabric's to bare skin's. With a hard line there, a wet patch reaching across it would be cut off along it.
+ */
+export const SKIN_EDGE = 0.006;
+
+/** A stocking top for a leg with no bare skin above its fabric (tights), or bare all over. */
+export const NO_SKIN_ABOVE = 100;
+
+/**
+ * How much of bare skin's way with water the surface has at this height of the leg at rest: 0 on the fabric,
+ * 1 on the skin above the stocking's top, in between around the top itself.
+ */
+export function skinAbove(restY: number, top: number): number {
+  const t = Math.min(Math.max((restY - (top - SKIN_EDGE)) / (2 * SKIN_EDGE), 0), 1);
+  return t * t * (3 - 2 * t);
+}
+
 export const WET_BAKE_VERTEX_SHADER = `
 ${LEG_SKINNING_GLSL}uniform vec2 uBakeSlot;
 varying vec3 vBakePos, vBakeNormal;
+varying float vBakeRestY;
 void main() {
   mat3 jac;
   vec3 p = skinPosition(position, jac);
+  vBakeRestY = position.y;
   vBakePos = (modelMatrix * vec4(p, 1.0)).xyz;
   vBakeNormal = mat3(modelMatrix) * skinNormal(jac, normal);
   gl_Position = vec4((uv.x * uBakeSlot.x + uBakeSlot.y) * 2.0 - 1.0, uv.y * 2.0 - 1.0, 0.0, 1.0);
@@ -20,9 +40,12 @@ void main() {
 export const WET_BAKE_FRAGMENT_SHADER = `
 uniform float uBakeMode, uBakeSize;
 varying vec3 vBakePos, vBakeNormal;
+varying float vBakeRestY;
 void main() {
   if (uBakeMode < 0.5) {
-    gl_FragColor = vec4(vBakePos - vec3(0.0, ${POS_Y_OFFSET.toFixed(2)}, 0.0), 1.0);
+    // Alpha is 0 where the map has no surface, and elsewhere 1 plus the surface's height on the leg at rest,
+    // which tells the fabric from the bare skin above it (WET_SURFACE_GLSL).
+    gl_FragColor = vec4(vBakePos - vec3(0.0, ${POS_Y_OFFSET.toFixed(2)}, 0.0), 1.0 + max(vBakeRestY, 0.0));
     return;
   }
   vec3 dpx = dFdx(vBakePos) * uBakeSize, dpy = dFdy(vBakePos) * uBakeSize;
@@ -33,6 +56,21 @@ void main() {
   vec2 flow = det > 1e-12 ? vec2(e22 * b1 - e12 * b2, -e12 * b1 + e11 * b2) / det : vec2(0.0);
   float ny = normalize(vBakeNormal).y;
   gl_FragColor = vec4(clamp(flow, -4.0, 4.0), sqrt(max(0.0, 1.0 - ny * ny)), 1.0);
+}
+`;
+
+/**
+ * Reading the position map's alpha: whether a texel has surface at all, and how much that surface is the leg's
+ * bare skin above its stocking (uLegTop: the height at rest where each leg's fabric ends; see skinAbove).
+ */
+const WET_SURFACE_GLSL = `
+uniform vec2 uLegTop;
+float hasSurface(float posAlpha) {
+  return step(0.5, posAlpha);
+}
+float skinAbove(vec2 uv, float posAlpha) {
+  float top = uv.x < 0.5 ? uLegTop.x : uLegTop.y;
+  return smoothstep(top - ${SKIN_EDGE.toFixed(3)}, top + ${SKIN_EDGE.toFixed(3)}, posAlpha - 1.0);
 }
 `;
 
@@ -48,9 +86,9 @@ export const WET_UPDATE_FRAGMENT_SHADER = `
 uniform sampler2D uWetPrev, uPosMap, uFlowMap;
 uniform vec2 uTexel, uAtlasScale;
 uniform float uDt, uDryRate, uAbsorbRate, uFlowSpeed, uWickRate;
-uniform vec4 uLegWater[2];
+uniform vec4 uLegWater[2], uSkinWater;
 varying vec2 vUv;
-void main() {
+${WET_SURFACE_GLSL}void main() {
   vec4 state = texture2D(uWetPrev, vUv);
   float valid = texture2D(uPosMap, vUv).a;
   vec2 offs[4];
@@ -62,7 +100,7 @@ void main() {
     vec4 sum = vec4(0.0);
     float wsum = 0.0;
     for (int i = 0; i < 4; i++) {
-      float w = texture2D(uPosMap, vUv + offs[i]).a;
+      float w = hasSurface(texture2D(uPosMap, vUv + offs[i]).a);
       sum += texture2D(uWetPrev, vUv + offs[i]) * w;
       wsum += w;
     }
@@ -70,18 +108,19 @@ void main() {
     return;
   }
   float soak = state.r, film = state.g, fresh = state.b;
-  vec4 water = vUv.x < 0.5 ? uLegWater[0] : uLegWater[1];
+  // How the surface takes water: as the leg's fabric does, or, above the stocking, as bare skin does.
+  vec4 water = mix(vUv.x < 0.5 ? uLegWater[0] : uLegWater[1], uSkinWater, skinAbove(vUv, valid));
   vec3 flow = texture2D(uFlowMap, vUv).rgb;
   float slide = smoothstep(0.35, 1.1, film) * flow.z;
   vec2 upUv = vUv - flow.xy * uAtlasScale * uFlowSpeed * slide * uDt;
-  float upFilm = texture2D(uWetPrev, upUv).g * texture2D(uPosMap, upUv).a;
+  float upFilm = texture2D(uWetPrev, upUv).g * hasSurface(texture2D(uPosMap, upUv).a);
   film = mix(film, max(upFilm, film * 0.6), slide * 0.9);
   float absorb = min(film, uAbsorbRate * water.x * uDt);
   film -= absorb;
   soak += absorb * 0.9;
   float wick = 0.0;
   for (int i = 0; i < 4; i++) {
-    float w = texture2D(uPosMap, vUv + offs[i]).a;
+    float w = hasSurface(texture2D(uPosMap, vUv + offs[i]).a);
     wick += (texture2D(uWetPrev, vUv + offs[i]).r - state.r) * w;
   }
   soak += wick * uWickRate * water.y * uDt;
@@ -108,9 +147,11 @@ void main() {
 
 export const WET_STAMP_FRAGMENT_SHADER = `
 uniform sampler2D uPosMap;
+uniform vec2 uLegTake;
+uniform float uSkinTake;
 varying vec2 vUv;
 varying vec4 vStampA, vStampB, vStampAmt;
-float hash31(vec3 p) {
+${WET_SURFACE_GLSL}float hash31(vec3 p) {
   p = fract(p * 0.3183099 + 0.1);
   p *= 17.0;
   return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
@@ -137,6 +178,8 @@ void main() {
   float mask = 1.0 - smoothstep(r * 0.80, r, d);
   float core = 1.0 - smoothstep(0.0, r, d);
   float amt = mask * (0.6 + 0.4 * core);
-  gl_FragColor = vec4(vStampAmt.xyz * amt, 0.0);
+  // How much of the water soaks in: the take of the leg's fabric, or, above the stocking, of bare skin.
+  float take = mix(vUv.x < 0.5 ? uLegTake.x : uLegTake.y, uSkinTake, skinAbove(vUv, posTex.a));
+  gl_FragColor = vec4(vStampAmt.x * take * amt, vStampAmt.yz * amt, 0.0);
 }
 `;

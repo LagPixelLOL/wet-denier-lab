@@ -11,8 +11,9 @@ import {
   GLINT_FRAGMENT_SHADER,
   GLINT_VERTEX_SHADER,
 } from "./shaders/drops";
-import type { MaterialWater } from "../catalog/garments";
+import { BARE_SKIN_WATER, type MaterialWater } from "../catalog/garments";
 import type { SurfaceGrid, SurfaceHit } from "../surface/SurfaceGrid";
+import { NO_SKIN_ABOVE, skinAbove } from "./shaders/wet";
 import type { WetMap } from "./WetMap";
 
 /** A thrown drop flying on a fixed ballistic arc toward a known surface target. */
@@ -39,6 +40,8 @@ export interface ThrownDrop {
   ny: number;
   nz: number;
   leg: number;
+  /** The target's height on the leg at rest. */
+  restY: number;
 }
 
 /** A freely integrated drop: 1 = spray, 2 = drip, 3 = rain. */
@@ -76,6 +79,8 @@ export interface Bead {
   lz: number;
   wob: number;
   soakT: number;
+  /** Its height on the leg at rest, which tells the fabric from the bare skin above it. */
+  restY: number;
   /** Glint strength, assigned in sync for glint candidates. */
   glow?: number;
 }
@@ -177,6 +182,9 @@ export class WaterSim {
   declare rainStyle: RainStyle;
   declare rainOver: RainArea;
   declare legWater: BeadWater[];
+  /** Per leg: the height at rest where its fabric ends and bare skin begins. */
+  declare legTop: number[];
+  declare _waterAt: BeadWater;
   declare events: WaterEvents;
   declare material: THREE.ShaderMaterial;
   declare beadMesh: DropMesh;
@@ -246,6 +254,8 @@ export class WaterSim {
         slip: 1,
       },
     ];
+    this.legTop = [NO_SKIN_ABOVE, NO_SKIN_ABOVE];
+    this._waterAt = { bead: 1, slip: 1 };
     this.events = {
       impacts: 0,
       energy: 0,
@@ -475,6 +485,7 @@ export class WaterSim {
         ny: target.ny,
         nz: target.nz,
         leg: target.leg,
+        restY: target.ry,
       });
     }
   }
@@ -495,9 +506,26 @@ export class WaterSim {
     uniforms.uEnvHi.value.set(...look.envHi);
     uniforms.uRainTint.value.set(...look.rain);
   }
-  setLegWater(legIndex: number, water: BeadWater): void {
+  /**
+   * How drops behave on a leg: `water` for what it wears (or for its skin, if it is bare), and bare skin's way
+   * above `top`, the height at rest where a stocking ends. Leave `top` out for tights and for a bare leg.
+   */
+  setLegWater(legIndex: number, water: BeadWater, top = NO_SKIN_ABOVE): void {
     this.legWater[legIndex].bead = water.bead;
     this.legWater[legIndex].slip = water.slip;
+    this.legTop[legIndex] = top;
+  }
+  /** How drops behave at this height of a leg at rest: on its fabric, on the skin above it, or at the edge between. */
+  waterAt(leg: number, restY: number): BeadWater {
+    const fabric = this.legWater[leg];
+    const skin = skinAbove(restY, this.legTop[leg]);
+    if (skin <= 0) {
+      return fabric;
+    }
+    const at = this._waterAt;
+    at.bead = fabric.bead + (BARE_SKIN_WATER.bead - fabric.bead) * skin;
+    at.slip = fabric.slip + (BARE_SKIN_WATER.slip - fabric.slip) * skin;
+    return at;
   }
   setFootprint(x: number, z: number, width: number, depth: number): void {
     const area = this.rainOver;
@@ -528,6 +556,7 @@ export class WaterSim {
         bead.nx = near.nx;
         bead.ny = near.ny;
         bead.nz = near.nz;
+        bead.restY = near.ry;
         continue;
       }
       const cover = this.surface.closest(bead.x, bead.y, bead.z, 0.025);
@@ -567,6 +596,7 @@ export class WaterSim {
     radius: number,
     isSplash: boolean,
     leg = 0,
+    restY = 0,
   ): void {
     const speed = Math.hypot(vx, vy, vz);
     const normalSpeed = vx * nx + vy * ny + vz * nz;
@@ -579,8 +609,8 @@ export class WaterSim {
     events.ez += z * energy;
     const spotRadius = radius * (2.5 + speed * 0.55) + 0.0015;
     this.wetmap.stamp(x, y, z, spotRadius, 0.5 + radius * 130, 0.95, isSplash ? 1 : 0.5, 1);
-    if (radius > 0.0006 && Math.random() < Math.min(1, this.legWater[leg].bead * 2) * 0.85) {
-      this._addBead(x, y, z, nx, ny, nz, radius * 0.92, leg);
+    if (radius > 0.0006 && Math.random() < Math.min(1, this.waterAt(leg, restY).bead * 2) * 0.85) {
+      this._addBead(x, y, z, nx, ny, nz, radius * 0.92, leg, restY);
     }
     if (isSplash && this.beads.length < this.maxBeads - 40) {
       let tx = nz;
@@ -602,7 +632,17 @@ export class WaterSim {
           spotRadius + 0.012,
         );
         if (spot) {
-          this._addBead(spot.x, spot.y, spot.z, spot.nx, spot.ny, spot.nz, 0.0005 + Math.random() * 0.0008, spot.leg);
+          this._addBead(
+            spot.x,
+            spot.y,
+            spot.z,
+            spot.nx,
+            spot.ny,
+            spot.nz,
+            0.0005 + Math.random() * 0.0008,
+            spot.leg,
+            spot.ry,
+          );
         }
       }
     }
@@ -639,7 +679,7 @@ export class WaterSim {
       }
     }
   }
-  _addBead(x: number, y: number, z: number, nx: number, ny: number, nz: number, r: number, leg = 0): void {
+  _addBead(x: number, y: number, z: number, nx: number, ny: number, nz: number, r: number, leg = 0, restY = 0): void {
     if (this.beads.length >= this.maxBeads) {
       let nearest: Bead | null = null;
       let bestDist = 0.02;
@@ -673,6 +713,7 @@ export class WaterSim {
       lz: z,
       wob: Math.random() * 6.28,
       soakT: Math.random(),
+      restY: restY,
     });
   }
   _floorHit(x: number, z: number, r: number, speed: number): void {
@@ -739,7 +780,21 @@ export class WaterSim {
           const vx = drop.vx;
           const vy = drop.vy - GRAVITY * drop.T;
           const vz = drop.vz;
-          this._impact(drop.tx, drop.ty, drop.tz, drop.nx, drop.ny, drop.nz, vx, vy, vz, drop.r, true, drop.leg || 0);
+          this._impact(
+            drop.tx,
+            drop.ty,
+            drop.tz,
+            drop.nx,
+            drop.ny,
+            drop.nz,
+            vx,
+            vy,
+            vz,
+            drop.r,
+            true,
+            drop.leg || 0,
+            drop.restY,
+          );
           dead = true;
         } else {
           drop.x = drop.sx + drop.vx * drop.t;
@@ -781,10 +836,11 @@ export class WaterSim {
                   drop.r,
                   false,
                   hit.leg,
+                  hit.ry,
                 );
               } else {
                 wetmap.stamp(hit.x, hit.y, hit.z, drop.r * 2.2 + 0.001, 0.35, 0.6, 0.2, 0.8);
-                this._addBead(hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz, drop.r, hit.leg);
+                this._addBead(hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz, drop.r, hit.leg, hit.ry);
               }
               dead = true;
             }
@@ -817,7 +873,7 @@ export class WaterSim {
       let gz = -gn * bead.nz;
       const gt = Math.hypot(gx, gy, gz);
       const slope = gt / GRAVITY;
-      const water = this.legWater[bead.leg || 0];
+      const water = this.waterAt(bead.leg || 0, bead.restY);
       const pinRadius = BEAD_PIN_RADIUS / water.slip;
       const slide = slope > 0.03 ? Math.min(2.5, Math.max(0, (bead.r * Math.sqrt(slope) - pinRadius) / pinRadius)) : 0;
       if (slide > 0) {
@@ -867,6 +923,7 @@ export class WaterSim {
           bead.ny = hit.ny;
           bead.nz = hit.nz;
           bead.leg = hit.leg;
+          bead.restY = hit.ry;
           const moved = Math.hypot(bead.x - bead.lx, bead.y - bead.ly, bead.z - bead.lz);
           if (moved > 0.0016) {
             wetmap.stamp(bead.lx, bead.ly, bead.lz, bead.r * 0.62, 0.2, 0.5, 0.08, 0.18, bead.x, bead.y, bead.z);

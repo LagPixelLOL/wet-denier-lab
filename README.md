@@ -168,6 +168,13 @@ flash are for nylon (the glossy one too) and skin. Latex takes no water in eithe
 leg, soaked up before the latex went on stays in the wet map (for the skin above the stocking, and for when that
 fabric is back) but does not show on the latex, neither as a wet patch nor as a line around one.
 
+How a surface takes water (how fast it soaks in and spreads, how many drops stay on it and how they slide) goes by
+what is there, not by the leg: the fabric's way where the stocking is, and bare skin's (`BARE_SKIN_WATER`) on the
+skin above its top, whatever the stocking is made of. The wet map's position texture carries each texel's height on
+the leg at rest for that, and a drop carries its own. Around the top the one way goes over into the other across a
+narrow band (`SKIN_EDGE` in `water/shaders/wet.ts`) instead of at a line, so a drop running down from the skin is
+taken up as it reaches the fabric and a wet patch across the top is not cut off along it.
+
 The rim lights and the sheen belong to the leg's outline. They go by how far the surface is turned away from the eye
 around the leg (`outline` in the leg's fragment shader), not by its angle to the line of sight: looking down or up
 along a leg, all of its surface is seen at a glancing angle, and by that angle they would cover the whole leg instead
