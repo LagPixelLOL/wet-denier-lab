@@ -335,17 +335,20 @@ void main() {
   }
   float cuffDy = height - uCuffY;
   float fabric = (1.0 - uIsSkin) * mix(1.0, vCover, uUnder);
-  float cuffDen = -1.0, cut = 0.0;
+  // The cuff's own density and how much of it there is here: it goes over into the stocking's across its lower
+  // edge, from the one density to the other (never through a thinner fabric than either).
+  float cuffDen = 0.0, cuffAmt = 0.0, cut = 0.0;
   float stripe = 0.0, rib = 0.0, bandEdge = 0.0;
   if (uHasCuff > 0.5 && fabric > 0.5 && cuffDy > -0.075) {
     float depth = -cuffDy;
     if (uCuffStyle > 0.5 && uCuffStyle < 1.5) {
-      float laceDen = laceCuff(vUv.x, depth, cut);
-      cuffDen = mix(laceDen, -1.0, aaStep(0.0605, depth));
+      cuffDen = laceCuff(vUv.x, depth, cut);
+      cuffAmt = 1.0 - aaStep(0.0605, depth);
     } else {
       cut = 1.0 - aaStep(0.0, depth);
       float pastBand = aaStep(uBand, depth);
-      cuffDen = mix(uDenier * 2.6 + 25.0, -1.0, pastBand);
+      cuffDen = uDenier * 2.6 + 25.0;
+      cuffAmt = 1.0 - pastBand;
       bandEdge = (1.0 - aaStep(0.0009, abs(depth - uBand))) * uPrint;
       if (uCuffStyle > 1.5 && uCuffStyle < 2.5)
       stripe = (aaStep(0.007, depth) - aaStep(0.0125, depth) + aaStep(0.018, depth) - aaStep(0.0235, depth)) * (1.0 - pastBand);
@@ -361,7 +364,7 @@ void main() {
   accent = max(max(accent, clamp((patMul - 1.0) * 0.5, 0.0, 1.0) * uPrint), stripe);
   float denier = uDenier * pow(max(vStretch, 0.3), -0.65) * patMul;
   if (isNet) denier = mix(uDenier * 4.0, 0.0, open);
-  if (cuffDen >= 0.0) denier = cuffDen;
+  denier = mix(denier, cuffDen, cuffAmt);
   // Reinforced toe: a denser knit over the toes, closed by a seam across their tops. Hosiery has one; fabrics
   // too thick to see through do not.
   float toeKnit = uToe * (isNet ? 0.0 : clamp(uMatKnit.x * 5.0, 0.0, 1.0)) * step(height, 0.07) * (1.0 - smoothstep(130.0, 220.0, uDenier));

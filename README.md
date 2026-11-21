@@ -134,6 +134,9 @@ cuff's edge (`CUFF_RING_OFFSETS`). The rings only cut the triangles that were th
 move. These meshes share one set of vertices, and `setStocking` picks the one for the leg's cuff for the stocking's
 passes and its outline. Tights and bare legs draw the plain mesh, as do the floor's reflection and the shadows.
 
+The cuff's band is a denser knit than the stocking below it. Across the band's lower edge the fragment shader
+blends from the band's density to the stocking's, so the two join without a bright or dark line between them.
+
 **Water.** `WetMap` runs a ping-pong simulation in the stocking's UV atlas (soaked water, running film, fresh-hit
 highlight). `WaterSim` simulates thrown, spray, drip and rain drops, beads that cling and slide on the surface,
 and a puddle grid with ripples on the floor.

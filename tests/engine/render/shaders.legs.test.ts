@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
+import { LEG_FRAGMENT_SHADER } from "../../../src/engine/stage/shaders/leg";
 import { parseShader, resolveIncludes, splitDeclaratorLists } from "../../helpers/glsl";
 import {
   defineProgramSuite,
@@ -87,6 +88,16 @@ describe("shader catalog", () => {
 
 describe("leg, bow, outline, shadow and post shaders", () => {
   defineProgramSuite(isStageProgram);
+
+  it("blends the cuff's density into the stocking's, never through a marker value", () => {
+    // Fading the cuff's density toward a "no cuff" marker of -1 made the fabric all but transparent for a pixel
+    // along the cuff's lower edge, where the skin then showed as a bright dotted line.
+    expect(LEG_FRAGMENT_SHADER).toContain("denier = mix(denier, cuffDen, cuffAmt);");
+    expect(LEG_FRAGMENT_SHADER).not.toMatch(/cuffDen = mix\(/);
+    expect(LEG_FRAGMENT_SHADER).not.toMatch(/cuffDen\s*(>=|<|>|<=)\s*0\.0/);
+    // Both kinds of cuff say how much of them there is at their lower edge.
+    expect(LEG_FRAGMENT_SHADER.match(/cuffAmt = 1\.0 - /g)).toHaveLength(2);
+  });
 
   it("pins the uniforms the leg passes share without reading", () => {
     expect(unusedUniformsByProgram(isStageProgram)).toMatchInlineSnapshot(`
