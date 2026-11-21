@@ -35,8 +35,14 @@ const MIN_PITCH = -1.3;
 
 const MAX_PITCH = 1.15;
 
+/** `yaw` as the camera reaches it the shortest way round from where it is, instead of unwinding past turns. */
+function nearestTurn(yaw: number): number {
+  const turn = Math.PI * 2;
+  return yaw + turn * Math.round((orbit.cur.yaw - yaw) / turn);
+}
+
 export function resetView() {
-  orbit.yaw = homeView.yaw;
+  orbit.yaw = nearestTurn(homeView.yaw);
   orbit.pitch = homeView.pitch;
   orbit.dist = homeView.dist;
   orbit.target.copy(homeView.target);
@@ -54,9 +60,7 @@ export function currentView(): CameraView {
 
 /** Moves the camera to a shared view, clamped to the usual limits; the camera eases there. */
 export function applyView(view: CameraView) {
-  const turn = Math.PI * 2;
-  // Take the shortest way round from the current yaw instead of unwinding past turns.
-  orbit.yaw = view.yaw + turn * Math.round((orbit.cur.yaw - view.yaw) / turn);
+  orbit.yaw = nearestTurn(view.yaw);
   orbit.pitch = THREE.MathUtils.clamp(view.pitch, MIN_PITCH, MAX_PITCH);
   orbit.dist = THREE.MathUtils.clamp(view.dist, MIN_DIST, MAX_DIST);
   orbit.target.set(...view.target);

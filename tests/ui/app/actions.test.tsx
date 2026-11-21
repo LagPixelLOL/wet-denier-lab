@@ -96,6 +96,31 @@ describe("simple actions", () => {
     expect(orbit.cur.dist).toBeCloseTo(openedOn.dist, 4);
   });
 
+  it("resets the shortest way round after the view was turned around the legs many times", () => {
+    actions.resetView();
+    settle();
+    const home = app.camera.position.clone();
+    // Seven and a bit turns to one side.
+    orbitBy(-(Math.PI * 2 * 7 + 1) / 0.0085, 0);
+    settle();
+    settle();
+    expect(orbit.cur.yaw).toBeCloseTo(homeView.yaw + Math.PI * 14 + 1, 3);
+    actions.resetView();
+    // The view heads back by the one radian it is off, not by the seven turns.
+    expect(orbit.yaw).toBeCloseTo(homeView.yaw + Math.PI * 14, 9);
+    expect(Math.abs(orbit.yaw - orbit.cur.yaw)).toBeLessThan(Math.PI);
+    settle();
+    expect(app.camera.position.distanceTo(home)).toBeLessThan(1e-3);
+    // And to the other side, from past the half turn: on around, not back.
+    orbitBy((Math.PI * 2 * 3 + 4) / 0.0085, 0);
+    settle();
+    settle();
+    actions.resetView();
+    expect(orbit.yaw).toBeCloseTo(homeView.yaw + Math.PI * 14 - Math.PI * 8, 9);
+    settle();
+    expect(app.camera.position.distanceTo(home)).toBeLessThan(1e-3);
+  });
+
   it("throws a bucket and dries off", () => {
     const splashes = state.splashes;
     actions.bucket();
