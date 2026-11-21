@@ -254,26 +254,32 @@ export const BACKDROPS: BackdropTable = {
   },
 };
 
-/** Builds a backdrop from a single hex color (3 or 6 digits, "#" optional). */
+/**
+ * Builds a backdrop from a single hex color (3 or 6 digits, "#" optional). Its parts are the color lifted
+ * toward white, the wall's top the most. How far depends on how light the color is: a light color goes most of
+ * the way, as the pale backdrops do, and a dark one only a little, as dusk does, so a dark color gives a dark
+ * backdrop and black a black one.
+ */
 export function makeCustomBackdrop(hex: string): BackdropDef {
   const digits = String(hex).replace("#", "");
   const value = parseInt(digits.length === 3 ? digits.replace(/./g, "$&$&") : digits, 16);
   const rgb = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
-  const mixTo = (target: number, t: number): string =>
-    "#" +
-    rgb
-      .map((c) =>
-        Math.round(c + (target - c) * t)
-          .toString(16)
-          .padStart(2, "0"),
-      )
-      .join("");
+  const toHex = (channels: number[]): string =>
+    "#" + channels.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("");
+  const mixTo = (target: number, t: number): string => toHex(rgb.map((c) => c + (target - c) * t));
   const luma = (rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722) / 255;
+  const rise = (to: number): number => {
+    const t = Math.min(luma / to, 1);
+    return t * t * (3 - 2 * t);
+  };
+  const lift = 0.1 + 0.9 * rise(0.55);
+  // The glow behind the legs is given for a backdrop that has some light of its own: less of it on a black one.
+  const glow = luma > 0.4 ? [0x34, 0x32, 0x3a] : [0x1c, 0x1a, 0x24].map((c) => c * (0.4 + 0.6 * rise(0.1)));
   return {
-    top: mixTo(255, 0.55),
-    bottom: mixTo(255, 0.12),
-    glow: luma > 0.4 ? "#34323a" : "#1c1a24",
-    floor: mixTo(255, 0.3),
+    top: mixTo(255, 0.55 * lift),
+    bottom: mixTo(255, 0.12 * lift),
+    glow: toHex(glow),
+    floor: mixTo(255, 0.3 * lift),
     shadow: mixTo(0, 0.42),
     dark: luma < 0.3,
   };

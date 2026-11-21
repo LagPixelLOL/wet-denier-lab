@@ -86,7 +86,49 @@ describe("makeCustomBackdrop", () => {
 
   it("maps white and black to the extremes", () => {
     expect(makeCustomBackdrop("#ffffff")).toMatchObject({ top: "#ffffff", bottom: "#ffffff", shadow: "#949494" });
-    expect(makeCustomBackdrop("#000000")).toMatchObject({ top: "#8c8c8c", bottom: "#1f1f1f", floor: "#4d4d4d" });
+    // Black stays black: its parts are lifted a tenth as far as a light color's, and its glow is dimmed.
+    expect(makeCustomBackdrop("#000000")).toEqual({
+      top: "#0e0e0e",
+      bottom: "#030303",
+      floor: "#080808",
+      glow: "#0b0a0e",
+      shadow: "#000000",
+      dark: true,
+    });
+  });
+
+  it("gives a dark color a dark backdrop, lifted about as little as dusk is", () => {
+    const channels = (hex: string) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+    const luma = (hex: string) => {
+      const [r, g, b] = channels(hex);
+      return (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+    };
+    for (const color of ["#101830", "#7a1020", "#2a2944", "#203010"]) {
+      const backdrop = makeCustomBackdrop(color);
+      // Darkest at the bottom of the wall, lightest at its top, the floor in between.
+      expect(luma(backdrop.bottom)).toBeGreaterThanOrEqual(luma(color));
+      expect(luma(backdrop.floor)).toBeGreaterThan(luma(backdrop.bottom));
+      expect(luma(backdrop.top)).toBeGreaterThan(luma(backdrop.floor));
+      // The top is still a dark shade of the color, not a pastel of it.
+      expect(luma(backdrop.top)).toBeLessThan(luma(color) + 0.16);
+      expect(backdrop.dark).toBe(true);
+    }
+    // From dusk's own bottom color: a top close to the one dusk has.
+    const fromDusk = channels(makeCustomBackdrop(BACKDROPS.dusk.bottom).top);
+    channels(BACKDROPS.dusk.top).forEach((channel, i) => expect(Math.abs(fromDusk[i] - channel)).toBeLessThan(24));
+  });
+
+  it("lifts a color the further the lighter it is, and a light one as far as ever", () => {
+    const top = (grey: number) =>
+      parseInt(makeCustomBackdrop("#" + grey.toString(16).padStart(2, "0").repeat(3)).top.slice(1, 3), 16);
+    // How far the wall's top goes toward white, of the way there.
+    const lifted = [0, 32, 64, 96, 128, 160, 224].map((grey) => (top(grey) - grey) / (255 - grey));
+    lifted.slice(1).forEach((amount, i) => expect(amount).toBeGreaterThanOrEqual(lifted[i] - 0.005));
+    expect(lifted[0]).toBeCloseTo(0.055, 2);
+    expect(lifted[1]).toBeLessThan(0.15);
+    for (const amount of lifted.slice(5)) {
+      expect(amount).toBeCloseTo(0.55, 1);
+    }
   });
 });
 
