@@ -195,10 +195,11 @@ export const MATERIALS = {
       slip: 1,
     },
   },
+  // Only a little less matte than cotton: a slightly stronger, slightly broader sheen and a trace of gloss.
   velvet: {
     gloss: 0.1,
-    sheen: 2.3,
-    sheenPow: 1.3,
+    sheen: 0.7,
+    sheenPow: 1.8,
     wetClear: 0.1,
     wetDark: 0.6,
     shine: 0,

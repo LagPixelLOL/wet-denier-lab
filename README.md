@@ -152,6 +152,10 @@ throws onto them, so it dims and takes color the same way (`studioRimTint`). A f
 it at about half that (`SHINE_ENV` in `stage/shaders/leg.ts`), and takes dimmer highlights from the lamps
 (`SHINE_KEY`).
 
+How much a fabric shines by itself is set per material in `catalog/garments.ts` (`gloss` for the long highlight,
+`sheen` and `sheenPow` for the soft glow toward its edges, `shine` for latex). Cotton and velvet are the matte ones,
+velvet only a little less so than cotton.
+
 A custom backdrop is built from the one color picked (`makeCustomBackdrop`): the wall's bottom, its top and the
 floor are that color lifted toward white, a light color most of the way (a pastel, like the built-in pale
 backdrops) and a dark one only a little (like dusk), so a dark color gives a dark backdrop and black a black one.
