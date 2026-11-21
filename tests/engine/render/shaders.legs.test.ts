@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { MATERIALS, MATERIAL_ORDER } from "../../../src/engine/catalog/garments";
+import { MATERIALS, MATERIAL_ORDER, STOCKING_LENGTHS } from "../../../src/engine/catalog/garments";
+import type { StockingLengthKey } from "../../../src/engine/catalog/garments";
 import {
   FUZZ_WET_SHINE,
+  LACE_BAND,
   LEG_FRAGMENT_SHADER,
   RIB_THROUGH,
   SHINE_ENV,
@@ -209,6 +211,22 @@ describe("leg, bow, outline, shadow and post shaders", () => {
     expect(LEG_FRAGMENT_SHADER).toContain("col += uKeyColor * sheenStripe * uStripe * uGloss * 0.55 * fabric");
     // The tight glint on wet and shiny surfaces is kept to the same streak.
     expect(LEG_FRAGMENT_SHADER).toMatch(/float glint = [^;]* \* lobe \* /);
+  });
+
+  it("draws the lace cuff to the scale of the stocking's band: smaller all over on a shorter stocking", () => {
+    // The lace is drawn for a thigh-high's band, where it is as it was...
+    expect(LACE_BAND).toBe(STOCKING_LENGTHS.thigh.band);
+    expect(LEG_FRAGMENT_SHADER).toContain(`float lace = uBand / ${LACE_BAND.toFixed(3)};`);
+    // ...and its pattern, its scalloped edge and its lower edge all go by the same scale, across and down.
+    expect(LEG_FRAGMENT_SHADER).toContain("cuffDen = laceCuff(vUv.x / lace, depth / lace, cut);");
+    expect(LEG_FRAGMENT_SHADER).toContain("cuffAmt = 1.0 - aaStep(0.0605, depth / lace);");
+    const deep = (length: StockingLengthKey) => (0.0605 * STOCKING_LENGTHS[length].band) / LACE_BAND;
+    expect([deep("thigh"), deep("over")]).toEqual([0.0605, 0.0605]);
+    expect(deep("knee")).toBeCloseTo(0.0484, 6);
+    expect(deep("crew")).toBeCloseTo(0.0411, 4);
+    // On an ankle sock it took up the whole sock above the foot: now less than half of that.
+    expect(deep("ankle")).toBeCloseTo(0.0266, 4);
+    expect(STOCKING_LENGTHS.ankle.cuffY - deep("ankle")).toBeGreaterThan(0.1);
   });
 
   describe("the ribs and stitches of a knit, by how light its yarn is", () => {

@@ -225,7 +225,10 @@ into the skin and the ones below its edge floated. The height they go by is the 
 (`SurfaceHit.height`), not `ry`, which is the height along the slant a stocking's top fades out on.
 
 The cuff's band is a denser knit than the stocking below it. Across the band's lower edge the fragment shader
-blends from the band's density to the stocking's, so the two join without a bright or dark line between them.
+blends from the band's density to the stocking's, so the two join without a bright or dark line between them. The
+band is narrower the shorter the stocking (`band` of the length in `catalog/garments.ts`), and the lace cuff, which
+is drawn for a thigh-high's band (`LACE_BAND`, 6 cm of lace), is that much smaller all over on a shorter one: its
+depth, its scallops and its flowers. On an ankle sock it is 2.7 cm deep.
 
 **Reflections.** Shiny surfaces (wet fabric, latex, water drops) mirror their surroundings as two colors, one
 below and one above the horizon (`envLo` and `envHi` of the scene's light and of its water), plus the street's two

@@ -44,6 +44,9 @@ export const LID_BINS = 32;
  */
 export const LID_REACH = 0.97;
 
+/** The band of the stocking the lace cuff is drawn for (m): a thigh-high's. Other lengths scale the lace by theirs. */
+export const LACE_BAND = 0.05;
+
 /**
  * How much of the skin shows through white yarn itself at the middle between two of a fabric's ribs, where the
  * knit is thin. Less through darker yarn, by how much light it throws back (see the leg's fragment shader).
@@ -495,8 +498,11 @@ ${LID_GLSL}void main() {
   if (uHasCuff > 0.5 && fabric > 0.5 && cuffDy > -0.075) {
     float depth = -cuffDy;
     if (uCuffStyle > 0.5 && uCuffStyle < 1.5) {
-      cuffDen = laceCuff(vUv.x, depth, cut);
-      cuffAmt = 1.0 - aaStep(0.0605, depth);
+      // The lace is drawn for the band of a thigh-high. A shorter stocking has a narrower band, and its lace is
+      // that much smaller all over: as deep as its band is to the thigh-high's.
+      float lace = uBand / ${LACE_BAND.toFixed(3)};
+      cuffDen = laceCuff(vUv.x / lace, depth / lace, cut);
+      cuffAmt = 1.0 - aaStep(0.0605, depth / lace);
     } else {
       cut = 1.0 - aaStep(0.0, depth);
       float pastBand = aaStep(uBand, depth);
