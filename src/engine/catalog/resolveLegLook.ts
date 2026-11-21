@@ -48,7 +48,6 @@ export interface LegLook {
   secret: number;
   secretColor: string;
   wetDye: string | null;
-  skinVisible: boolean;
   fade0: number;
   fade1: number;
   /** How the leg takes water where it wears the stocking (all over, if it is bare). */
@@ -100,7 +99,6 @@ export function resolveLegLook(input?: Partial<LegSpec>): LegLook {
     secret: isBare ? 0 : secretDef.id,
     secretColor: luma > 0.55 ? "#e8456e" : "#ffd7e2",
     wetDye: spec.wetColor && !isBare ? resolveColor(spec.wetColor).dye : null,
-    skinVisible: !isTights,
     fade0: isTights ? 0.7 : 0.79,
     fade1: isTights ? 0.812 : 0.868,
     water: isBare ? BARE_SKIN_WATER : materialDef.water,

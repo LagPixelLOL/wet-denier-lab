@@ -129,6 +129,39 @@ a mirrored floor reflection, baked floor and contact shadows, leg-on-leg shadow 
 scene and a final composite. Legs are skinned in the vertex shader (`LEG_SKINNING_GLSL`); the same skinning runs
 on the CPU (`rig/skinning.ts`) for picking, floor contact and droplets.
 
+**Seen through.** A leg's top fades out (from `fade0` to `fade1` of `LegLook`, along the slanted height of
+`FADE_HEIGHT_GLSL`), and the leg is open there: the eye looks through the fading top, and from above into the leg.
+The stocking's mesh is the whole leg (above the cuff its passes draw the skin), and `addSeenThrough` in
+`stage/createStage.ts` splits its surface by what the eye sees it through:
+
+- _Solid_ is the leg's outside below where the fade begins. Only this lays down depth while the legs are drawn,
+  so whatever lies behind the rest of a leg (the backdrop, the floor, the other leg) is drawn and shows through.
+- _The fading top_ (its outside) comes after both legs, as color alone, the leg behind first (`setOrder`).
+- _The inside_ of a leg is all but invisible (8% from the ankle up, gone by where the top begins to fade). It also
+  comes after both legs, with a depth of its own and its color at that depth: of two walls behind each other the
+  nearer one shows, not their sum.
+- _A leg's own solid outside seen through that same leg_ (over its rim, through its fading top or through its
+  inside) is not drawn at all, from the ankle up. The foot is, and across a band above the ankle
+  (`ANKLE`, `ANKLE_BAND`) the one goes over into the other. The other leg seen through a leg is drawn.
+
+Two tests tell what is seen through the leg's own top. The lid (`LID_GLSL` in `stage/shaders/leg.ts`) closes the
+top with the plane where the fade begins, as far out as the leg's outline there (`legLid` in `stage/lid.ts`, in 32
+directions around its middle), and asks whether the line of sight to a point passes through it, in the leg's own
+space at rest (`uRestFromWorld`). It needs no depth, so what it leaves out hides nothing. Right under the lid it
+stops 3% short of the outline (`LID_REACH`, `LID_NEAR`), where a line of sight to the leg's own wall passes the rim
+by next to nothing. The curtain covers what the lid cannot tell: while a leg is drawn, everything of its top that
+is not solid (`CURTAIN`: the fading top, and the inside up there) lays its depth over the solid leg's, the solid
+leg's color is drawn where its depth is still the nearest, and the curtain is taken out again (drawn at the far
+end of the depth range), after which the solid leg lays its depth down once more. The leg from the ankle down is
+drawn before the curtain goes up. What the curtain alone kept from being drawn still has its depth afterwards, so
+the other leg does not show behind such a part: these are slivers along the rim.
+
+The line around the stocking is drawn last, after the depth of both legs' insides and tops, laid down a little
+nearer (`SEEN_THROUGH_PULL`): no line on the far side of a leg seen from above. The floor's reflection draws the
+whole leg and its fading top without any of this (the eye is not where the camera is). The shadow a leg casts on
+the other thins out with the fade (an ordered 4 x 4 pattern in `CASTER_FRAGMENT_SHADER`), so a top that is not
+there casts none.
+
 **Cuff.** A stocking's cuff presses into the leg: `pressCuff` (`CUFF_PRESS_GLSL` in `stage/shaders/leg.ts`, scaled
 by `uCuffBulge`) pushes the surface out just above the cuff's edge and draws it in below. The leg's vertex shader
 and the outline's both use it, so the line follows the pressed shape. Every length with a cuff gets this. Tights
@@ -212,10 +245,11 @@ highlight). `WaterSim` simulates thrown, spray, drip and rain drops, beads that 
 and a puddle grid with ripples on the floor.
 
 **Model.** `src/assets/model/legs.glb` is a standard glTF 2.0 binary with three meshes, `stocking`, `skinTop` and
-`forefoot`. The stocking's per-vertex fit data (`wrapOffsets`) belongs to the twice-subdivided mesh, so it is
-stored as an extra Int16 VEC4 accessor referenced from `meshes[0].extras.wrapOffsets` (with its unit and layout
-described there). `model/glb.ts` reads exactly what the app needs; any glTF viewer opens the file, showing the
-unfitted base mesh.
+`forefoot`. (The stage does not draw `skinTop`, the bare skin above a stocking as a mesh of its own: the stocking's
+mesh is the whole leg.) The stocking's per-vertex fit data (`wrapOffsets`) belongs to the twice-subdivided mesh, so
+it is stored as an extra Int16 VEC4 accessor referenced from `meshes[0].extras.wrapOffsets` (with its unit and
+layout described there). `model/glb.ts` reads exactly what the app needs; any glTF viewer opens the file, showing
+the unfitted base mesh.
 
 **Toes.** The stocking mesh is one closed shape stretched over the toes, so the skin under it is a mesh of its
 own: `forefoot` is the front of the foot with five separate toes, stored as a quad control cage that the app

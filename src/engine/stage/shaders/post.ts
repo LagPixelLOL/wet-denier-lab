@@ -2,6 +2,7 @@
  * Fullscreen passes: blur, leg shadow caster and the final composite.
  */
 import { LEG_SKINNING_GLSL } from "../../rig/joints";
+import { FADE_HEIGHT_GLSL } from "./leg";
 
 export const FULLSCREEN_VERTEX_SHADER = `
 varying vec2 vUv;
@@ -27,14 +28,25 @@ void main() {
 `;
 
 export const CASTER_VERTEX_SHADER = `
-${LEG_SKINNING_GLSL}void main() {
+${LEG_SKINNING_GLSL}varying float vFadeHeight;
+void main() {
   mat3 jac;
+  vFadeHeight = ${FADE_HEIGHT_GLSL};
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(skinPosition(position, jac), 1.0);
 }
 `;
 
+// The leg's top fades out, and its shadow on the other leg with it: a part that is not seen casts none. The
+// shadow map holds one depth per texel, so the top thins out texel by texel (an ordered 4 x 4 pattern), which
+// the soft lookup on the other leg evens out.
 export const CASTER_FRAGMENT_SHADER = `
+uniform float uFadeStart, uFadeEnd;
+varying float vFadeHeight;
+const int THIN_OUT[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
 void main() {
+  float fade = smoothstep(uFadeStart, uFadeEnd, vFadeHeight);
+  ivec2 cell = ivec2(gl_FragCoord.xy) & 3;
+  if (fade * 16.0 > float(THIN_OUT[cell.y * 4 + cell.x]) + 0.5) discard;
   gl_FragColor = vec4(1.0);
 }
 `;

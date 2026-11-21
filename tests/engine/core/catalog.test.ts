@@ -301,7 +301,6 @@ describe("resolveLegLook", () => {
         "sheen": "#b8b2cf",
         "sheenAmt": 0.26,
         "skinFrom": 0.7,
-        "skinVisible": true,
         "spec": {
           "color": "ink",
           "cuff": "lace",
@@ -334,17 +333,11 @@ describe("resolveLegLook", () => {
     expect(resolveLegLook({ material: "sheer", denier: 70 }).denier).toBe(70);
   });
 
-  it("drops the cuff, bow and visible skin for tights", () => {
+  it("drops the cuff and the bow for tights, which fade out lower", () => {
     const tights = resolveLegLook({ length: "tights", cuff: "bow" });
-    expect([tights.hasCuff, tights.bow, tights.skinVisible, tights.fade0, tights.fade1]).toEqual([
-      0,
-      false,
-      false,
-      0.7,
-      0.812,
-    ]);
+    expect([tights.hasCuff, tights.bow, tights.fade0, tights.fade1]).toEqual([0, false, 0.7, 0.812]);
     const bow = resolveLegLook({ length: "over", cuff: "bow" });
-    expect([bow.hasCuff, bow.bow, bow.skinVisible, bow.fade0, bow.fade1]).toEqual([1, true, true, 0.79, 0.868]);
+    expect([bow.hasCuff, bow.bow, bow.fade0, bow.fade1]).toEqual([1, true, 0.79, 0.868]);
   });
 
   it("turns bare legs into skin with no cuff decoration, decals or fabric water", () => {
@@ -364,7 +357,7 @@ describe("resolveLegLook", () => {
       0,
       null,
     ]);
-    expect([bare.skinVisible, bare.fade0, bare.fade1]).toEqual([true, 0.79, 0.868]);
+    expect([bare.fade0, bare.fade1]).toEqual([0.79, 0.868]);
     expect(bare.water).toBe(BARE_SKIN_WATER);
     expect(resolveLegLook({ length: "bare", material: "cotton" }).water).toBe(BARE_SKIN_WATER);
   });

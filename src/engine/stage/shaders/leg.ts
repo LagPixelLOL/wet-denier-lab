@@ -3,7 +3,7 @@
  */
 import { CUFF_PRESS } from "../../model/cuffPress";
 import { FOREFOOT_JOIN } from "../../model/forefoot";
-import { LEG_SKINNING_GLSL } from "../../rig/joints";
+import { LEG_JOINTS, LEG_SKINNING_GLSL } from "../../rig/joints";
 import { CAUSTICS_GLSL } from "./backdrop";
 import { FOOT_GLSL, NAIL_COUNT } from "./foot";
 
@@ -19,9 +19,70 @@ export const FUZZ_WET_SHINE = 0.05;
 /** How strong the lamps' highlights are on a shiny material, next to those on a film of water. */
 export const SHINE_KEY = 0.35;
 
+/**
+ * What of a leg the eye sees through that same leg (looking down into it from above, or through its fading top)
+ * is not drawn as it is: from the ankle up its inside is all but invisible, and its outside is not seen at all
+ * through its own top (see LID_GLSL). The foot is: looking down into a leg, the inside of its foot shows, and the
+ * foot's outside where the leg bends that far. The one goes over into the other across a band above the ankle
+ * (ANKLE_FADE_GLSL: 0 at the ankle, 1 at the top of the band).
+ */
+export const ANKLE = LEG_JOINTS.ankle[1];
+
+/** The height of that band. */
+export const ANKLE_BAND = 0.05;
+
+export const ANKLE_FADE_GLSL = `smoothstep(${ANKLE.toFixed(4)}, ${(ANKLE + ANKLE_BAND).toFixed(4)}, vRestPos.y)`;
+
+/** How many directions around the leg its outline at the top is stored in (see legLid). */
+export const LID_BINS = 32;
+
+/**
+ * How much of the way out to that outline counts as inside it, for a point right under the lid: short of the
+ * leg's own wall there, whose outside is seen from outside it along a line that passes the lid's rim by next
+ * to nothing. Further down (across LID_NEAR below the lid) that line passes the rim by more than the outline is
+ * off by, and all of the lid counts: or a sliver of the leg would still show through the rim of its own top.
+ */
+export const LID_REACH = 0.97;
+
+export const LID_NEAR: readonly [number, number] = [0.01, 0.05];
+
+/** How far above a point of the fading top its lid lies (see LID_GLSL). */
+export const LID_STEP = 0.004;
+
 export const fadeHeight = (x: number, y: number, z: number): number => y - (x - 0.066) * 0.3346 + (z - 0.04) * 0.0157;
 
-export const FADE_HEIGHT_GLSL = "position.y - 0.3346 * (position.x - 0.066) + 0.0157 * (position.z - 0.04)";
+const fadeHeightGlsl = (point: string): string =>
+  `${point}.y - 0.3346 * (${point}.x - 0.066) + 0.0157 * (${point}.z - 0.04)`;
+
+export const FADE_HEIGHT_GLSL = fadeHeightGlsl("position");
+
+/**
+ * Whether the eye sees a point of a leg through that leg's own top: over its rim, or through the part of it that
+ * fades out. The top is closed by a lid for this: the plane where the fade begins (uFadeStart), as far out as
+ * the leg's outline there (uLidC, uLidR: its middle and how far out it reaches in LID_BINS directions around it,
+ * across x and z, from legLid). The line of sight from the eye, above that plane, to a point below it goes through
+ * the lid or past it. For a point of the fading top itself, above that plane, the lid lies just above the point
+ * (LID_STEP): the top's own outside is seen from outside it, and what of the top is seen from within the leg (a
+ * fold of it behind another part) through that lid. All in the leg's own space at rest (uRestFromWorld), where
+ * the thigh does not bend.
+ */
+export const LID_GLSL = `
+uniform mat4 uRestFromWorld;
+uniform float uLidR[${LID_BINS}];
+uniform vec2 uLidC;
+bool seenThroughTop(vec3 worldPos, float fadeStart) {
+  vec3 eye = (uRestFromWorld * vec4(cameraPosition, 1.0)).xyz, at = (uRestFromWorld * vec4(worldPos, 1.0)).xyz;
+  float eyeHeight = ${fadeHeightGlsl("eye")}, atHeight = ${fadeHeightGlsl("at")};
+  float lid = max(fadeStart, atHeight + ${LID_STEP.toFixed(4)});
+  if (eyeHeight <= lid) return false;
+  vec2 across = mix(eye, at, (eyeHeight - lid) / (eyeHeight - atHeight)).xz - uLidC;
+  float turn = (atan(across.y, across.x) / 6.2831853 + 0.5) * ${LID_BINS}.0;
+  int bin = int(mod(floor(turn), ${LID_BINS}.0));
+  float reach = mix(uLidR[bin], uLidR[bin == ${LID_BINS - 1} ? 0 : bin + 1], fract(turn));
+  float under = smoothstep(${LID_NEAR[0].toFixed(3)}, ${LID_NEAR[1].toFixed(3)}, lid - atHeight);
+  return length(across) < reach * mix(${LID_REACH.toFixed(3)}, 1.0, under);
+}
+`;
 
 /**
  * Where the stocking mesh hands over to the forefoot's skin: uClip 1 keeps what lies behind the join (the
@@ -90,16 +151,34 @@ void main() {
   vec3 toEye = normalize(cameraPosition - world.xyz);
   world.xyz += toEye * (sign(uTowardEye) * min(abs(uTowardEye) / max(abs(dot(vNormal, toEye)), 0.02), 0.002));
   gl_Position = projectionMatrix * viewMatrix * world;
+#ifdef FAR_PLANE
+  // Drawn at the far end of the depth range, to take a depth that was laid down back out again.
+  gl_Position.z = gl_Position.w;
+#endif
 }
 `;
 
 export const LEG_DEPTH_FRAGMENT_SHADER = `
-uniform float uFadeStart, uFadeEnd, uClip;
-varying vec3 vRestPos;
+uniform float uFadeStart, uClip, uMirrorFlipY;
+varying vec3 vRestPos, vWorldPos;
 varying float vFadeHeight;
-void main() {
+${LID_GLSL}void main() {
   ${forefootClipGlsl("vRestPos")}
-  if (vFadeHeight > (gl_FrontFacing ? uFadeEnd : uFadeStart)) discard;
+  // What lays down its depth with the rest of the leg is what is solid, or about to be (the band above the
+  // ankle). That leaves out whatever of the leg's outside, above that band, the eye would only see through the
+  // leg's own top: it is not drawn at all. (In the floor's reflection the eye is not where the camera is: no
+  // lid there.) And it leaves out what is seen through: the top that fades out, and the leg's all but invisible
+  // inside above the band (LEG_INSIDE). Those are drawn after both legs. CURTAIN is all of the leg but its solid
+  // outside: whatever the eye sees the solid leg through, where it does. See addSeenThrough in createStage.
+  bool aboveAnkle = ${ANKLE_FADE_GLSL} >= 1.0;
+#if defined(CURTAIN)
+  if (gl_FrontFacing && vFadeHeight <= uFadeStart) discard;
+#elif defined(LEG_INSIDE)
+  if (gl_FrontFacing || !aboveAnkle || vFadeHeight > uFadeStart) discard;
+#else
+  if (vFadeHeight > uFadeStart) discard;
+  if (aboveAnkle && (!gl_FrontFacing || (uMirrorFlipY > 0.0 && seenThroughTop(vWorldPos, uFadeStart)))) discard;
+#endif
   gl_FragColor = vec4(0.0);
 }
 `;
@@ -266,8 +345,26 @@ float laceCuff(float x, float depth, out float cut) {
   density = max(density, hemLine);
   return mix(12.0, 190.0, density);
 }
-void main() {
+${LID_GLSL}void main() {
   ${forefootClipGlsl("vRestPos")}
+  // The passes for the fading top of the leg (its outside), for its inside alone, and for the solid leg up to
+  // the top of the band above the ankle (LOW_PART) and from there up (HIGH_PART): see the depth shader, and
+  // addSeenThrough in createStage.
+#ifdef FADE_ZONE
+  if (!gl_FrontFacing || vFadeHeight <= uFadeStart) discard;
+  // Not where the top is seen through the leg's own top (a fold of it behind another part of it).
+  if (uMirrorFlipY > 0.0 && seenThroughTop(vWorldPos, uFadeStart)) discard;
+#endif
+#ifdef LEG_INSIDE
+  if (gl_FrontFacing || ${ANKLE_FADE_GLSL} < 1.0 || vFadeHeight > uFadeStart) discard;
+#endif
+#ifdef LOW_PART
+  if (${ANKLE_FADE_GLSL} >= 1.0) discard;
+#endif
+#ifdef HIGH_PART
+  // The solid leg alone: whatever else has its depth in place while this is drawn (the curtain) is not drawn.
+  if (${ANKLE_FADE_GLSL} < 1.0 || !gl_FrontFacing || vFadeHeight > uFadeStart) discard;
+#endif
   vec3 n = normalize(vNormal);
   if (!gl_FrontFacing) n = -n;
   // Toenails sit on top of the toes. Where the forefoot's skin is drawn under the fabric, it carries them, not
@@ -529,7 +626,12 @@ void main() {
   // Skin under a stocking that wears no fabric itself looks exactly as it does right under the fabric.
   if (uUnder > 0.5) col = mix(underSeen, col, vCover);
   float fade = smoothstep(uFadeStart, uFadeEnd, vFadeHeight);
-  if (!gl_FrontFacing && height > 0.3) fade = max(fade, mix(0.92, 1.0, smoothstep(uFadeStart - 0.10, uFadeStart, vFadeHeight)));
+  // Seen through the leg itself, from the ankle up: the inside all but invisible (and gone by where the top
+  // begins to fade), the outside not at all (what of it is past the band above the ankle has no depth, and is
+  // not drawn in the first place). See the depth shader.
+  float ankleFade = ${ANKLE_FADE_GLSL};
+  if (!gl_FrontFacing) fade = max(fade, ankleFade * mix(0.92, 1.0, smoothstep(uFadeStart - 0.10, uFadeStart, vFadeHeight)));
+  else if (ankleFade > 0.0 && uMirrorFlipY > 0.0 && seenThroughTop(vWorldPos, uFadeStart)) fade = max(fade, ankleFade);
   float alpha = (1.0 - fade) * uOpacity * exp(-max(vWorldPos.y * uMirrorFlipY, 0.0) * uMirrorFalloff);
   gl_FragColor = vec4(col / max(1.0 - through, 0.001), alpha * (1.0 - through));
 }

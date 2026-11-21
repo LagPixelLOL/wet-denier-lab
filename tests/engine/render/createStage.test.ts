@@ -104,30 +104,39 @@ function expectLookApplied(leg: StageLeg, look: LegLook, { initial = false } = {
   const secret = new THREE.Color(look.secretColor);
   // createStage starts with an all-zero secret; setStocking fills in the color
   expect(vec(f.uSecret.value)).toEqual(initial ? [0, 0, 0, 0] : [secret.r, secret.g, secret.b, look.secret]);
-  for (const part of leg.skinParts) {
-    expect(part.visible).toBe(look.skinVisible);
-  }
 }
 
 describe("createStage construction", () => {
   const { stage, contexts } = buildStage();
 
   it("assembles backdrop, floor and two legs with depth, color, outline and bow passes", () => {
-    expect(stage.scene.children.map((child) => child.type)).toEqual(["Mesh", "Mesh", "Group", "Group"]);
+    // The backdrop and the floor, then per leg its own group and the four groups drawn after both legs.
+    expect(stage.scene.children.map((child) => child.type)).toEqual(["Mesh", "Mesh", ...Array(10).fill("Group")]);
     expect(stage.scene.children[0].renderOrder).toBe(-10);
     expect(stage.floor.renderOrder).toBe(-5);
     expect(stage.floor.geometry.parameters).toMatchObject({ radius: 1.6, segments: 96 });
     for (const leg of stage.legs) {
-      // The stocking (behind the forefoot's join first, while the forefoot shows through it), the skin, their
-      // outlines, the forefoot's skin with its outline, the stocking in front of the join, the passes that
-      // find the skin right under the nearest fabric and draw it bare, and the bow.
+      // The stocking (behind the forefoot's join first, while the forefoot shows through it) and the passes
+      // around it (between its depth and its color the leg from the ankle down and the curtain, after them the
+      // pass that takes the curtain out and the solid leg's depth again), the forefoot's skin with its outline,
+      // the stocking in front of the join, the passes that find the skin right under the nearest fabric and draw
+      // it bare, and the bow. (The line around the stocking comes after both legs.)
       expect(leg.group.children.map((mesh) => mesh.renderOrder)).toEqual([
-        -6, -5, 0, 1, 2, 2, -4, -3, 2, -1, 1, -2.5, -2, 1.5,
+        -6, -5, -5.9, -5.8, -4.9, -4.8, -4, -3, 2, -1, 1, -2.5, -2, 1.5,
       ]);
+      expect(leg.aroundStocking).toEqual(leg.group.children.slice(2, 6));
+      // After both legs: the solid leg's depth once more, the fading top, the inside (its depth, then its
+      // color), and the depth of the leg's top with the line.
+      expect(leg.late.map((group) => group.children.map((mesh) => mesh.renderOrder))).toEqual([
+        [0],
+        [0],
+        [0, 1],
+        [0, 1],
+      ]);
+      expect(leg.late.every((group) => group.matrix === leg.group.matrix && !group.matrixAutoUpdate)).toBe(true);
       expect(leg.matrix).toBe(leg.group.matrix);
       expect(leg.group.matrixAutoUpdate).toBe(false);
-      expect(leg.mirror.children).toHaveLength(8);
-      expect(leg.skinParts).toHaveLength(5);
+      expect(leg.mirror.children).toHaveLength(7);
       expect(leg.bow.visible).toBe(false);
       expect(leg.castScene.children).toEqual([leg.caster]);
     }
@@ -139,9 +148,8 @@ describe("createStage construction", () => {
     const model = legModel();
     const leg = stage.legs[0];
     // The default look has a cuff on the thigh, so the stocking starts on the mesh ringed there.
-    expect(leg.stocking.geometry).toBe(model.stockingAtCuff.get(0.7));
-    expect(leg.cuffParts.map((part) => part.geometry)).toEqual(Array(3).fill(leg.stocking.geometry));
-    expect(leg.skin.geometry).toBe(model.skin);
+    expect(leg.stockingParts[0].geometry).toBe(model.stockingAtCuff.get(0.7));
+    expect(leg.cuffParts.map((part) => part.geometry)).toEqual(Array(6).fill(leg.stockingParts[0].geometry));
     const lowFront = leg.stockingFrontParts[2].geometry;
     expect(lowFront.attributes.position).toBe(model.stockingLow.attributes.position);
     expect(lowFront.index!.count).toBeLessThan(model.stockingLow.index!.count / 2);
@@ -153,12 +161,16 @@ describe("createStage construction", () => {
       model.forefoot,
       lowFront,
       lowFront,
-      model.skin,
-      model.skin,
+      model.stockingLow,
     ]);
     expect(leg.shadow.geometry).toBe(model.stockingLow);
     expect(leg.stocking.material.depthFunc).toBe(THREE.EqualDepth);
-    expect(leg.skin.material.polygonOffset).toBe(true);
+    // The stocking's mesh is the whole leg, and its passes draw the skin above the cuff: no mesh draws skin alone.
+    const drawn = [leg.group, ...leg.late, leg.mirror].flatMap((group) => group.children as StageLeg["stocking"][]);
+    expect(drawn.some((mesh) => mesh.geometry === model.skin)).toBe(false);
+    expect(
+      drawn.every((mesh) => mesh.material.uniforms.uIsSkin === undefined || mesh.material.uniforms.uIsSkin.value === 0),
+    ).toBe(true);
   });
 
   it("gives each leg its own look, rig and wet map slot but shares light and fabric uniforms", () => {
@@ -176,7 +188,6 @@ describe("createStage construction", () => {
     expect(stage.lineWidth.value).toBe(1.6);
     expect(a.stocking.material.uniforms.uWetMap).toBe(stage.uniforms.fabric.uWetMap);
     expect(a.stocking.material.uniforms.uIsSkin.value).toBe(0);
-    expect(a.skin.material.uniforms.uIsSkin.value).toBe(1);
   });
 
   it("gives all but a little of the long highlight to where the leg faces the light", () => {
@@ -459,7 +470,6 @@ describe("setStocking", () => {
     expect(leg.forefootParts[1].material.polygonOffset).toBe(true);
     expect(leg.forefootParts[1].material.uniforms.uClip).toBe(leg.forefootClip);
     expect(leg.forefootParts[1].material.polygonOffsetFactor).toBe(0);
-    expect(leg.skin.material.polygonOffsetFactor).toBe(1);
     expect(leg.forefootOutline!.material.uniforms.uSilhouette.value).toBe(1);
     const state = () => ({
       clip: leg.fabric.uClip.value,
@@ -595,7 +605,6 @@ describe("setStocking", () => {
     stage.setStocking(0, bare);
     expect(stage.legs[0].fabric.uHasCuff.value).toBe(1);
     expect(stage.legs[0].bow.visible).toBe(false);
-    expect(stage.legs[0].skinParts.every((part) => part.visible)).toBe(true);
     const positions = legModel().stocking.getAttribute("position");
     let lowest = Infinity;
     for (let i = 0; i < positions.count; i++) {
@@ -603,15 +612,6 @@ describe("setStocking", () => {
     }
     // The cuff shader decorates up to 7.5 cm below the cuff line and bulges the mesh around it.
     expect(stage.legs[0].fabric.uCuffY.value).toBeLessThan(lowest - 0.1);
-  });
-
-  it("hides every skin part for tights and shows them again for stockings", () => {
-    const { stage } = buildStage();
-    stage.setStocking(0, resolveLegLook({ length: "tights" }));
-    expect(stage.legs[0].skinParts.every((part) => !part.visible)).toBe(true);
-    expect(stage.legs[1].skinParts.every((part) => part.visible)).toBe(true);
-    stage.setStocking(0, resolveLegLook({ length: "knee" }));
-    expect(stage.legs[0].skinParts.every((part) => part.visible)).toBe(true);
   });
 
   it("presses the cuff into the leg for every length but tights, which have no cuff", () => {
@@ -632,16 +632,29 @@ describe("setStocking", () => {
     const { stage } = buildStage();
     const model = legModel();
     const [leg, other] = stage.legs;
-    // The stocking's depth and color passes and its outline: they have to agree on the surface.
-    expect(leg.cuffParts).toEqual([leg.stockingParts[0], leg.stocking, leg.group.children[5]]);
+    // The stocking's depth and color passes, the passes drawn after both legs from the whole of it, and its
+    // outline: they have to agree on the surface.
+    const [restore, , inside, last] = leg.late.map((group) => group.children as StageLeg["stocking"][]);
+    expect(leg.cuffParts).toEqual([
+      leg.stockingParts[0],
+      leg.aroundStocking[3],
+      restore[0],
+      inside[0],
+      inside[1],
+      last[1],
+    ]);
     expect(leg.cuffParts.map((part) => part.material.vertexShader)).toEqual([
-      LEG_VERTEX_SHADER,
-      LEG_VERTEX_SHADER,
+      ...Array(5).fill(LEG_VERTEX_SHADER),
       OUTLINE_VERTEX_SHADER,
     ]);
-    const elsewhere = leg.group.children
-      .concat(leg.mirror.children, leg.shadow, leg.caster)
-      .filter((mesh) => !leg.cuffParts.includes(mesh as StageLeg["stocking"]))
+    const own = (mesh: THREE.Object3D) =>
+      [leg.cuffParts, leg.topParts, leg.lowParts, leg.highParts].some((parts) =>
+        parts.includes(mesh as StageLeg["stocking"]),
+      );
+    const all = () => leg.group.children.concat(...leg.late.map((group) => group.children), leg.mirror.children);
+    const elsewhere = all()
+      .concat(leg.shadow, leg.caster)
+      .filter((mesh) => !own(mesh))
       .map((mesh) => (mesh as StageLeg["stocking"]).geometry.uuid);
     for (const length of STOCKING_LENGTH_ORDER) {
       const look = resolveLegLook({ length });
@@ -651,14 +664,20 @@ describe("setStocking", () => {
       for (const part of leg.cuffParts) {
         expect(part.geometry).toBe(ringed ?? model.stocking);
       }
+      // The fading top's passes are drawn from the upper part of that same mesh: its vertices, fewer triangles.
+      for (const part of leg.topParts) {
+        expect(part.geometry.attributes.position).toBe((ringed ?? model.stocking).attributes.position);
+        expect(part.geometry.index!.count).toBeLessThan((ringed ?? model.stocking).index!.count / 2);
+        expect(part.geometry).toBe(leg.topParts[0].geometry);
+      }
       // Nothing else changes its mesh, and the other leg keeps its own.
       expect(
-        leg.group.children
-          .concat(leg.mirror.children, leg.shadow, leg.caster)
-          .filter((mesh) => !leg.cuffParts.includes(mesh as StageLeg["stocking"]))
+        all()
+          .concat(leg.shadow, leg.caster)
+          .filter((mesh) => !own(mesh))
           .map((mesh) => (mesh as StageLeg["stocking"]).geometry.uuid),
       ).toEqual(elsewhere);
-      expect(other.stocking.geometry).toBe(model.stockingAtCuff.get(0.7));
+      expect(other.stockingParts[0].geometry).toBe(model.stockingAtCuff.get(0.7));
     }
   });
 
@@ -704,11 +723,12 @@ describe("setStocking", () => {
     for (const leg of stage.legs) {
       expect(leg.outlineUniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
       expect(leg.outlineUniforms.uCuffY).toBe(leg.fabric.uCuffY);
-      const outlines = leg.group.children.filter(
+      // The forefoot's line is drawn with the leg, the stocking's after both legs.
+      const outlines = [...leg.group.children, ...leg.late[3].children].filter(
         (mesh): mesh is StageLeg["stocking"] =>
           (mesh as StageLeg["stocking"]).material.vertexShader === OUTLINE_VERTEX_SHADER,
       );
-      expect(outlines).toHaveLength(3);
+      expect(outlines).toHaveLength(2);
       for (const outline of outlines) {
         expect(outline.material.uniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
         expect(outline.geometry.attributes.legTangent).toBeDefined();
@@ -756,10 +776,158 @@ describe("leg pose, opacity and order", () => {
       true,
       true,
     ]);
+    expect(leg.late.every((group) => group.visible)).toBe(true);
     stage.setLegOpacity(1, 0.003);
     expect([leg.group.visible, leg.mirror.visible, leg.shadow.visible]).toEqual([false, false, false]);
+    expect(leg.late.some((group) => group.visible)).toBe(false);
     expect(leg.outlineUniforms.uOpacity.value).toBe(0.003);
     expect(stage.legs[0].group.visible).toBe(true);
+  });
+
+  it("draws what is seen through after both legs: the top of the leg behind, then that of the leg in front", () => {
+    const { stage } = buildStage();
+    const orders = () => stage.legs.map((leg) => leg.late.map((group) => group.renderOrder));
+    // The solid leg's depth once more, the fading top, the inside, and the line: leg 0 in front.
+    expect(orders()).toEqual([
+      [25, 40, 45, 50],
+      [25, 30, 45, 50],
+    ]);
+    // The leg drawn first lays its depth down again: the other leg's curtain took it out where it hung.
+    expect(stage.legs.map((leg) => leg.restore.visible)).toEqual([false, true]);
+    expect(stage.legs.every((leg) => leg.restore === leg.late[0].children[0] && leg.fadeGroup === leg.late[1])).toBe(
+      true,
+    );
+    stage.setOrder(1);
+    expect(orders()).toEqual([
+      [25, 30, 45, 50],
+      [25, 40, 45, 50],
+    ]);
+    expect(stage.legs.map((leg) => leg.restore.visible)).toEqual([true, false]);
+    for (const leg of stage.legs) {
+      const [restore, fade, inside, last] = leg.late.map((group) => group.children as StageLeg["stocking"][]);
+      // The solid leg's depth is the stocking's own depth pass once more.
+      expect(restore[0].material).toBe(leg.stockingParts[0].material);
+      expect(restore[0].material.colorWrite).toBe(false);
+      // The fading top: color alone, over whatever lies behind it, as in the floor's reflection.
+      expect(fade.map((mesh) => mesh.material.defines)).toEqual([{ FADE_ZONE: 1 }]);
+      expect([fade[0].material.depthWrite, fade[0].material.depthFunc]).toEqual([false, THREE.LessEqualDepth]);
+      expect(leg.mirror.children.some((mesh) => (mesh as StageLeg["stocking"]).material === fade[0].material)).toBe(
+        true,
+      );
+      // The inside: its depth, then its color where that is the nearest.
+      expect(inside.map((mesh) => mesh.material.defines)).toEqual([{ LEG_INSIDE: 1 }, { LEG_INSIDE: 1 }]);
+      expect(inside.map((mesh) => mesh.material.colorWrite)).toEqual([false, true]);
+      expect([inside[0].material.depthFunc, inside[1].material.depthFunc]).toEqual([
+        THREE.LessEqualDepth,
+        THREE.EqualDepth,
+      ]);
+      // The depth of the leg's top, for the line that comes after it. It and the inside's are laid down nearer.
+      expect(last[0].material.defines).toEqual({ CURTAIN: 1 });
+      for (const mesh of [...inside, last[0]]) {
+        expect([mesh.material.polygonOffset, mesh.material.polygonOffsetFactor]).toEqual([true, -4]);
+      }
+      expect(last[1].material.vertexShader).toBe(OUTLINE_VERTEX_SHADER);
+      // All of them read the leg's own uniforms.
+      for (const mesh of [...restore, ...fade, ...inside, last[0]]) {
+        expect(mesh.material.uniforms).toBe(leg.stocking.material.uniforms);
+      }
+    }
+  });
+
+  it("keeps the solid leg from showing through its own top with a curtain while the leg is drawn", () => {
+    const { stage } = buildStage();
+    const model = legModel();
+    for (const leg of stage.legs) {
+      const [low, curtain, uncurtain, relaid] = leg.aroundStocking;
+      const [depth, color, , mirrorColor] = leg.stockingParts;
+      // The solid leg's depth, the color of the leg from the ankle down (which shows through the leg's own
+      // top), the curtain over that depth, the color of the leg above the ankle where the curtain does not
+      // hang in front of it, the pass that takes the curtain back out, and the solid leg's depth again.
+      const drawn = [depth, low, curtain, color, uncurtain, relaid];
+      const inOrder = () => [...drawn].sort((a, b) => a.renderOrder - b.renderOrder);
+      expect(inOrder()).toEqual(drawn);
+      expect(drawn.map((mesh) => mesh.material.defines ?? {})).toEqual([
+        {},
+        { LOW_PART: 1 },
+        { CURTAIN: 1 },
+        { HIGH_PART: 1 },
+        { CURTAIN: 1, FAR_PLANE: 1 },
+        {},
+      ]);
+      expect([low.material.depthFunc, color.material.depthFunc]).toEqual([THREE.EqualDepth, THREE.EqualDepth]);
+      // The curtain is depth alone, at its own depth; taken out, it is written whatever is there.
+      expect([curtain.material.colorWrite, curtain.material.depthFunc, curtain.material.polygonOffset]).toEqual([
+        false,
+        THREE.LessEqualDepth,
+        false,
+      ]);
+      expect([uncurtain.material.colorWrite, uncurtain.material.depthFunc]).toEqual([false, THREE.AlwaysDepth]);
+      expect(relaid.material).toBe(depth.material);
+      // No curtain in the floor's reflection: the whole leg's color in one pass there.
+      expect(mirrorColor.material.defines).toEqual({});
+      expect(mirrorColor.material.uniforms).toBe(color.material.uniforms);
+      // The curtain hangs from the top of the mesh alone, and the two colors are drawn from its bottom and from
+      // the rest of it: the same vertices, some of the triangles.
+      expect(leg.topParts).toEqual([curtain, uncurtain, leg.late[1].children[0], leg.late[3].children[0]]);
+      expect(leg.lowParts).toEqual([low]);
+      expect(leg.highParts).toEqual([color]);
+      const heights = (geometry: THREE.BufferGeometry): [number, number] => {
+        let [lowest, highest] = [Infinity, -Infinity];
+        for (const i of geometry.index!.array) {
+          lowest = Math.min(lowest, geometry.attributes.position.getY(i));
+          highest = Math.max(highest, geometry.attributes.position.getY(i));
+        }
+        return [lowest, highest];
+      };
+      const check = (whole: THREE.BufferGeometry) => {
+        expect(depth.geometry).toBe(whole);
+        const parts = [leg.topParts, leg.lowParts, leg.highParts].map((meshes) => {
+          expect(meshes.map((mesh) => mesh.geometry)).toEqual(Array(meshes.length).fill(meshes[0].geometry));
+          expect(meshes[0].geometry.attributes.position).toBe(whole.attributes.position);
+          return meshes[0].geometry;
+        });
+        const [top, bottom, upper] = parts.map((part) => part.index!.count);
+        expect(top).toBeGreaterThan(0);
+        expect(top).toBeLessThan(whole.index!.count * 0.25);
+        // The two colors between them draw every triangle, and only those along the line between them twice.
+        expect(bottom + upper).toBeGreaterThanOrEqual(whole.index!.count);
+        expect(bottom + upper).toBeLessThan(whole.index!.count * 1.05);
+        expect(heights(parts[0])[0]).toBeGreaterThan(0.5);
+        expect(heights(parts[1])[1]).toBeLessThan(0.2);
+        expect(heights(parts[2])[0]).toBeGreaterThan(0.07);
+      };
+      check(model.stockingAtCuff.get(0.7)!);
+      // They follow the stocking onto another mesh, and with the forefoot's skin to another place in the order.
+      stage.setStocking(leg.index, resolveLegLook({ length: "tights" }));
+      check(model.stocking);
+      expect(inOrder()).toEqual(drawn);
+      stage.setLegOpacity(leg.index, 0.5);
+      expect(inOrder()).toEqual(drawn);
+    }
+  });
+
+  it("keeps the leg's lid with the leg: where it stands, and where its top begins to fade", () => {
+    const { stage } = buildStage();
+    const leg = stage.legs[0];
+    const rig = new LegRig(legModel().collision, stage);
+    const matrix = new THREE.Matrix4().fromArray(rig.legs[0].m);
+    expect(matrix.elements.slice(12, 15)).not.toEqual([0, 0, 0]);
+    const back = leg.fabric.uRestFromWorld.value.clone().multiply(matrix);
+    back.elements.forEach((value, i) => expect(value).toBeCloseTo(i % 5 === 0 ? 1 : 0, 9));
+    // The line around the leg and its shadow on the other leg go by the same lid and the same fade.
+    expect(leg.outlineUniforms.uRestFromWorld).toBe(leg.fabric.uRestFromWorld);
+    expect(leg.outlineUniforms.uLidR).toBe(leg.fabric.uLidR);
+    expect(leg.caster.material.uniforms.uFadeStart).toBe(leg.fabric.uFadeStart);
+    expect(leg.caster.material.uniforms.uFadeEnd).toBe(leg.fabric.uFadeEnd);
+    // Tights fade out lower than stockings do: another outline.
+    const stockings = { center: leg.fabric.uLidC.value.toArray(), radii: leg.fabric.uLidR.value };
+    expect(stockings.radii).toHaveLength(32);
+    stage.setStocking(0, resolveLegLook({ length: "tights" }));
+    expect(leg.fabric.uFadeStart.value).toBe(0.7);
+    expect(leg.fabric.uLidR.value).not.toEqual(stockings.radii);
+    stage.setStocking(0, resolveLegLook({ length: "knee" }));
+    expect(leg.fabric.uLidR.value).toBe(stockings.radii);
+    expect(leg.fabric.uLidC.value.toArray()).toEqual(stockings.center);
   });
 
   it("draws the front leg last in both the scene and the mirror", () => {
