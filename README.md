@@ -159,7 +159,7 @@ so what it leaves out hides nothing. Right under the lid it stops 3% short of th
 The curtain covers what the lid cannot tell (what is seen through the top's side, under its rim where it flares,
 and right along the rim). It is everything of the leg's top that is not solid: the fading top, and the inside up
 there (`CURTAIN`). The stage's target has a stencil buffer (`createSceneTarget` in `stage/target.ts`; it is not
-resolved out of the samples, which costs milliseconds), and each leg has two bits of it. While a leg is drawn, the
+resolved out of the samples, which costs milliseconds), and each leg has three bits of it (the third is for the line around its top, below). While a leg is drawn, the
 curtain sets the first where it lies in front of the solid leg's depth, and the solid leg's color is not drawn
 there. Where such a pixel's depth is the solid leg's own, the second bit is set (`gone`) and the depth is taken out
 (`erase`, drawn at the far end of the depth range), so that whatever lies behind is drawn. After everything else of
@@ -178,12 +178,23 @@ passes that deal with what is gone are left out too, and the question is asked o
 GPU answers a frame or two late: that is how long a part that comes to be seen through the leg's top is drawn as it
 is before it fades.
 
-The line around the stocking is drawn last, after the depth of both legs' insides and tops, laid down a little
-nearer (`SEEN_THROUGH_PULL`): no line on the far side of a leg seen from above. The floor's reflection draws the
-whole leg and its fading top without any of this (the eye is not where the camera is). The shadow a leg casts on
-the other fades out with its top too: the shadow map holds how solid the leg is in the light's way next to its
-depth (`CASTER_COVER_FRAGMENT_SHADER`, the most solid of the leg's walls the light passes through), and the other
-leg's shader takes the two together (`castShadowAt`). A top that is not there casts none.
+The line around a stocking (`addOutline`) belongs to what it goes around, so it shows through a fading top like the
+rest of the leg behind it, its own leg's or the other's. Around the solid leg (`SOLID_LINE`) it is drawn right
+after both solid legs and before anything that is seen through: it lays down its depth, and the tops' color goes
+over it. Around the leg's top (`TOP_LINE`, from 5 cm below where the fade begins, which is as far down as the lid
+leaves anything to tell) the top itself has to hide what of the line lies behind it. For the leg in front that is
+the top's depth, laid down after everything else (the water in the air is drawn against it too), a little nearer
+(`SEEN_THROUGH_PULL`), and the line after it. The top of the leg behind marks where it lies in a third bit of the
+stencil buffer instead, and its line is drawn where that is not set, before the color of the top in front: no top's
+depth may be there yet for what is still to be seen through it. Either way there is no line on the far side of a
+leg seen from above. The line's place in the world is pushed out with its place on the screen, so the lid tells
+what it is seen through for the pixel it is drawn at.
+
+The floor's reflection draws the whole leg and its fading top without any of this (the eye is not where the camera
+is). The shadow a leg casts on the other fades out with its top too: the shadow map holds how solid the leg is in
+the light's way next to its depth (`CASTER_COVER_FRAGMENT_SHADER`, the most solid of the leg's walls the light
+passes through), and the other leg's shader takes the two together (`castShadowAt`). A top that is not there casts
+none.
 
 **Cuff.** A stocking's cuff presses into the leg: `pressCuff` (`CUFF_PRESS_GLSL` in `stage/shaders/leg.ts`, scaled
 by `uCuffBulge`) pushes the surface out just above the cuff's edge and draws it in below. The leg's vertex shader

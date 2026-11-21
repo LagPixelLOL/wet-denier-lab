@@ -19,9 +19,9 @@ import {
 } from "../../../src/engine/stage/scenes";
 import { BOW_VERTEX_SHADER } from "../../../src/engine/stage/shaders/bow";
 import { CUFF_PRESS, cuffPressAt } from "../../../src/engine/model/cuffPress";
-import { CUFF_PRESS_GLSL, LEG_VERTEX_SHADER } from "../../../src/engine/stage/shaders/leg";
+import { CUFF_PRESS_GLSL, LEG_VERTEX_SHADER, LID_NEAR } from "../../../src/engine/stage/shaders/leg";
 import { CASTER_COVER_FRAGMENT_SHADER, CASTER_VERTEX_SHADER } from "../../../src/engine/stage/shaders/post";
-import { OUTLINE_VERTEX_SHADER } from "../../../src/engine/stage/shaders/outline";
+import { OUTLINE_FRAGMENT_SHADER, OUTLINE_VERTEX_SHADER } from "../../../src/engine/stage/shaders/outline";
 import { digestRounded } from "../../helpers/digest";
 import { describeCalls } from "../../helpers/fakeRenderer";
 import { legModel } from "../../helpers/model";
@@ -111,8 +111,8 @@ describe("createStage construction", () => {
   const { stage, contexts } = buildStage();
 
   it("assembles backdrop, floor and two legs with depth, color, outline and bow passes", () => {
-    // The backdrop and the floor, then per leg its own group and the five groups drawn after both legs.
-    expect(stage.scene.children.map((child) => child.type)).toEqual(["Mesh", "Mesh", ...Array(12).fill("Group")]);
+    // The backdrop and the floor, then per leg its own group and the seven groups drawn after both legs.
+    expect(stage.scene.children.map((child) => child.type)).toEqual(["Mesh", "Mesh", ...Array(16).fill("Group")]);
     expect(stage.scene.children[0].renderOrder).toBe(-10);
     expect(stage.floor.renderOrder).toBe(-5);
     expect(stage.floor.geometry.parameters).toMatchObject({ radius: 1.6, segments: 96 });
@@ -126,12 +126,15 @@ describe("createStage construction", () => {
         -6, -5, -5.9, -5.8, -4.9, -4.8, -4, -3, 2, -1, 1, -2.5, -2, 1.5,
       ]);
       expect(leg.aroundStocking).toEqual(leg.group.children.slice(2, 6));
-      // After both legs: the solid leg's depth once more, the fading top, the inside, what of the solid leg is
-      // seen through its top (its depth, how much of it shows, its color), and the depth of the leg's top with
-      // the line.
+      // After both legs: the solid leg's depth once more, the line around the solid leg, the fading top, where
+      // the top lies with the line around it (for the leg behind), the inside, what of the solid leg is seen
+      // through its top (its depth, how much of it shows, its color), and the depth of the leg's top with the
+      // line around it (for the leg in front).
       expect(leg.late.map((group) => group.children.map((mesh) => mesh.renderOrder))).toEqual([
         [0],
         [0],
+        [0],
+        [0, 1],
         [0],
         [0, 1, 2],
         [0, 1],
@@ -637,8 +640,8 @@ describe("setStocking", () => {
     const [leg, other] = stage.legs;
     // The stocking's depth and color passes, the passes drawn after both legs from the whole of it, and its
     // outline: they have to agree on the surface.
-    const [restore, , , , last] = leg.late.map((group) => group.children as StageLeg["stocking"][]);
-    expect(leg.cuffParts).toEqual([leg.stockingParts[0], restore[0], last[1]]);
+    const [restore, line] = leg.late.map((group) => group.children as StageLeg["stocking"][]);
+    expect(leg.cuffParts).toEqual([leg.stockingParts[0], restore[0], line[0]]);
     expect(leg.cuffParts.map((part) => part.material.vertexShader)).toEqual([
       LEG_VERTEX_SHADER,
       LEG_VERTEX_SHADER,
@@ -720,12 +723,13 @@ describe("setStocking", () => {
     for (const leg of stage.legs) {
       expect(leg.outlineUniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
       expect(leg.outlineUniforms.uCuffY).toBe(leg.fabric.uCuffY);
-      // The forefoot's line is drawn with the leg, the stocking's after both legs.
-      const outlines = [...leg.group.children, ...leg.late[4].children].filter(
+      // The forefoot's line is drawn with the leg, the stocking's after both legs: around the solid leg, and
+      // around its top (for the leg behind, and for the leg in front).
+      const outlines = [...leg.group.children, ...leg.late.flatMap((group) => group.children)].filter(
         (mesh): mesh is StageLeg["stocking"] =>
           (mesh as StageLeg["stocking"]).material.vertexShader === OUTLINE_VERTEX_SHADER,
       );
-      expect(outlines).toHaveLength(2);
+      expect(outlines).toHaveLength(4);
       for (const outline of outlines) {
         expect(outline.material.uniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
         expect(outline.geometry.attributes.legTangent).toBeDefined();
@@ -784,28 +788,31 @@ describe("leg pose, opacity and order", () => {
   it("draws what is seen through after both legs: the top of the leg behind, then that of the leg in front", () => {
     const { stage } = buildStage();
     const orders = () => stage.legs.map((leg) => leg.late.map((group) => group.renderOrder));
-    // The solid leg's depth once more, the fading top, the inside, what of the solid leg is seen through its
-    // top, and the line: leg 0 in front.
+    // The solid leg's depth once more, the line around the solid leg, the fading top, the line around the top
+    // of the leg behind, the inside, what of the solid leg is seen through its top, and the top's depth with the
+    // line around the top of the leg in front: leg 0 in front.
     expect(orders()).toEqual([
-      [25, 40, 45, 48, 50],
-      [25, 30, 45, 46, 50],
+      [25, 27, 40, 32, 45, 48, 50],
+      [25, 27, 30, 32, 45, 46, 50],
     ]);
     // The leg drawn first lays its depth down again: the other leg took some of it out with what of it is gone.
     expect(stage.legs.map((leg) => leg.restore.visible)).toEqual([false, true]);
     expect(
       stage.legs.every(
         (leg) =>
-          leg.restore === leg.late[0].children[0] && leg.fadeGroup === leg.late[1] && leg.throughGroup === leg.late[3],
+          leg.restore === leg.late[0].children[0] && leg.fadeGroup === leg.late[2] && leg.throughGroup === leg.late[5],
       ),
     ).toBe(true);
     stage.setOrder(1);
     expect(orders()).toEqual([
-      [25, 30, 45, 46, 50],
-      [25, 40, 45, 48, 50],
+      [25, 27, 30, 32, 45, 46, 50],
+      [25, 27, 40, 32, 45, 48, 50],
     ]);
     expect(stage.legs.map((leg) => leg.restore.visible)).toEqual([true, false]);
     for (const leg of stage.legs) {
-      const [restore, fade, inside, through, last] = leg.late.map((group) => group.children as StageLeg["stocking"][]);
+      const [restore, , fade, , inside, through, last] = leg.late.map(
+        (group) => group.children as StageLeg["stocking"][],
+      );
       const [curtainBit, goneBit] = [1 << (2 * leg.index), 2 << (2 * leg.index)];
       const stencil = (material: THREE.Material) => [
         material.stencilWrite,
@@ -893,6 +900,87 @@ describe("leg pose, opacity and order", () => {
     expect(new Set(stage.legs.flatMap((leg) => [1 << (2 * leg.index), 2 << (2 * leg.index)])).size).toBe(4);
   });
 
+  it("draws the line around a leg so that it shows through the fading top of either leg", () => {
+    const { stage } = buildStage();
+    const stencil = (material: THREE.Material) => [
+      material.stencilWrite,
+      material.stencilFunc,
+      material.stencilRef,
+      material.stencilFuncMask,
+      material.stencilWriteMask,
+    ];
+    const bits = new Set<number>();
+    for (const leg of stage.legs) {
+      const [, line, fade, topLine, , , last] = leg.late.map((group) => group.children as StageLeg["stocking"][]);
+      const [goneBit, topBit] = [2 << (2 * leg.index), 16 << leg.index];
+      [1 << (2 * leg.index), goneBit, topBit].forEach((bit) => bits.add(bit));
+      // Around the solid leg: right after the solid legs and before either top's color, which so goes over
+      // it. It lays down its depth, and leaves out what lies behind what is gone of the solid leg.
+      expect(line[0].material.defines).toEqual({ SOLID_LINE: 1 });
+      expect(line[0].geometry).toBe(leg.stockingParts[0].geometry);
+      expect(leg.late[1].renderOrder).toBeLessThan(Math.min(...stage.legs.map((each) => each.fadeGroup.renderOrder)));
+      expect([line[0].material.depthWrite, line[0].material.side]).toEqual([true, THREE.BackSide]);
+      expect(stencil(line[0].material)).toEqual([true, THREE.EqualStencilFunc, 0, goneBit, 0]);
+      // Around the top of the leg behind: the top marks where it lies in front of what is there, without a
+      // depth of its own, and the line is drawn where it does not.
+      const [mark, early] = topLine;
+      const late = last[1];
+      expect(leg.topLine).toEqual({ behind: [mark, early], front: [late] });
+      expect(mark.material.defines).toEqual({ CURTAIN: 1 });
+      expect([mark.material.colorWrite, mark.material.depthWrite, mark.material.polygonOffsetFactor]).toEqual([
+        false,
+        false,
+        -4,
+      ]);
+      expect(stencil(mark.material)).toEqual([true, THREE.AlwaysStencilFunc, topBit, 0xff, topBit]);
+      expect(mark.material.stencilZPass).toBe(THREE.ReplaceStencilOp);
+      expect(stencil(early.material)).toEqual([true, THREE.EqualStencilFunc, 0, topBit, 0]);
+      // Around the top of the leg in front: after the depth of the tops.
+      expect(last[0].material.defines).toEqual({ CURTAIN: 1 });
+      expect([last[0].material.depthWrite, late.material.stencilWrite]).toEqual([true, false]);
+      for (const mesh of [early, late]) {
+        expect(mesh.material.defines).toEqual({ TOP_LINE: 1 });
+        expect(mesh.material.depthWrite).toBe(false);
+        expect(mesh.geometry).toBe(fade[0].geometry);
+        expect(mesh.material.uniforms.uFadeStart).toBe(leg.fabric.uFadeStart);
+      }
+    }
+    // Each leg has three bits of the stencil buffer to itself.
+    expect(bits.size).toBe(6);
+    // The leg behind has its top's line drawn between the two tops' colors, the leg in front after everything.
+    const picked = () =>
+      stage.legs.map((leg) => [...leg.topLine.behind, ...leg.topLine.front].map((mesh) => mesh.visible));
+    expect(picked()).toEqual([
+      [false, false, true],
+      [true, true, false],
+    ]);
+    const between = (leg: StageLeg) =>
+      stage.legs[1 - leg.index].fadeGroup.renderOrder > leg.late[3].renderOrder &&
+      leg.late[3].renderOrder > leg.fadeGroup.renderOrder;
+    expect(between(stage.legs[1])).toBe(true);
+    stage.setOrder(1);
+    expect(picked()).toEqual([
+      [true, true, false],
+      [false, false, true],
+    ]);
+    expect(between(stage.legs[0])).toBe(true);
+    // The two passes around the stocking draw the line between them: up to where the lid has told everything
+    // that is seen through the leg's top, and from there up.
+    const lines = (shader: string, name: string) =>
+      [...shader.matchAll(new RegExp(`#ifdef ${name}\\n((?:(?!#).*\\n)+)#endif`, "g"))].map((match) => match[1].trim());
+    expect(lines(OUTLINE_FRAGMENT_SHADER, "SOLID_LINE")).toEqual([
+      "if (vFadeHeight > uFadeStart - TOP_LINE_BELOW) discard;",
+    ]);
+    expect(lines(OUTLINE_FRAGMENT_SHADER, "TOP_LINE")).toEqual([
+      "if (vFadeHeight <= uFadeStart - TOP_LINE_BELOW) discard;",
+    ]);
+    expect(OUTLINE_FRAGMENT_SHADER).toContain(`TOP_LINE_BELOW = ${LID_NEAR[1].toFixed(3)};`);
+    // The line's place in the world is where it is drawn, pushed out like its place on the screen.
+    expect(OUTLINE_VERTEX_SHADER).toContain(
+      "vWorldPos += vec3(push.x / projectionMatrix[0][0], push.y / projectionMatrix[1][1], 0.0) * mat3(viewMatrix);",
+    );
+  });
+
   it("keeps the solid leg from showing through its own top with a curtain while the leg is drawn", () => {
     const { stage } = buildStage();
     const model = legModel();
@@ -968,8 +1056,10 @@ describe("leg pose, opacity and order", () => {
       expect(mirrorColor.material.uniforms).toBe(color.material.uniforms);
       // The curtain hangs from the top of the mesh alone, and the two colors are drawn from its bottom and from
       // the rest of it: the same vertices, some of the triangles.
-      const [, fade, inside, through, last] = leg.late.map((group) => group.children as StageLeg["stocking"][]);
-      expect(leg.topParts).toEqual([curtain, fade[0], through[1], last[0]]);
+      const [, , fade, topLine, inside, through, last] = leg.late.map(
+        (group) => group.children as StageLeg["stocking"][],
+      );
+      expect(leg.topParts).toEqual([curtain, fade[0], ...topLine, last[1], through[1], last[0]]);
       expect(leg.lowParts).toEqual([low]);
       expect(leg.highParts).toEqual([color, gone, erase, inside[0], through[0], through[2]]);
       const heights = (geometry: THREE.BufferGeometry): [number, number] => {
@@ -1051,9 +1141,9 @@ describe("leg pose, opacity and order", () => {
     });
     const all = (visible: boolean, count: number) => Array<boolean>(count).fill(visible);
     for (const leg of stage.legs) {
-      expect(leg.intoParts).toEqual(leg.late[2].children);
+      expect(leg.intoParts).toEqual(leg.late[4].children);
       expect(leg.askParts).toEqual(leg.aroundStocking.slice(1, 3));
-      expect(leg.throughParts).toEqual([leg.aroundStocking[0], leg.aroundStocking[3], ...leg.late[3].children]);
+      expect(leg.throughParts).toEqual([leg.aroundStocking[0], leg.aroundStocking[3], ...leg.late[5].children]);
     }
     // From the side, level with the knees: nothing of all that, and the solid leg's color in one pass.
     frame([2, 0.5, 1]);

@@ -228,6 +228,8 @@ export interface StageLeg {
   /** The one of them that draws the fading top, and the one for what of the solid leg is seen through it. */
   fadeGroup: THREE.Group;
   throughGroup: THREE.Group;
+  /** The passes that draw the line around the leg's top while the leg is the one behind, and the one in front. */
+  topLine: { behind: StageMesh[]; front: StageMesh[] };
   /** The solid leg's depth again: for the leg drawn first, which lost some to what of the other leg is gone. */
   restore: StageMesh;
   /** The passes drawn with the leg around the stocking's own (see orderStocking). */
@@ -344,7 +346,9 @@ const SEEN_THROUGH_PULL = 4;
 /** Render orders of the groups drawn after both legs (10 and 20), in this order (see setOrder). */
 const LATE_ORDER = {
   restore: 25,
+  line: 27,
   fadeFirst: 30,
+  topLine: 32,
   fadeSecond: 40,
   inside: 45,
   throughFirst: 46,
@@ -860,9 +864,10 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     const legGroup = new THREE.Group();
     legGroup.matrixAutoUpdate = false;
     mainScene.add(legGroup);
-    // What is drawn after both legs, in this order (see addSeenThrough and setOrder): the solid legs' depth
-    // again, the leg's fading top, its all but invisible inside, and last the lines around it. They follow the
-    // leg's own group.
+    // What is drawn after both legs, in this order (see addSeenThrough, addOutline and setOrder): the solid
+    // legs' depth again, the lines around them, the leg's fading top (and the line around that of the leg
+    // behind), its all but invisible inside, what of the solid leg is seen through its top, and last the depth
+    // of the top with the line around that of the leg in front. They follow the leg's own group.
     const lateGroup = (renderOrder: number): THREE.Group => {
       const group = new THREE.Group();
       group.matrixAutoUpdate = false;
@@ -871,7 +876,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       mainScene.add(group);
       return group;
     };
+    const lineGroup = lateGroup(LATE_ORDER.line);
     const fadeGroup = lateGroup(LATE_ORDER.fadeFirst);
+    const topLineGroup = lateGroup(LATE_ORDER.topLine);
     const insideGroup = lateGroup(LATE_ORDER.inside);
     const lastGroup = lateGroup(LATE_ORDER.last);
     const restoreGroup = lateGroup(LATE_ORDER.restore);
@@ -934,6 +941,23 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       );
       return [depthMesh, colorMesh];
     };
+    // The leg's three bits in the stencil buffer: where its curtain hangs in front of what is there, where what
+    // is there is the leg's own solid surface, which is gone (for both see addSeenThrough), and where its top
+    // lies, for the line around that (see addOutline).
+    const [curtainBit, goneBit, topBit] = [1 << (2 * index), 2 << (2 * index), 16 << index];
+    const stencil = (
+      ref: number,
+      funcMask: number,
+      writeMask = 0,
+      func: THREE.StencilFunc = THREE.EqualStencilFunc,
+    ): THREE.ShaderMaterialParameters => ({
+      stencilWrite: true,
+      stencilFunc: func,
+      stencilRef: ref,
+      stencilFuncMask: funcMask,
+      stencilWriteMask: writeMask,
+      stencilZPass: THREE.ReplaceStencilOp,
+    });
     // What of the leg is seen through: its fading top and its all but invisible inside. Drawn with the leg,
     // their depth kept what lies behind them from being drawn: the top faded to the backdrop, and the inside
     // cut holes into the other leg. So only what is solid is drawn with the leg, and they come after both legs:
@@ -988,9 +1012,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
         group.add(mesh);
         return mesh;
       };
-      // The lines that come last are these same faces, pushed out sideways by the line's width: next to each
+      // The line around the leg's top is these same faces, pushed out sideways by the line's width: next to each
       // other in depth, so that some of a line would come out in front of the face it should be hidden behind.
-      // The depth that is left for them is laid down nearer by a few pixels' worth of the face's slope.
+      // What is to hide it is laid down nearer by a few pixels' worth of the face's slope.
       const pulled = {
         polygonOffset: true,
         polygonOffsetFactor: -SEEN_THROUGH_PULL,
@@ -1011,22 +1035,6 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
         { LEG_INSIDE: 1 },
         { ...pulled, depthFunc: THREE.LessEqualDepth, depthWrite: true },
       );
-      // The leg's two bits in the stencil buffer: where its curtain hangs in front of what is there, and where
-      // what is there is the leg's own solid surface, which is gone.
-      const [curtainBit, goneBit] = [1 << (2 * index), 2 << (2 * index)];
-      const stencil = (
-        ref: number,
-        funcMask: number,
-        writeMask = 0,
-        func: THREE.StencilFunc = THREE.EqualStencilFunc,
-      ): THREE.ShaderMaterialParameters => ({
-        stencilWrite: true,
-        stencilFunc: func,
-        stencilRef: ref,
-        stencilFuncMask: funcMask,
-        stencilWriteMask: writeMask,
-        stencilZPass: THREE.ReplaceStencilOp,
-      });
       const curtain = variant(
         depthMesh,
         { CURTAIN: 1 },
@@ -1104,6 +1112,18 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
           add(throughGroup, veil, 1, topOf),
           add(throughGroup, throughColor, 2, upperOf),
         ],
+        // The leg's top, for the line around it (see addOutline): marked in the stencil buffer, and laid down as
+        // depth after everything (the water in the air is drawn against that as well).
+        topMark: add(
+          topLineGroup,
+          variant(
+            depthMesh,
+            { CURTAIN: 1 },
+            { ...pulled, depthWrite: false, ...stencil(topBit, 0xff, topBit, THREE.AlwaysStencilFunc) },
+          ),
+          0,
+          topOf,
+        ),
         topDepth: add(lastGroup, variant(depthMesh, { CURTAIN: 1 }, pulled), 0, topOf),
         mirrored: [whole, fade],
         // The solid leg's color: all of it in one pass while nothing of it is seen through the leg's top, and
@@ -1137,14 +1157,29 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       ...rigUniforms,
     };
     // The line around a surface is drawn from its back faces, pushed out by the line's width: what shows of them
-    // past the surface's edge is the line, and the surface's own depth hides the rest. A surface that reaches the
-    // leg's top (`late`) has its line drawn after the passes above, whose depth does that where the leg is seen
-    // through.
+    // past the surface's edge is the line, and the surface's own depth hides the rest.
+    //
+    // The line around the stocking, which reaches the leg's top, comes after both legs, in two parts (`late`).
+    // Around the solid leg (SOLID_LINE) it is drawn right after the solid legs and before anything that is seen
+    // through, and lays down its depth: so it is seen through a fading top like the leg it goes around, the
+    // top's color over it. What lies behind what is gone of the solid leg is not drawn (the second bit).
+    //
+    // Around the leg's top (TOP_LINE) it is drawn after the top's own depth, which hides what of it lies behind
+    // the top. For the leg in front that is after everything, where that depth is laid down. The line around
+    // the top of the leg behind is to show through the top of the leg in front, so it has to be drawn before
+    // that one's color, when the depth of no top may be there yet: its top marks where it lies instead
+    // (`topMark`: the leg's third bit) right after its color is drawn, and its line is drawn where that is not
+    // set. Each leg has both, and setOrder picks.
     const addOutline = (
       geometry: THREE.BufferGeometry,
       isSkin: number,
       extra: Record<string, U<number>> = {},
-      late = false,
+      late?: {
+        group: THREE.Group;
+        renderOrder: number;
+        defines: Record<string, number>;
+        options: THREE.ShaderMaterialParameters;
+      },
     ): StageMesh => {
       const mesh = addMesh(
         geometry,
@@ -1158,20 +1193,46 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
             },
             ...extra,
           },
+          defines: late?.defines ?? {},
           side: THREE.BackSide,
           ...transparentOptions,
+          ...late?.options,
         }),
-        late ? 1 : 2,
+        late?.renderOrder ?? 2,
       );
-      if (late) {
-        lastGroup.add(mesh);
-      }
+      late?.group.add(mesh);
       return mesh;
     };
     // The stocking's mesh is the whole leg: above its cuff, and all over a bare leg, its passes draw the skin.
     const stockingPasses = addSurfacePasses(stockingFor(defaultLook), 0, false);
     const seenThrough = addSeenThrough(stockingPasses);
-    const stockingOutline = addOutline(stockingFor(defaultLook), 0, {}, true);
+    const stockingOutline = addOutline(
+      stockingFor(defaultLook),
+      0,
+      {},
+      {
+        group: lineGroup,
+        renderOrder: 0,
+        defines: { SOLID_LINE: 1 },
+        options: stencil(0, goneBit),
+      },
+    );
+    const topOutlines = [
+      { group: topLineGroup, options: stencil(0, topBit) },
+      { group: lastGroup, options: {} },
+    ].map(({ group, options }) =>
+      addOutline(
+        topOf(stockingFor(defaultLook)),
+        0,
+        {},
+        {
+          group: group,
+          renderOrder: 1,
+          defines: { TOP_LINE: 1 },
+          options: { depthWrite: false, ...options },
+        },
+      ),
+    );
     // The skin of the forefoot, in front of the join only: under the stocking, or in place of the stocking
     // mesh's front on a bare leg, where it also gets a line around it (see showForefoot).
     const forefootUniforms = {
@@ -1363,12 +1424,20 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     return {
       index: index,
       group: legGroup,
-      late: [restoreGroup, fadeGroup, insideGroup, throughGroup, lastGroup],
+      late: [restoreGroup, lineGroup, fadeGroup, topLineGroup, insideGroup, throughGroup, lastGroup],
       fadeGroup: fadeGroup,
       throughGroup: throughGroup,
+      topLine: { behind: [seenThrough.topMark, topOutlines[0]], front: [topOutlines[1]] },
       restore: seenThrough.restore,
       aroundStocking: [seenThrough.low, seenThrough.curtain, seenThrough.gone, seenThrough.erase],
-      topParts: [seenThrough.curtain, seenThrough.fade, seenThrough.through[1], seenThrough.topDepth],
+      topParts: [
+        seenThrough.curtain,
+        seenThrough.fade,
+        seenThrough.topMark,
+        ...topOutlines,
+        seenThrough.through[1],
+        seenThrough.topDepth,
+      ],
       // What is drawn only while the eye looks into the leg from above where its top begins to fade (see
       // lookInto): what tells the solid leg seen through its own top, and the leg's inside.
       intoParts: [seenThrough.inside],
@@ -1492,8 +1561,15 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     for (let i = 0; i < 2; i++) {
       const front = frontIndex === i;
       legs[i].group.renderOrder = legs[i].mirror.renderOrder = front ? 20 : 10;
-      // After both legs: the fading top of the leg behind, then that of the leg in front, over it.
+      // After both legs: the fading top of the leg behind and the line around it, then the top of the leg in
+      // front, over them. The line around that one comes last (see addOutline).
       legs[i].fadeGroup.renderOrder = front ? LATE_ORDER.fadeSecond : LATE_ORDER.fadeFirst;
+      for (const part of legs[i].topLine.behind) {
+        part.visible = !front;
+      }
+      for (const part of legs[i].topLine.front) {
+        part.visible = front;
+      }
       legs[i].throughGroup.renderOrder = front ? LATE_ORDER.throughSecond : LATE_ORDER.throughFirst;
       legs[i].behind = !front;
     }
