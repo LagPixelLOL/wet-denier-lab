@@ -205,6 +205,8 @@ export interface StageLeg {
   skin: StageMesh;
   /** The stocking's depth and color passes, in the view and in the floor's reflection. */
   stockingParts: StageMesh[];
+  /** What draws the cuff's press in the view: the stocking's passes and its outline (see setStocking). */
+  cuffParts: StageMesh[];
   /**
    * The same passes for the stocking in front of the forefoot's join alone. While the forefoot's skin shows
    * through the fabric, the stocking is drawn in two parts: behind the join first, then the skin, then this
@@ -566,6 +568,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
    * it (m): twice the distance up to which skin counts as wearing the fabric over it.
    */
   const UNDER_NEAR = 2 * UNDER_FIT.worn;
+  // A stocking with a cuff is drawn from the mesh that has rings of vertices around the cuff's height.
+  const stockingFor = (look: LegLook): THREE.BufferGeometry =>
+    (look.hasCuff && model.stockingAtCuff.get(look.cuffY)) || model.stocking;
   const stockingFront = model.forefoot ? frontOfJoin(model.stocking) : null;
   const stockingLowFront = model.forefoot ? frontOfJoin(model.stockingLow) : null;
   function createLeg(index: number): StageLeg {
@@ -805,10 +810,10 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
         }),
         2,
       );
-    const stockingPasses = addSurfacePasses(model.stocking, 0, null);
+    const stockingPasses = addSurfacePasses(stockingFor(defaultLook), 0, null);
     const skinPasses = addSurfacePasses(model.skin, 1, "on");
     const skinParts = [...skinPasses, addOutline(model.skin, 1)];
-    addOutline(model.stocking, 0);
+    const stockingOutline = addOutline(stockingFor(defaultLook), 0);
     // The skin of the forefoot, in front of the join only: under the stocking, or in place of the stocking
     // mesh's front on a bare leg, where it also gets a line around it (see showForefoot).
     const forefootUniforms = {
@@ -979,6 +984,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       stocking: stockingPasses[1],
       skin: skinPasses[1],
       stockingParts: stockingParts,
+      cuffParts: [...stockingPasses, stockingOutline],
       stockingFrontParts: stockingFrontParts,
       skinParts: skinParts,
       bare: false,
@@ -1305,6 +1311,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     fabric.uHasCuff.value = look.hasCuff;
     // Only a cuff presses into the leg: tights have none, so their line at cuffY leaves the leg's shape alone.
     fabric.uCuffBulge.value = look.hasCuff;
+    for (const part of leg.cuffParts) {
+      part.geometry = stockingFor(look);
+    }
     fabric.uCuffStyle.value = look.cuff;
     fabric.uBand.value = look.band;
     fabric.uGarter.value = look.garter;

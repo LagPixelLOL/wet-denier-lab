@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { sliceAtHeights } from "../../../src/engine/geometry/slice";
 import { buildAdaptiveIndex, subdivideSmooth } from "../../../src/engine/geometry/subdivide";
 import { buildGeometry, computeWeldedNormals, weldVertices } from "../../../src/engine/geometry/weld";
 import { digest } from "../../helpers/digest";
 import { legModel, modelData } from "../../helpers/model";
 import { seedRandom } from "../../helpers/random";
-import { edgeCounts, edgeVertices, flatGrid, oddEdges, signedAreasZ, topologyProblems } from "./fixtures";
+import { edgeCounts, edgeVertices, flatGrid, oddEdges, signedAreasZ, topologyProblems, tube } from "./fixtures";
 
 const OCTAHEDRON = {
   pos: new Float32Array([1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 1, 0, 0, -1]),
@@ -261,5 +262,162 @@ describe("subdivision and adaptive index of the real leg model", () => {
         "c4209d43",
       ]
     `);
+  });
+});
+
+describe("sliceAtHeights", () => {
+  const attrs = (mesh: { pos: Float32Array; uv: Float32Array }) => ({
+    position: { array: mesh.pos, itemSize: 3 },
+    uv: { array: mesh.uv, itemSize: 2 },
+  });
+  const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
+
+  it("leaves a mesh no plane crosses as it is", () => {
+    const grid = flatGrid(2);
+    // Planes on the rows of vertices and outside the mesh cut nothing.
+    const sliced = sliceAtHeights(attrs(grid), grid.idx, [-1, 0, 1, 2, 3]);
+    expect([...sliced.idx]).toEqual([...grid.idx]);
+    expect([...sliced.attributes.position]).toEqual([...grid.pos]);
+    expect([...sliced.attributes.uv]).toEqual([...grid.uv]);
+  });
+
+  it("cuts one triangle into a triangle and a quad, keeping its vertices, area and winding", () => {
+    const pos = new Float32Array([0, 0, 0, 4, 0, 0, 0, 4, 0]);
+    const uv = new Float32Array([0, 0, 1, 0, 0, 1]);
+    const sliced = sliceAtHeights(attrs({ pos, uv }), [0, 1, 2], [1]);
+    expect([...sliced.attributes.position.slice(0, 9)]).toEqual([...pos]);
+    // New vertices on the edges 0-2 and 1-2, at the plane, with the uv of that point of the edge.
+    expect([...sliced.attributes.position.slice(9)]).toEqual([0, 1, 0, 3, 1, 0]);
+    expect([...sliced.attributes.uv.slice(6)]).toEqual([0, 0.25, 0.75, 0.25]);
+    expect(sliced.idx.length).toBe(9);
+    const areas = signedAreasZ(sliced.attributes.position, sliced.idx);
+    expect(areas.every((area) => area > 0)).toBe(true);
+    expect(sum(areas)).toBeCloseTo(8, 12);
+    expect(topologyProblems(sliced.idx, 5)).toEqual([]);
+  });
+
+  it("keeps the winding of triangles given the other way round", () => {
+    const pos = new Float32Array([0, 0, 0, 4, 0, 0, 0, 4, 0]);
+    const uv = new Float32Array(6);
+    for (const corners of [
+      [0, 2, 1],
+      [2, 1, 0],
+      [1, 0, 2],
+    ]) {
+      const sliced = sliceAtHeights(attrs({ pos, uv }), corners, [0.5, 1, 3.5]);
+      const areas = signedAreasZ(sliced.attributes.position, sliced.idx);
+      expect(areas.every((area) => area < 0)).toBe(true);
+      expect(sum(areas)).toBeCloseTo(-8, 6);
+    }
+  });
+
+  it("adds two triangles per plane a triangle reaches across, however many there are", () => {
+    // Bottom, middle and top corner at different heights: planes below, at and above the middle one.
+    const pos = new Float32Array([0, 0, 0, 4, 2, 0, 1, 5, 0]);
+    const uv = new Float32Array(6);
+    const heights = [0.5, 1, 1.5, 2, 2.5, 3, 4, 4.75];
+    const sliced = sliceAtHeights(attrs({ pos, uv }), [0, 1, 2], heights);
+    // The plane through the middle corner cuts the long edge only.
+    expect(sliced.attributes.position.length / 3).toBe(3 + heights.length * 2 - 1);
+    expect(sliced.idx.length / 3).toBe(1 + heights.length * 2 - 1);
+    const areas = signedAreasZ(sliced.attributes.position, sliced.idx);
+    expect(areas.every((area) => area > 0)).toBe(true);
+    expect(sum(areas)).toBeCloseTo(9, 5);
+    // No piece reaches across a plane any more.
+    const ys = (t: number) => [0, 1, 2].map((k) => sliced.attributes.position[sliced.idx[t * 3 + k] * 3 + 1]);
+    for (let t = 0; t < sliced.idx.length / 3; t++) {
+      const [low, high] = [Math.min(...ys(t)), Math.max(...ys(t))];
+      expect(heights.filter((height) => height > low && height < high)).toEqual([]);
+    }
+  });
+
+  it("handles flat bottom and flat top edges", () => {
+    const uv = new Float32Array(6);
+    for (const pos of [
+      [0, 0, 0, 4, 0, 0, 2, 4, 0],
+      [0, 4, 0, 2, 0, 0, 4, 4, 0],
+    ]) {
+      const sliced = sliceAtHeights(attrs({ pos: new Float32Array(pos), uv }), [0, 1, 2], [1, 2, 3]);
+      expect(sliced.idx.length / 3).toBe(7);
+      const areas = signedAreasZ(sliced.attributes.position, sliced.idx);
+      expect(areas.every((area) => area > 0)).toBe(true);
+      expect(sum(areas)).toBeCloseTo(8, 6);
+    }
+  });
+
+  it("cuts a shared edge once, so a mesh stays closed", () => {
+    for (const grid of [flatGrid(3), flatGrid(3, true)]) {
+      const heights = [0.25, 0.5, 1.5, 2.2, 2.9];
+      const sliced = sliceAtHeights(attrs(grid), grid.idx, heights);
+      const count = sliced.attributes.position.length / 3;
+      expect(topologyProblems(sliced.idx, count)).toEqual([]);
+      // Every edge inside the grid still belongs to two triangles, and the outline is one closed loop of
+      // boundary edges: those of the grid, plus two more per plane (one on each side).
+      const counts = [...edgeCounts(sliced.idx).values()];
+      expect(counts.every((n) => n <= 2)).toBe(true);
+      expect(counts.filter((n) => n === 1)).toHaveLength(12 + heights.length * 2);
+      // One new vertex per edge a plane crosses: 4 uprights and 3 diagonals per row of quads.
+      expect(count).toBe(16 + heights.length * 7);
+      const areas = signedAreasZ(sliced.attributes.position, sliced.idx);
+      expect(areas.every((area) => area > 0)).toBe(true);
+      expect(sum(areas)).toBeCloseTo(9, 5);
+    }
+  });
+
+  it("gives the two sides of a seam the very same cut", () => {
+    // Two triangles that meet along an edge whose vertices are doubled, given in opposite directions.
+    const pos = new Float32Array([0, 0.1, 0, 1, 0.3, 0.2, 0.2, 0.9, 0.7, 0.2, 0.9, 0.7, 0, 0.1, 0, -1, 0.5, 0.1]);
+    const uv = new Float32Array(12);
+    const sliced = sliceAtHeights(attrs({ pos, uv }), [0, 1, 2, 3, 4, 5], [0.2, 0.37, 0.61, 0.8]);
+    const points: string[] = [];
+    for (let v = 6; v < sliced.attributes.position.length / 3; v++) {
+      points.push(sliced.attributes.position.slice(v * 3, v * 3 + 3).join(" "));
+    }
+    // Each plane cuts the seam: its point appears once from either side, bit for bit.
+    const doubled = points.filter((point, i) => points.indexOf(point) !== i);
+    expect(doubled).toHaveLength(4);
+    expect(new Set(doubled).size).toBe(4);
+  });
+
+  it("interpolates every attribute along the edge and keeps unit vectors unit length", () => {
+    const pos = new Float32Array([0, 0, 0, 2, 0, 0, 0, 2, 0]);
+    const sliced = sliceAtHeights(
+      {
+        position: { array: pos, itemSize: 3 },
+        normal: { array: new Float32Array([1, 0, 0, 1, 0, 0, 0, 0, 1]), itemSize: 3 },
+        weight: { array: new Float32Array([0, 10, 4]), itemSize: 1 },
+        pair: { array: new Float32Array([1, 0, 0, 0, 0, 1]), itemSize: 2 },
+      },
+      [0, 1, 2],
+      [1],
+      ["normal"],
+    );
+    expect(Object.keys(sliced.attributes)).toEqual(["position", "normal", "weight", "pair"]);
+    // The cut on the edge 0-2, halfway up, then the one on 1-2.
+    expect([...sliced.attributes.weight.slice(3)]).toEqual([2, 7]);
+    expect([...sliced.attributes.pair.slice(6)]).toEqual([0.5, 0.5, 0, 0.5]);
+    const normal = [...sliced.attributes.normal.slice(9)];
+    expect(normal[0]).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(normal[2]).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(Math.hypot(...normal.slice(3))).toBeCloseTo(1, 6);
+  });
+
+  it("rings a tube: one loop of new vertices per plane and seam-free strips between them", () => {
+    const mesh = tube(1, 0, 3, 4, 12);
+    const heights = [0.5, 0.75, 1.25, 2.5];
+    const sliced = sliceAtHeights(attrs(mesh), mesh.idx, heights);
+    const position = sliced.attributes.position;
+    // Each plane crosses 12 uprights and 12 diagonals.
+    expect(position.length / 3).toBe(48 + heights.length * 24);
+    expect(sliced.idx.length / 3).toBe(72 + heights.length * 48);
+    const ringed = new Map<number, number>();
+    for (let v = 48; v < position.length / 3; v++) {
+      ringed.set(position[v * 3 + 1], (ringed.get(position[v * 3 + 1]) ?? 0) + 1);
+    }
+    expect([...ringed]).toEqual(heights.map((height) => [height, 24]));
+    // Still a tube: closed around, open at its two ends only.
+    expect(oddEdges(sliced.idx)).toEqual(oddEdges(mesh.idx));
+    expect([...edgeCounts(sliced.idx).values()].every((n) => n <= 2)).toBe(true);
+    expect(topologyProblems(sliced.idx, position.length / 3)).toEqual([]);
   });
 });

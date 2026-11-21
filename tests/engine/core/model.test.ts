@@ -13,14 +13,14 @@ import {
 import { FOREFOOT_JOIN } from "../../../src/engine/model/forefoot";
 import { parseModelGlb } from "../../../src/engine/model/glb";
 import type { ModelData } from "../../../src/engine/model/glb";
-import { buildLegModel, loadLegModel } from "../../../src/engine/model/legModel";
+import { buildLegModel, CUFF_RING_OFFSETS, loadLegModel } from "../../../src/engine/model/legModel";
 import type { LegModel } from "../../../src/engine/model/legModel";
 import { computeCircumference, computeLegTangents } from "../../../src/engine/model/tangents";
 import { applyWrapOffsets, decodeBase64Int16 } from "../../../src/engine/model/wrapOffsets";
 import { weldVertices } from "../../../src/engine/geometry/weld";
 import { digest, digestRounded } from "../../helpers/digest";
 import { legModel, modelData, readModelBuffer } from "../../helpers/model";
-import { buildGlb, tinyGlb, tinyModelData, topologyProblems, tube } from "./fixtures";
+import { buildGlb, edgeCounts, oddEdges, tinyGlb, tinyModelData, topologyProblems, tube } from "./fixtures";
 
 const toBase64 = (array: Int16Array): string =>
   Buffer.from(array.buffer, array.byteOffset, array.byteLength).toString("base64");
@@ -664,6 +664,187 @@ describe("buildLegModel on the shipped model", () => {
         },
       }
     `);
+  });
+});
+
+describe("the stocking ringed around each cuff height", () => {
+  const cuffHeights = [0.132, 0.285, 0.425, 0.545, 0.7];
+
+  it("has one mesh per cuff height of the catalog, all on one set of attributes that starts with the stocking's", () => {
+    const model = legModel();
+    expect([...model.stockingAtCuff.keys()]).toEqual(cuffHeights);
+    const meshes = [...model.stockingAtCuff.values()];
+    for (const name of Object.keys(model.stocking.attributes)) {
+      const base = model.stocking.attributes[name];
+      const ringed = meshes[0].attributes[name];
+      expect(meshes.every((mesh) => mesh.attributes[name] === ringed)).toBe(true);
+      expect(ringed.itemSize).toBe(base.itemSize);
+      expect(ringed.array.slice(0, base.array.length)).toEqual(base.array);
+    }
+    expect(Object.keys(meshes[0].attributes)).toEqual(Object.keys(model.stocking.attributes));
+    expect(meshes.every((mesh) => mesh.boundingSphere === model.stocking.boundingSphere)).toBe(true);
+    // The stocking itself is left as it was.
+    expect(model.stocking.attributes.position.count).toBe(63186);
+    expect(meshes[0].attributes.position.count).toBe(103940);
+  });
+
+  it("spaces the rings by a millimeter over the bulge and half of one at the cuff's edge", () => {
+    const mm = CUFF_RING_OFFSETS.map((offset) => Math.round(offset * 2000) / 2);
+    expect(mm).toEqual([...mm].sort((a, b) => a - b));
+    expect(new Set(mm).size).toBe(mm.length);
+    expect([mm[0], mm[mm.length - 1], mm.length]).toEqual([-12, 26, 42]);
+    const gaps = mm.slice(1).map((at, i) => [mm[i], at - mm[i]]);
+    expect(Math.max(...gaps.filter(([from]) => from >= -3 && from < 4).map(([, gap]) => gap))).toBe(0.5);
+    expect(Math.max(...gaps.filter(([from]) => from < 18).map(([, gap]) => gap))).toBe(1);
+    expect(Math.max(...gaps.map(([, gap]) => gap))).toBe(2);
+  });
+
+  it("leaves no triangle reaching across a ring, and the mesh as it was away from the cuff", () => {
+    const model = legModel();
+    const base = model.stocking.index!.array;
+    for (const [cuffY, mesh] of model.stockingAtCuff) {
+      const position = mesh.attributes.position.array;
+      const index = mesh.index!.array;
+      const rings = CUFF_RING_OFFSETS.map((offset) => Math.fround(cuffY + offset));
+      const [bottom, top] = [rings[0], rings[rings.length - 1]];
+      const pieces = new Set<string>();
+      for (let t = 0; t < index.length; t += 3) {
+        const ys = [position[index[t] * 3 + 1], position[index[t + 1] * 3 + 1], position[index[t + 2] * 3 + 1]];
+        const [low, high] = [Math.min(...ys), Math.max(...ys)];
+        if (rings.some((ring) => ring > low && ring < high)) {
+          throw new Error(`triangle ${t / 3} of the mesh for ${cuffY} reaches across a ring`);
+        }
+        pieces.add(`${index[t]} ${index[t + 1]} ${index[t + 2]}`);
+      }
+      // A triangle of the stocking that no ring crosses is still there, and the others are not.
+      let crossed = 0;
+      for (let t = 0; t < base.length; t += 3) {
+        const ys = [position[base[t] * 3 + 1], position[base[t + 1] * 3 + 1], position[base[t + 2] * 3 + 1]];
+        const [low, high] = [Math.min(...ys), Math.max(...ys)];
+        const cut = rings.some((ring) => ring > low && ring < high);
+        crossed += Number(cut);
+        if (pieces.has(`${base[t]} ${base[t + 1]} ${base[t + 2]}`) === cut) {
+          throw new Error(`triangle ${t / 3} of the stocking is ${cut ? "still there" : "gone"} at ${cuffY}`);
+        }
+        if (cut && (high < bottom - 0.02 || low > top + 0.02)) {
+          throw new Error(`triangle ${t / 3} is cut far from the cuff at ${cuffY}`);
+        }
+      }
+      expect(crossed).toBeGreaterThan(300);
+      expect(crossed).toBeLessThan(base.length / 3 / 20);
+    }
+  });
+
+  it("keeps the surface closed and where it was", () => {
+    const model = legModel();
+    const meshes = [...model.stockingAtCuff.values()];
+    const position = meshes[0].attributes.position.array;
+    // Vertices at the very same place count as one (the uv seam doubles them). The usual weld would also merge
+    // ring vertices that lie within its 0.01 mm of each other, where a ring passes right by a vertex.
+    const first = new Map<string, number>();
+    const weld = Array.from({ length: position.length / 3 }, (_, v) => {
+      const key = `${position[v * 3]} ${position[v * 3 + 1]} ${position[v * 3 + 2]}`;
+      return first.get(key) ?? (first.set(key, v), v);
+    });
+    const area = (index: ArrayLike<number>): number => {
+      let total = 0;
+      for (let t = 0; t < index.length; t += 3) {
+        const [a, b, c] = [index[t] * 3, index[t + 1] * 3, index[t + 2] * 3];
+        const u = [position[b] - position[a], position[b + 1] - position[a + 1], position[b + 2] - position[a + 2]];
+        const v = [position[c] - position[a], position[c + 1] - position[a + 1], position[c + 2] - position[a + 2]];
+        total += Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) / 2;
+      }
+      return total;
+    };
+    const baseArea = area(model.stocking.index!.array);
+    // The stocking's only open edge is its top.
+    const open = oddEdges(model.stocking.index!.array, weld);
+    for (const mesh of meshes) {
+      const index = mesh.index!.array;
+      expect(topologyProblems(index, position.length / 3)).toEqual([]);
+      expect(oddEdges(index, weld)).toEqual(open);
+      expect([...edgeCounts(index, weld).values()].every((n) => n <= 2)).toBe(true);
+      // Cutting flat triangles moves nothing: the pieces cover what the triangles did.
+      expect(Math.abs(area(index) / baseArea - 1)).toBeLessThan(1e-6);
+    }
+  });
+
+  it("keeps the rings' normals and tangents unit length and interpolates the rest", () => {
+    const model = legModel();
+    const mesh = model.stockingAtCuff.get(0.7)!;
+    const from = model.stocking.attributes.position.count;
+    for (const name of ["normal", "legTangent"]) {
+      const array = mesh.attributes[name].array;
+      for (let i = from * 3; i < array.length; i += 3) {
+        const length = Math.hypot(array[i], array[i + 1], array[i + 2]);
+        if (Math.abs(length - 1) > 1e-6) {
+          throw new Error(`${name} of vertex ${i / 3} has length ${length}`);
+        }
+      }
+    }
+    for (const name of ["stretch", "skinFx", "uv"]) {
+      const [min, max] = extent(model.stocking.attributes[name].array);
+      const [ringMin, ringMax] = extent(mesh.attributes[name].array.slice(from * mesh.attributes[name].itemSize));
+      expect(ringMin).toBeGreaterThanOrEqual(min);
+      expect(ringMax).toBeLessThanOrEqual(max);
+    }
+    expect(new Set(mesh.attributes.toeShade.array)).toEqual(new Set([0]));
+    expect(new Set(mesh.attributes.under.array)).toEqual(new Set([0]));
+  });
+
+  it("pins the ringed meshes", () => {
+    const model = legModel();
+    const meshes = [...model.stockingAtCuff.values()];
+    expect({
+      attributes: attributeDigests(meshes[0]),
+      indices: meshes.map((mesh) => [mesh.index!.count / 3, digest(mesh.index!.array)]),
+    }).toMatchInlineSnapshot(`
+      {
+        "attributes": {
+          "legTangent": "34672f84",
+          "normal": "1ee96f88",
+          "position": "2fb0bd59",
+          "skinFx": "12425fd2",
+          "stretch": "68d6090d",
+          "toeShade": "b68ea445",
+          "under": "4fc437c5",
+          "uv": "1b455001",
+        },
+        "indices": [
+          [
+            113116,
+            "b926b900",
+          ],
+          [
+            99430,
+            "0eb4bbbe",
+          ],
+          [
+            99480,
+            "cf1ff3e1",
+          ],
+          [
+            99516,
+            "3fefe5ce",
+          ],
+          [
+            99436,
+            "adb163ab",
+          ],
+        ],
+      }
+    `);
+  });
+
+  it("builds a mesh for the cuff heights asked for only", () => {
+    const none = buildLegModel(modelData(), { levels: 1, cuffHeights: [] });
+    expect(none.stockingAtCuff.size).toBe(0);
+    const one = buildLegModel(modelData(), { levels: 1, cuffHeights: [0.5] });
+    expect([...one.stockingAtCuff.keys()]).toEqual([0.5]);
+    const mesh = one.stockingAtCuff.get(0.5)!;
+    expect(mesh.index!.count).toBeGreaterThan(one.stocking.index!.count);
+    expect(mesh.attributes.position.count).toBeGreaterThan(one.stocking.attributes.position.count);
+    expect(one.stocking.index!.array).toEqual(one.collision.idx);
   });
 });
 

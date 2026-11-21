@@ -128,7 +128,9 @@ describe("createStage construction", () => {
   it("draws the stocking passes from the fine mesh and the mirror and shadow from the coarse one", () => {
     const model = legModel();
     const leg = stage.legs[0];
-    expect(leg.stocking.geometry).toBe(model.stocking);
+    // The default look has a cuff on the thigh, so the stocking starts on the mesh ringed there.
+    expect(leg.stocking.geometry).toBe(model.stockingAtCuff.get(0.7));
+    expect(leg.cuffParts.map((part) => part.geometry)).toEqual(Array(3).fill(leg.stocking.geometry));
     expect(leg.skin.geometry).toBe(model.skin);
     const lowFront = leg.stockingFrontParts[2].geometry;
     expect(lowFront.attributes.position).toBe(model.stockingLow.attributes.position);
@@ -553,6 +555,40 @@ describe("setStocking", () => {
         expect(part.material.uniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
       }
       expect(other.fabric.uCuffBulge.value).toBe(1);
+    }
+  });
+
+  it("draws a stocking with a cuff from the mesh ringed at the cuff's height, and the others from the plain one", () => {
+    const { stage } = buildStage();
+    const model = legModel();
+    const [leg, other] = stage.legs;
+    // The stocking's depth and color passes and its outline: they have to agree on the surface.
+    expect(leg.cuffParts).toEqual([leg.stockingParts[0], leg.stocking, leg.group.children[5]]);
+    expect(leg.cuffParts.map((part) => part.material.vertexShader)).toEqual([
+      LEG_VERTEX_SHADER,
+      LEG_VERTEX_SHADER,
+      OUTLINE_VERTEX_SHADER,
+    ]);
+    const elsewhere = leg.group.children
+      .concat(leg.mirror.children, leg.shadow, leg.caster)
+      .filter((mesh) => !leg.cuffParts.includes(mesh as StageLeg["stocking"]))
+      .map((mesh) => (mesh as StageLeg["stocking"]).geometry.uuid);
+    for (const length of STOCKING_LENGTH_ORDER) {
+      const look = resolveLegLook({ length });
+      stage.setStocking(0, look);
+      const ringed = length === "bare" || length === "tights" ? undefined : model.stockingAtCuff.get(look.cuffY);
+      expect(length === "bare" || length === "tights" || ringed !== undefined).toBe(true);
+      for (const part of leg.cuffParts) {
+        expect(part.geometry).toBe(ringed ?? model.stocking);
+      }
+      // Nothing else changes its mesh, and the other leg keeps its own.
+      expect(
+        leg.group.children
+          .concat(leg.mirror.children, leg.shadow, leg.caster)
+          .filter((mesh) => !leg.cuffParts.includes(mesh as StageLeg["stocking"]))
+          .map((mesh) => (mesh as StageLeg["stocking"]).geometry.uuid),
+      ).toEqual(elsewhere);
+      expect(other.stocking.geometry).toBe(model.stockingAtCuff.get(0.7));
     }
   });
 

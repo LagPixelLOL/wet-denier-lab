@@ -84,7 +84,7 @@ src/
   engine/               everything that is not React
     app/                controller: startup, camera, input, layout, frame loop, photo, share, actions
     model/              model loading (glb.ts), leg sculpting and the forefoot with its toes
-    geometry/           welding, smooth subdivision, adaptive index, Catmull-Clark subdivision
+    geometry/           welding, smooth subdivision, adaptive index, slicing into rings, Catmull-Clark subdivision
     rig/                joints, CPU skinning, pose catalog, LegRig
     catalog/            garments, colors, presets, resolving a leg spec to shader parameters
     surface/            spatial grid for closest-point and raycast queries on the deformed legs
@@ -126,6 +126,13 @@ on the CPU (`rig/skinning.ts`) for picking, floor contact and droplets.
 by `uCuffBulge`) pushes the surface out just above the cuff's edge and draws it in below. The leg's vertex shader
 and the outline's both use it, so the line follows the pressed shape. Every length with a cuff gets this. Tights
 have no cuff, so `setStocking` turns it off for them and the thigh keeps its own shape.
+
+The press happens within a few millimeters, and the leg's triangles are up to a centimeter across there, so the
+model also builds the stocking's mesh once per cuff height with rings of vertices around it
+(`LegModel.stockingAtCuff`, `geometry/slice.ts`): every millimeter over the bulge and every half millimeter at the
+cuff's edge (`CUFF_RING_OFFSETS`). The rings only cut the triangles that were there, so the surface itself does not
+move. These meshes share one set of vertices, and `setStocking` picks the one for the leg's cuff for the stocking's
+passes and its outline. Tights and bare legs draw the plain mesh, as do the floor's reflection and the shadows.
 
 **Water.** `WetMap` runs a ping-pong simulation in the stocking's UV atlas (soaked water, running film, fresh-hit
 highlight). `WaterSim` simulates thrown, spray, drip and rain drops, beads that cling and slide on the surface,
