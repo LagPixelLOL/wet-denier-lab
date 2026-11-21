@@ -147,7 +147,8 @@ below and one above the horizon (`envLo` and `envHi` of the scene's light and of
 neon signs. In the studio the surroundings are the backdrop: `studioEnv` (`stage/scenes.ts`) scales those colors by
 how the chosen backdrop's bottom and top compare with the lilac one's, which the studio's values are given for. So
 latex in front of the dusk backdrop mirrors a dark room, and in front of a pink one a pink room; the other scenes
-keep their own colors. A film of water mirrors the room in full. A shiny material itself is finely rough and mirrors
+keep their own colors. The studio's rim light, which lights the legs' edges from behind, is what the backdrop
+throws onto them, so it dims and takes color the same way (`studioRimTint`). A film of water mirrors the room in full. A shiny material itself is finely rough and mirrors
 it at about half that (`SHINE_ENV` in `stage/shaders/leg.ts`), while it takes the lamps' highlights in full.
 
 **Water.** `WetMap` runs a ping-pong simulation in the stocking's UV atlas (soaked water, running film, fresh-hit

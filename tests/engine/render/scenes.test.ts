@@ -6,6 +6,7 @@ import {
   SCENE_ORDER,
   makeCustomBackdrop,
   studioEnv,
+  studioRimTint,
 } from "../../../src/engine/stage/scenes";
 
 const HEX = /^#[0-9a-f]{6}$/;
@@ -151,5 +152,40 @@ describe("studioEnv", () => {
     // A dark red: red leads below and above.
     expect(env.envLo[0]).toBeGreaterThan(env.envLo[1] * 3);
     expect(env.envHi[0]).toBeGreaterThan(env.envHi[2]);
+  });
+});
+
+describe("studioRimTint", () => {
+  it("leaves the rim light as it is in front of the lilac backdrop", () => {
+    expect(studioRimTint(BACKDROPS.lilac)).toEqual([1, 1, 1]);
+  });
+
+  it("all but puts the rim light out in front of a dark backdrop, and gives what is left its hue", () => {
+    const dusk = studioRimTint(BACKDROPS.dusk);
+    expect(Math.max(...dusk)).toBeLessThan(0.15);
+    expect(Math.min(...dusk)).toBeGreaterThan(0.02);
+    expect(dusk[2]).toBeGreaterThan(dusk[0] * 1.8);
+    const black = studioRimTint(makeCustomBackdrop("#000000"));
+    expect(Math.max(...black)).toBeLessThan(0.2);
+  });
+
+  it("keeps it about as bright in front of the pale backdrops, tinted their way", () => {
+    for (const key of ["sakura", "mint", "cream", "sky"] as const) {
+      const tint = studioRimTint(BACKDROPS[key]);
+      expect(Math.min(...tint)).toBeGreaterThan(0.7);
+      expect(Math.max(...tint)).toBeLessThan(1.2);
+    }
+    const sakura = studioRimTint(BACKDROPS.sakura);
+    expect(sakura[0]).toBeGreaterThan(Math.max(sakura[1], sakura[2]));
+  });
+
+  it("is the mean of what the backdrop does to the room below and above", () => {
+    const backdrop = makeCustomBackdrop("#3366cc");
+    const one = { envLo: [1, 1, 1] as [number, number, number], envHi: [1, 1, 1] as [number, number, number] };
+    const env = studioEnv(one, backdrop);
+    const tint = studioRimTint(backdrop);
+    for (let i = 0; i < 3; i++) {
+      expect(tint[i]).toBeCloseTo((env.envLo[i] + env.envHi[i]) / 2, 12);
+    }
   });
 });

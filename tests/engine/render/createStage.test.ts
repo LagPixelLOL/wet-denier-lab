@@ -15,6 +15,7 @@ import {
   SCENE_ORDER,
   makeCustomBackdrop,
   studioEnv,
+  studioRimTint,
 } from "../../../src/engine/stage/scenes";
 import { BOW_VERTEX_SHADER } from "../../../src/engine/stage/shaders/bow";
 import { CUFF_PRESS_GLSL, LEG_VERTEX_SHADER } from "../../../src/engine/stage/shaders/leg";
@@ -328,6 +329,29 @@ describe("setBackdrop", () => {
     const sakura = studioEnv(studio, BACKDROPS.sakura);
     expect([vec(light.uEnvLo.value), vec(light.uEnvHi.value)]).toEqual([sakura.envLo, sakura.envHi]);
     expect(sakura).not.toEqual(dusk);
+  });
+
+  it("dims and tints the studio's rim light with the backdrop, and leaves the other scenes theirs", () => {
+    const { stage } = buildStage();
+    const rim = stage.uniforms.light.uRimColor.value;
+    const studioRim = new THREE.Color(SCENES.studio.light.rim);
+    const expected = (key: string) => {
+      const tint = studioRimTint(BACKDROPS[key] ?? makeCustomBackdrop(key));
+      return [studioRim.r * tint[0], studioRim.g * tint[1], studioRim.b * tint[2]];
+    };
+    for (const key of [...BACKDROP_ORDER, "#7a1020"]) {
+      stage.setBackdrop(key);
+      expect([key, rim.toArray()]).toEqual([key, expected(key)]);
+    }
+    // In front of the dusk backdrop barely any is left: the legs' edges are not lit up as by a bright wall.
+    stage.setBackdrop("dusk");
+    expect(Math.max(...rim.toArray())).toBeLessThan(0.15);
+    stage.setScene("street");
+    expect(hex(rim)).toBe(SCENES.street.light.rim);
+    stage.setBackdrop("lilac");
+    expect(hex(rim)).toBe(SCENES.street.light.rim);
+    stage.setScene("studio");
+    expect(hex(rim)).toBe(SCENES.studio.light.rim);
   });
 
   it("builds a custom backdrop from a hex color, or takes a def as is", () => {

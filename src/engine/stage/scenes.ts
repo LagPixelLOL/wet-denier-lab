@@ -294,6 +294,18 @@ export interface EnvColors {
   envHi: Vec3;
 }
 
+/** How a backdrop's bottom and top compare with the lilac one's, per channel, in linear light. */
+function backdropTint(backdrop: BackdropDef): { lo: Vec3; hi: Vec3 } {
+  const ratio = (to: string, from: string): Vec3 => {
+    const [target, reference] = [linearRgb(to), linearRgb(from)];
+    return target.map((channel, i) => channel / reference[i]) as Vec3;
+  };
+  return {
+    lo: ratio(backdrop.bottom, BACKDROPS.lilac.bottom),
+    hi: ratio(backdrop.top, BACKDROPS.lilac.top),
+  };
+}
+
 /**
  * The surroundings a shiny surface reflects in the studio, for a backdrop. The studio's own colors (`env`) are
  * those of the lilac backdrop: for another one they change as the backdrop does, the lower part with its
@@ -301,12 +313,20 @@ export interface EnvColors {
  * room, and in front of a pink one a pink room.
  */
 export function studioEnv(env: EnvColors, backdrop: BackdropDef): EnvColors {
-  const scaled = (color: Vec3, to: string, from: string): Vec3 => {
-    const [target, reference] = [linearRgb(to), linearRgb(from)];
-    return color.map((channel, i) => channel * (target[i] / reference[i])) as Vec3;
-  };
+  const tint = backdropTint(backdrop);
   return {
-    envLo: scaled(env.envLo, backdrop.bottom, BACKDROPS.lilac.bottom),
-    envHi: scaled(env.envHi, backdrop.top, BACKDROPS.lilac.top),
+    envLo: env.envLo.map((channel, i) => channel * tint.lo[i]) as Vec3,
+    envHi: env.envHi.map((channel, i) => channel * tint.hi[i]) as Vec3,
   };
+}
+
+/**
+ * What a backdrop does to the studio's rim light, as a factor per channel (linear light). The rim light is what
+ * the backdrop throws onto the legs from behind, so it dims and takes color with the backdrop as a whole (the
+ * mean of its bottom and its top): in front of a dark backdrop the legs' edges are not lit up as by a bright
+ * wall.
+ */
+export function studioRimTint(backdrop: BackdropDef): Vec3 {
+  const tint = backdropTint(backdrop);
+  return tint.lo.map((channel, i) => (channel + tint.hi[i]) / 2) as Vec3;
 }
