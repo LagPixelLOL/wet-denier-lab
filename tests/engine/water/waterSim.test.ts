@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BARE_SKIN_WATER, MATERIALS } from "../../../src/engine/catalog/garments";
+import { CUFF_PRESS, cuffPressAt } from "../../../src/engine/model/cuffPress";
 import { SCENES } from "../../../src/engine/stage/scenes";
 import type { SurfaceHit } from "../../../src/engine/surface/SurfaceGrid";
 import { SKIN_EDGE } from "../../../src/engine/water/shaders/wet";
@@ -33,7 +34,7 @@ function surfacePoint(world: WaterWorld, leg = 0, y = 0.33, z = 0.06): SurfaceHi
 }
 
 function bead(
-  hit: Pick<SurfaceHit, "x" | "y" | "z" | "nx" | "ny" | "nz" | "leg"> & { ry?: number },
+  hit: Pick<SurfaceHit, "x" | "y" | "z" | "nx" | "ny" | "nz" | "leg"> & { height?: number },
   r: number,
   extra: Partial<Bead> = {},
 ): Bead {
@@ -55,7 +56,7 @@ function bead(
     lz: hit.z,
     wob: 0,
     soakT: 0,
-    restY: hit.ry ?? hit.y,
+    restY: hit.height ?? hit.y,
     ...extra,
   };
 }
@@ -399,13 +400,13 @@ describe("beads", () => {
     const world = waterWorld();
     const { water } = world;
     const start = surfacePoint(world, 0, 0.6, 0.06);
-    const top = start.ry - 0.01;
+    const top = start.height - 0.01;
     water.setLegWater(0, MATERIALS.cotton.water, top);
     // Big enough to slide on skin, where it would last for minutes.
     const b = bead(start, 0.0022);
     water.beads.push(b);
     let seconds = 0;
-    let lowest = start.ry;
+    let lowest = start.height;
     while (water.beads.includes(b) && seconds < 20) {
       water.update(DT);
       seconds += DT;
@@ -859,6 +860,43 @@ describe("sync", () => {
     return cam;
   };
   const light = new THREE.Vector3(-0.5, 0.75, 0.45).normalize();
+
+  it("draws a bead on the surface as the cuff presses it: out on the bulge above the cuff, in below its edge", () => {
+    const world = waterWorld();
+    const { water } = world;
+    const hit = surfacePoint(world, 0, 0.5, 0.06);
+    const top = hit.height - CUFF_PRESS.bulgeAt;
+    water.setLegWater(0, MATERIALS.sheer.water, top);
+    // On the bulge's top, just under the cuff's edge, far from the cuff, and on the other leg (no stocking top).
+    const at = (height: number, leg = 0) => bead({ ...hit, leg, height }, 0.0012, { age: 1 });
+    const beads = [at(hit.height), at(top - 0.01), at(top - 0.2), at(top + 0.1), at(hit.height, 1)];
+    water.beads.push(...beads);
+    const out = (b: Bead) => {
+      const [x, y, z] = water.shownAt(b, [0, 0, 0]);
+      return (x - b.x) * b.nx + (y - b.y) * b.ny + (z - b.z) * b.nz;
+    };
+    expect(out(beads[0])).toBeCloseTo(CUFF_PRESS.bulge, 6);
+    expect(out(beads[1])).toBeCloseTo(cuffPressAt(-0.01), 9);
+    expect(out(beads[1])).toBeLessThan(-CUFF_PRESS.dent * 0.9);
+    expect(out(beads[2])).toBeCloseTo(0, 12);
+    expect(out(beads[3])).toBeCloseTo(0, 12);
+    expect(out(beads[4])).toBeCloseTo(0, 12);
+    // The bead, its shadow on the surface and its glint are all drawn from there.
+    water.sync(camera(), null, new THREE.Vector2(1, 1), light);
+    const origin = (array: ArrayLike<number>, i: number) => [
+      array[i * 16 + 12],
+      array[i * 16 + 13],
+      array[i * 16 + 14],
+    ];
+    const flat = [origin(water.beadMesh.instanceMatrix.array, 0), origin(water.decalMesh.instanceMatrix.array, 0)];
+    water.setLegWater(0, MATERIALS.sheer.water);
+    water.sync(camera(), null, new THREE.Vector2(1, 1), light);
+    const n = [hit.nx, hit.ny, hit.nz];
+    for (const [i, array] of [water.beadMesh.instanceMatrix.array, water.decalMesh.instanceMatrix.array].entries()) {
+      const moved = origin(array, 0).map((c, axis) => flat[i][axis] - c);
+      moved.forEach((c, axis) => expect(c).toBeCloseTo(n[axis] * CUFF_PRESS.bulge, 6));
+    }
+  });
 
   it("writes bead, decal and drop instances and the view-space light", () => {
     const world = waterWorld();

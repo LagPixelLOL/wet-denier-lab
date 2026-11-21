@@ -12,6 +12,7 @@ import {
   GLINT_VERTEX_SHADER,
 } from "./shaders/drops";
 import { BARE_SKIN_WATER, type MaterialWater } from "../catalog/garments";
+import { cuffPressAt } from "../model/cuffPress";
 import type { SurfaceGrid, SurfaceHit } from "../surface/SurfaceGrid";
 import { NO_SKIN_ABOVE, skinAbove } from "./shaders/wet";
 import type { WetMap } from "./WetMap";
@@ -182,9 +183,13 @@ export class WaterSim {
   declare rainStyle: RainStyle;
   declare rainOver: RainArea;
   declare legWater: BeadWater[];
-  /** Per leg: the height at rest where its fabric ends and bare skin begins. */
+  /**
+   * Per leg: the height at rest of its stocking's top, where the fabric ends and bare skin begins, and where the
+   * cuff presses into the leg.
+   */
   declare legTop: number[];
   declare _waterAt: BeadWater;
+  declare _shownAt: [number, number, number];
   declare events: WaterEvents;
   declare material: THREE.ShaderMaterial;
   declare beadMesh: DropMesh;
@@ -256,6 +261,7 @@ export class WaterSim {
     ];
     this.legTop = [NO_SKIN_ABOVE, NO_SKIN_ABOVE];
     this._waterAt = { bead: 1, slip: 1 };
+    this._shownAt = [0, 0, 0];
     this.events = {
       impacts: 0,
       energy: 0,
@@ -485,7 +491,7 @@ export class WaterSim {
         ny: target.ny,
         nz: target.nz,
         leg: target.leg,
-        restY: target.ry,
+        restY: target.height,
       });
     }
   }
@@ -556,7 +562,7 @@ export class WaterSim {
         bead.nx = near.nx;
         bead.ny = near.ny;
         bead.nz = near.nz;
-        bead.restY = near.ry;
+        bead.restY = near.height;
         continue;
       }
       const cover = this.surface.closest(bead.x, bead.y, bead.z, 0.025);
@@ -641,7 +647,7 @@ export class WaterSim {
             spot.nz,
             0.0005 + Math.random() * 0.0008,
             spot.leg,
-            spot.ry,
+            spot.height,
           );
         }
       }
@@ -836,11 +842,11 @@ export class WaterSim {
                   drop.r,
                   false,
                   hit.leg,
-                  hit.ry,
+                  hit.height,
                 );
               } else {
                 wetmap.stamp(hit.x, hit.y, hit.z, drop.r * 2.2 + 0.001, 0.35, 0.6, 0.2, 0.8);
-                this._addBead(hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz, drop.r, hit.leg, hit.ry);
+                this._addBead(hit.x, hit.y, hit.z, hit.nx, hit.ny, hit.nz, drop.r, hit.leg, hit.height);
               }
               dead = true;
             }
@@ -923,7 +929,7 @@ export class WaterSim {
           bead.ny = hit.ny;
           bead.nz = hit.nz;
           bead.leg = hit.leg;
-          bead.restY = hit.ry;
+          bead.restY = hit.height;
           const moved = Math.hypot(bead.x - bead.lx, bead.y - bead.ly, bead.z - bead.lz);
           if (moved > 0.0016) {
             wetmap.stamp(bead.lx, bead.ly, bead.lz, bead.r * 0.62, 0.2, 0.5, 0.08, 0.18, bead.x, bead.y, bead.z);
@@ -1077,6 +1083,18 @@ export class WaterSim {
     }
     this._pudWasWet = anyWet;
   }
+  /**
+   * Where a bead is drawn. Beads move on the leg's surface as the rig poses it, which knows nothing of the cuff:
+   * around a stocking's top the surface that is drawn bulges out above the cuff's edge and sits in below it, and
+   * the bead goes with it, or it would sink into the bulge and float over the dent.
+   */
+  shownAt(bead: Bead, out: [number, number, number] = this._shownAt): [number, number, number] {
+    const press = cuffPressAt(bead.restY - this.legTop[bead.leg || 0]);
+    out[0] = bead.x + bead.nx * press;
+    out[1] = bead.y + bead.ny * press;
+    out[2] = bead.z + bead.nz * press;
+    return out;
+  }
   sync(
     camera: THREE.Camera,
     sceneTexture: THREE.Texture | null,
@@ -1100,6 +1118,7 @@ export class WaterSim {
     const decalMatrices = this.decalMesh.instanceMatrix.array;
     for (const bead of this.beads) {
       up.set(bead.nx, bead.ny, bead.nz);
+      const [bx, by, bz] = this.shownAt(bead);
       const speed = Math.hypot(bead.vx, bead.vy, bead.vz);
       if (speed > 0.01) {
         fwd.set(bead.vx / speed, bead.vy / speed, bead.vz / speed);
@@ -1119,9 +1138,9 @@ export class WaterSim {
       const lenFwd = r * (1 + stretch);
       const lenUp = r * 0.64;
       const lenSide = r * (1 - stretch * 0.12);
-      const px = bead.x - bead.nx * r * 0.16 + fwd.x * r * stretch * 0.2;
-      const py = bead.y - bead.ny * r * 0.16 + fwd.y * r * stretch * 0.2;
-      const pz = bead.z - bead.nz * r * 0.16 + fwd.z * r * stretch * 0.2;
+      const px = bx - bead.nx * r * 0.16 + fwd.x * r * stretch * 0.2;
+      const py = by - bead.ny * r * 0.16 + fwd.y * r * stretch * 0.2;
+      const pz = bz - bead.nz * r * 0.16 + fwd.z * r * stretch * 0.2;
       mat.set(
         fwd.x * lenFwd,
         up.x * lenUp,
@@ -1148,15 +1167,15 @@ export class WaterSim {
         fwd.x * decalLen,
         side.x * decalR,
         up.x,
-        bead.x + bead.nx * 0.0003,
+        bx + bead.nx * 0.0003,
         fwd.y * decalLen,
         side.y * decalR,
         up.y,
-        bead.y + bead.ny * 0.0003,
+        by + bead.ny * 0.0003,
         fwd.z * decalLen,
         side.z * decalR,
         up.z,
-        bead.z + bead.nz * 0.0003,
+        bz + bead.nz * 0.0003,
         0,
         0,
         0,
@@ -1198,9 +1217,10 @@ export class WaterSim {
       }
       glintsPerLeg[leg]++;
       const lift = bead.r * 0.32;
-      const px = bead.x + bead.nx * lift;
-      const py = bead.y + bead.ny * lift;
-      const pz = bead.z + bead.nz * lift;
+      const [bx, by, bz] = this.shownAt(bead);
+      const px = bx + bead.nx * lift;
+      const py = by + bead.ny * lift;
+      const pz = bz + bead.nz * lift;
       const toCamX = camPos.x - px;
       const toCamY = camPos.y - py;
       const toCamZ = camPos.z - pz;

@@ -1,6 +1,7 @@
 /**
  * Stocking and skin shaders, plus the height used to fade the stocking top.
  */
+import { CUFF_PRESS } from "../../model/cuffPress";
 import { FOREFOOT_JOIN } from "../../model/forefoot";
 import { LEG_SKINNING_GLSL } from "../../rig/joints";
 import { CAUSTICS_GLSL } from "./backdrop";
@@ -34,13 +35,13 @@ export const forefootClipGlsl = (restPos: string): string =>
 /**
  * The cuff pressing into the leg, for every vertex shader that places the stocking's surface: pressCuff moves
  * the skinned point p out along its normal n just above the cuff's edge and in below it, tilts the normal to
- * match (tang runs up the leg) and returns how far it moved the point.
+ * match (tang runs up the leg) and returns how far it moved the point. The shape is CUFF_PRESS's (cuffPressAt).
  */
 export const CUFF_PRESS_GLSL = `
 uniform float uCuffY, uCuffBulge;
 float cuffProfile(float dy) {
-  float bulge = 0.0022 * exp(-pow((dy - 0.0065) / 0.0085, 2.0));
-  float dent = -0.0011 * smoothstep(-0.05, -0.008, dy) * (1.0 - smoothstep(-0.002, 0.003, dy));
+  float bulge = ${CUFF_PRESS.bulge} * exp(-pow((dy - ${CUFF_PRESS.bulgeAt}) / ${CUFF_PRESS.bulgeSpread}, 2.0));
+  float dent = -${CUFF_PRESS.dent} * smoothstep(${CUFF_PRESS.dentFrom}, ${CUFF_PRESS.dentFull}, dy) * (1.0 - smoothstep(${CUFF_PRESS.dentEdge[0]}, ${CUFF_PRESS.dentEdge[1]}, dy));
   return (bulge + dent) * uCuffBulge;
 }
 float pressCuff(float restY, vec3 tang, inout vec3 p, inout vec3 n) {

@@ -10,8 +10,13 @@ export interface SurfaceMesh {
   nrm: ArrayLike<number>;
   uv: ArrayLike<number>;
   idx: ArrayLike<number>;
-  /** Per-vertex rest height, interpolated into SurfaceHit.ry (defaults to the hit y). */
+  /**
+   * Per-vertex height along the slant a stocking's top fades out on (fadeHeight), interpolated into SurfaceHit.ry
+   * (defaults to the hit y).
+   */
   ry?: ArrayLike<number> | null;
+  /** Per-vertex height on the leg at rest, interpolated into SurfaceHit.height (defaults to the hit y). */
+  height?: ArrayLike<number> | null;
   /** Triangles below this index belong to leg 0, the rest to leg 1. */
   legTris?: number;
   /**
@@ -39,7 +44,10 @@ export interface SurfaceHit {
   /** 1 when the query point is on the normal side, else -1. */
   side: number;
   leg: number;
+  /** Height along the slant a stocking's top fades out on. */
   ry: number;
+  /** Height on the leg at rest: what a stocking's length and its cuff are measured in. */
+  height: number;
   /** Ray parameter of the hit (raycast only; stale for closest). */
   t: number;
 }
@@ -53,6 +61,7 @@ export class SurfaceGrid {
   declare uv: ArrayLike<number>;
   declare idx: ArrayLike<number>;
   declare ry: ArrayLike<number> | null;
+  declare height: ArrayLike<number> | null;
   declare legTris: number;
   declare cell: number;
   declare triCount: number;
@@ -80,7 +89,7 @@ export class SurfaceGrid {
   declare _range?: Int32Array;
   declare _fill2?: Int32Array;
   constructor(
-    { pos, nrm, uv, idx, ry: restY = null, legTris = Infinity, islandOf = null }: SurfaceMesh,
+    { pos, nrm, uv, idx, ry: restY = null, height = null, legTris = Infinity, islandOf = null }: SurfaceMesh,
     cellSize = 0.012,
   ) {
     this.pos = pos;
@@ -88,6 +97,7 @@ export class SurfaceGrid {
     this.uv = uv;
     this.idx = idx;
     this.ry = restY;
+    this.height = height;
     this.legTris = legTris;
     this.cell = cellSize;
     const triCount = (this.triCount = idx.length / 3);
@@ -163,6 +173,7 @@ export class SurfaceGrid {
       side: 1,
       leg: 0,
       ry: 0,
+      height: 0,
       t: 0,
     };
     this.rebuild();
@@ -456,6 +467,7 @@ export class SurfaceGrid {
     hit.tri = tri;
     hit.leg = tri < this.legTris ? 0 : 1;
     hit.ry = this.ry ? wa * this.ry[a] + wb * this.ry[b] + wc * this.ry[c] : hit.y;
+    hit.height = this.height ? wa * this.height[a] + wb * this.height[b] + wc * this.height[c] : hit.y;
     const dx = px - hit.x;
     const dy = py - hit.y;
     const dz = pz - hit.z;

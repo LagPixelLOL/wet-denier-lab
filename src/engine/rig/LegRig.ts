@@ -213,6 +213,7 @@ export class LegRig {
     const nrm = new Float32Array(vertCount * 6);
     const uv = new Float32Array(vertCount * 4);
     const restY = new Float32Array(vertCount * 2);
+    const height = new Float32Array(vertCount * 2);
     const indices = new Uint32Array(triCount * 6);
     for (let i = 0; i < vertCount; i++) {
       uv[i * 2] = rest.uv[i * 2] * 0.5;
@@ -220,6 +221,7 @@ export class LegRig {
       uv[(vertCount + i) * 2] = rest.uv[i * 2] * 0.5 + 0.5;
       uv[(vertCount + i) * 2 + 1] = rest.uv[i * 2 + 1];
       restY[i] = restY[vertCount + i] = fadeHeight(rest.pos[i * 3], rest.pos[i * 3 + 1], rest.pos[i * 3 + 2]);
+      height[i] = height[vertCount + i] = rest.pos[i * 3 + 1];
     }
     indices.set(rest.idx);
     for (let i = 0; i < rest.idx.length; i++) {
@@ -268,6 +270,7 @@ export class LegRig {
       uv: uv,
       idx: indices,
       ry: restY,
+      height: height,
       legTris: triCount,
       islandOf: islandOf,
     });

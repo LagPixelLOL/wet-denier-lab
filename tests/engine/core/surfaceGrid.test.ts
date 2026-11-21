@@ -95,7 +95,8 @@ function twoSquares(withRestY = true): SurfaceMesh & { pos: Float32Array } {
   const uv = new Float32Array([0, 0, 0.5, 0, 0.5, 1, 0, 1, 0.5, 0, 1, 0, 1, 1, 0.5, 1]);
   const idx = new Uint32Array([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
   const ry = withRestY ? new Float32Array([10, 10, 20, 20, 30, 30, 40, 40]) : null;
-  return { pos, nrm, uv, idx, ry, legTris: 2 };
+  const height = withRestY ? new Float32Array([1, 1, 2, 2, 3, 3, 4, 4]) : null;
+  return { pos, nrm, uv, idx, ry, height, legTris: 2 };
 }
 
 describe("SurfaceGrid on a hand-made mesh", () => {
@@ -116,6 +117,8 @@ describe("SurfaceGrid on a hand-made mesh", () => {
     ]);
     expect([hit!.side, hit!.leg]).toEqual([-1, 0]);
     expect(hit!.ry).toBeCloseTo(15, 5);
+    // The height on the leg at rest is a value of its own, interpolated the same way.
+    expect(hit!.height).toBeCloseTo(1.5, 5);
     const front = grid.closest(0.05, 0.05, 0.06);
     expect([front?.leg, front?.side]).toEqual([1, 1]);
     expect(front?.tri).toBeGreaterThanOrEqual(2);
@@ -126,6 +129,7 @@ describe("SurfaceGrid on a hand-made mesh", () => {
     const grid = new SurfaceGrid({ pos, nrm, uv, idx });
     const hit = grid.closest(0.05, 0.02, 0.06, 0.05);
     expect(hit?.ry).toBeCloseTo(0.02, 6);
+    expect(hit?.height).toBeCloseTo(0.02, 6);
     expect(hit?.leg).toBe(0);
   });
 

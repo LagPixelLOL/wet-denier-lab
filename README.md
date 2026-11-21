@@ -139,6 +139,12 @@ The bow of the bow cuff is tied on 16 mm below the cuff's edge, where the cuff d
 edges, the tails' ends) are level with the fabric (`BOW_SEAT`), and the bow's vertex shader then moves it in and out
 with the fabric by the same `cuffProfile`. So it rests on the stocking instead of hovering over it.
 
+Drops go with the press too. They move on the leg's collision surface, which has no press in it, so each is drawn
+moved out or in along the surface normal by the same profile (`cuffPressAt` in `model/cuffPress.ts`, whose numbers
+the shaders' `cuffProfile` is built from; `WaterSim.shownAt`). Without that, drops on the bulge above the cuff sank
+into the skin and the ones below its edge floated. The height they go by is the surface's height on the leg at rest
+(`SurfaceHit.height`), not `ry`, which is the height along the slant a stocking's top fades out on.
+
 The cuff's band is a denser knit than the stocking below it. Across the band's lower edge the fragment shader
 blends from the band's density to the stocking's, so the two join without a bright or dark line between them.
 

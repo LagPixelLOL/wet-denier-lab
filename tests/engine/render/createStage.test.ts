@@ -18,6 +18,7 @@ import {
   studioRimTint,
 } from "../../../src/engine/stage/scenes";
 import { BOW_VERTEX_SHADER } from "../../../src/engine/stage/shaders/bow";
+import { CUFF_PRESS, cuffPressAt } from "../../../src/engine/model/cuffPress";
 import { CUFF_PRESS_GLSL, LEG_VERTEX_SHADER } from "../../../src/engine/stage/shaders/leg";
 import { OUTLINE_VERTEX_SHADER } from "../../../src/engine/stage/shaders/outline";
 import { digestRounded } from "../../helpers/digest";
@@ -659,6 +660,31 @@ describe("setStocking", () => {
       ).toEqual(elsewhere);
       expect(other.stocking.geometry).toBe(model.stockingAtCuff.get(0.7));
     }
+  });
+
+  it("has one shape for the cuff's press, for the shaders and for what rests on the surface", () => {
+    // The shaders' profile, evaluated as written, against the one drops are placed by.
+    const body = /float cuffProfile\(float dy\) \{([^}]*)\}/.exec(CUFF_PRESS_GLSL)![1];
+    const js = body
+      .replace(/float /g, "const ")
+      .replace(/\b(exp|pow)\(/g, "Math.$1(")
+      .replace(/ \* uCuffBulge/, "");
+    const smoothstep = (from: number, to: number, x: number) => {
+      const t = Math.min(Math.max((x - from) / (to - from), 0), 1);
+      return t * t * (3 - 2 * t);
+    };
+    const shaderProfile = new Function("dy", "smoothstep", js) as (dy: number, s: typeof smoothstep) => number;
+    for (let dy = -0.08; dy <= 0.06; dy += 0.0005) {
+      expect(shaderProfile(dy, smoothstep)).toBeCloseTo(cuffPressAt(dy), 12);
+    }
+    // Out by the bulge at its top above the edge, in by the dent below it, nothing away from the cuff.
+    expect(cuffPressAt(CUFF_PRESS.bulgeAt)).toBeCloseTo(CUFF_PRESS.bulge, 9);
+    expect(cuffPressAt(-0.01)).toBeLessThan(-CUFF_PRESS.dent * 0.9);
+    expect(cuffPressAt(-0.01)).toBeGreaterThanOrEqual(-CUFF_PRESS.dent);
+    expect(Math.abs(cuffPressAt(0.05))).toBeLessThan(1e-9);
+    expect(cuffPressAt(-0.06)).toBeCloseTo(0, 12);
+    expect(cuffPressAt(-Infinity)).toBeCloseTo(0, 12);
+    expect(CUFF_PRESS.bulge).toBeGreaterThan(CUFF_PRESS.dent);
   });
 
   it("moves the bow in with the fabric where the cuff presses it", () => {

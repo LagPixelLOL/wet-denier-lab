@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { FOREFOOT_JOIN } from "../../../src/engine/model/forefoot";
+import { fadeHeight } from "../../../src/engine/stage/shaders/leg";
 import { LegRig } from "../../../src/engine/rig/LegRig";
 import type { LegRigTarget, RigUpdateState } from "../../../src/engine/rig/LegRig";
 import type { Vec3 } from "../../../src/engine/rig/joints";
@@ -349,6 +350,38 @@ describe("LegRig queries", () => {
     // Beyond the hip end the distance is to the end point.
     const top = axis[0];
     expect(rig.distanceToLeg(0, top[0], top[1] + 1, top[2])).toBeCloseTo(1, 6);
+  });
+});
+
+describe("what the surface says about a point", () => {
+  it("gives its height on the leg at rest, apart from the height along the slanted fade of a stocking's top", () => {
+    const { rig } = sharedRig();
+    const { surface } = rig;
+    const rest = legModel().collision.pos;
+    const count = rest.length / 3;
+    expect(surface.height).toHaveLength(count * 2);
+    const lean: number[] = [];
+    for (let i = 0; i < count; i += 7) {
+      const [x, y, z] = [rest[i * 3], rest[i * 3 + 1], rest[i * 3 + 2]];
+      // The same for both legs, whatever their pose.
+      expect([surface.height![i], surface.height![count + i]]).toEqual([y, y]);
+      expect(surface.ry![i]).toBeCloseTo(fadeHeight(x, y, z), 6);
+      lean.push(surface.ry![i] - y);
+    }
+    // The fade's height leans across the leg, by centimeters from one side to the other.
+    expect(Math.max(...lean) - Math.min(...lean)).toBeGreaterThan(0.03);
+    // A point on the surface gets both, each from its triangle's corners.
+    const from = rig.point(0, 0.2, 0.5, 0.04);
+    const hit = surface.closest(from[0], from[1], from[2], 0.4)!;
+    const corners = [0, 1, 2].map((corner) => surface.idx[hit.tri * 3 + corner]);
+    for (const [value, perVertex] of [
+      [hit.height, surface.height!],
+      [hit.ry, surface.ry!],
+    ] as const) {
+      const at = corners.map((vertex) => perVertex[vertex]);
+      expect(value).toBeGreaterThanOrEqual(Math.min(...at) - 1e-6);
+      expect(value).toBeLessThanOrEqual(Math.max(...at) + 1e-6);
+    }
   });
 });
 
