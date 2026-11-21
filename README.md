@@ -122,8 +122,9 @@ a mirrored floor reflection, baked floor and contact shadows, leg-on-leg shadow 
 scene and a final composite. Legs are skinned in the vertex shader (`LEG_SKINNING_GLSL`); the same skinning runs
 on the CPU (`rig/skinning.ts`) for picking, floor contact and droplets.
 
-**Cuff.** A stocking's cuff presses into the leg: the leg's vertex shader (`cuffProfile`, scaled by `uCuffBulge`)
-pushes the surface out just above the cuff's edge and draws it in below. Every length with a cuff gets this. Tights
+**Cuff.** A stocking's cuff presses into the leg: `pressCuff` (`CUFF_PRESS_GLSL` in `stage/shaders/leg.ts`, scaled
+by `uCuffBulge`) pushes the surface out just above the cuff's edge and draws it in below. The leg's vertex shader
+and the outline's both use it, so the line follows the pressed shape. Every length with a cuff gets this. Tights
 have no cuff, so `setStocking` turns it off for them and the thigh keeps its own shape.
 
 **Water.** `WetMap` runs a ping-pong simulation in the stocking's UV atlas (soaked water, running film, fresh-hit

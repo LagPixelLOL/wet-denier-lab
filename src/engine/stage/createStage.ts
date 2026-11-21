@@ -171,6 +171,7 @@ export type OutlineUniforms = RigUniforms & {
   uSkinOutlineColor: U<THREE.Color>;
   uCuffY: U<number>;
   uHasCuff: U<number>;
+  uCuffBulge: U<number>;
   uClip: U<number>;
   uSilhouette: U<number>;
   uFadeStart: U<number>;
@@ -769,6 +770,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       uSkinOutlineColor: skinOutlineColor,
       uCuffY: stockingUniforms.uCuffY,
       uHasCuff: stockingUniforms.uHasCuff,
+      uCuffBulge: stockingUniforms.uCuffBulge,
       // The stocking's line stops at the join on a bare leg only (see showForefoot).
       uClip: {
         value: 0,

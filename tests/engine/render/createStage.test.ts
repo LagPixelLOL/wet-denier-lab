@@ -9,6 +9,8 @@ import { LegRig } from "../../../src/engine/rig/LegRig";
 import { computeBowMatrix } from "../../../src/engine/stage/bow";
 import type { Stage, StageLeg } from "../../../src/engine/stage/createStage";
 import { BACKDROPS, BACKDROP_ORDER, SCENES, SCENE_ORDER, makeCustomBackdrop } from "../../../src/engine/stage/scenes";
+import { CUFF_PRESS_GLSL, LEG_VERTEX_SHADER } from "../../../src/engine/stage/shaders/leg";
+import { OUTLINE_VERTEX_SHADER } from "../../../src/engine/stage/shaders/outline";
 import { digestRounded } from "../../helpers/digest";
 import { describeCalls } from "../../helpers/fakeRenderer";
 import { legModel } from "../../helpers/model";
@@ -551,6 +553,28 @@ describe("setStocking", () => {
         expect(part.material.uniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
       }
       expect(other.fabric.uCuffBulge.value).toBe(1);
+    }
+  });
+
+  it("draws the outline around the surface as the cuff presses it, not around the leg's plain shape", () => {
+    const { stage } = buildStage();
+    for (const leg of stage.legs) {
+      expect(leg.outlineUniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
+      expect(leg.outlineUniforms.uCuffY).toBe(leg.fabric.uCuffY);
+      const outlines = leg.group.children.filter(
+        (mesh): mesh is StageLeg["stocking"] =>
+          (mesh as StageLeg["stocking"]).material.vertexShader === OUTLINE_VERTEX_SHADER,
+      );
+      expect(outlines).toHaveLength(3);
+      for (const outline of outlines) {
+        expect(outline.material.uniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
+        expect(outline.geometry.attributes.legTangent).toBeDefined();
+      }
+    }
+    // Both vertex shaders move the surface with the same code.
+    for (const shader of [LEG_VERTEX_SHADER, OUTLINE_VERTEX_SHADER]) {
+      expect(shader).toContain(CUFF_PRESS_GLSL);
+      expect(shader).toMatch(/if \(uIsSkin < 0\.5\) [^;]*pressCuff\(position\.y, /);
     }
   });
 });

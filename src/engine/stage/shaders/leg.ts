@@ -19,36 +19,46 @@ export const FADE_HEIGHT_GLSL = "position.y - 0.3346 * (position.x - 0.066) + 0.
 export const forefootClipGlsl = (restPos: string): string =>
   `if (uClip * (${restPos}.z - ${FOREFOOT_JOIN.cut.toFixed(4)}) > 0.0003 && ${restPos}.y < ${FOREFOOT_JOIN.maxY.toFixed(4)}) discard;`;
 
-export const LEG_VERTEX_SHADER = `
-invariant gl_Position;
-${LEG_SKINNING_GLSL}attribute vec3 legTangent;
-attribute float stretch;
-attribute vec2 skinFx;
-attribute float toeShade;
-attribute vec4 under;
-uniform float uCuffY, uCuffBulge, uIsSkin, uUnder, uTowardEye;
-varying vec3 vWorldPos, vNormal, vTangent, vRestPos, vRestNormal;
-varying vec2 vUv, vSkinFx;
-varying float vStretch, vTangentShift, vFadeHeight, vBetweenToes, vCover;
+/**
+ * The cuff pressing into the leg, for every vertex shader that places the stocking's surface: pressCuff moves
+ * the skinned point p out along its normal n just above the cuff's edge and in below it, tilts the normal to
+ * match (tang runs up the leg) and returns how far it moved the point.
+ */
+export const CUFF_PRESS_GLSL = `
+uniform float uCuffY, uCuffBulge;
 float cuffProfile(float dy) {
   float bulge = 0.0022 * exp(-pow((dy - 0.0065) / 0.0085, 2.0));
   float dent = -0.0011 * smoothstep(-0.05, -0.008, dy) * (1.0 - smoothstep(-0.002, 0.003, dy));
   return (bulge + dent) * uCuffBulge;
 }
+float pressCuff(float restY, vec3 tang, inout vec3 p, inout vec3 n) {
+  float dy = restY - uCuffY;
+  float off = cuffProfile(dy);
+  float slope = (cuffProfile(dy + 0.0008) - cuffProfile(dy - 0.0008)) / 0.0016;
+  p += n * off;
+  n = normalize(n - tang * slope);
+  return off;
+}
+`;
+
+export const LEG_VERTEX_SHADER = `
+invariant gl_Position;
+${LEG_SKINNING_GLSL}${CUFF_PRESS_GLSL}attribute vec3 legTangent;
+attribute float stretch;
+attribute vec2 skinFx;
+attribute float toeShade;
+attribute vec4 under;
+uniform float uIsSkin, uUnder, uTowardEye;
+varying vec3 vWorldPos, vNormal, vTangent, vRestPos, vRestNormal;
+varying vec2 vUv, vSkinFx;
+varying float vStretch, vTangentShift, vFadeHeight, vBetweenToes, vCover;
 void main() {
   mat3 jac;
   // Skin under a stocking takes the shape the fabric presses it into (see fitUnderStocking).
   vec3 p = skinPosition(position + under.xyz * uUnder, jac);
   vec3 n = skinNormal(jac, normal), tang = normalize(jac * legTangent);
   vec3 rest = position;
-  if (uIsSkin < 0.5) {
-    float dy = position.y - uCuffY;
-    float off = cuffProfile(dy);
-    float slope = (cuffProfile(dy + 0.0008) - cuffProfile(dy - 0.0008)) / 0.0016;
-    p += n * off;
-    rest += normal * off;
-    n = normalize(n - tang * slope);
-  }
+  if (uIsSkin < 0.5) rest += normal * pressCuff(position.y, tang, p, n);
   vec4 world = modelMatrix * vec4(p, 1.0);
   vWorldPos = world.xyz;
   vNormal = normalize(mat3(modelMatrix) * n);

@@ -2,20 +2,25 @@
  * Leg outline shaders.
  */
 import { LEG_SKINNING_GLSL } from "../../rig/joints";
-import { FADE_HEIGHT_GLSL, forefootClipGlsl } from "./leg";
+import { CUFF_PRESS_GLSL, FADE_HEIGHT_GLSL, forefootClipGlsl } from "./leg";
 
 export const OUTLINE_VERTEX_SHADER = `
-${LEG_SKINNING_GLSL}uniform vec2 uResolution;
-uniform float uLineWidth;
+${LEG_SKINNING_GLSL}${CUFF_PRESS_GLSL}attribute vec3 legTangent;
+uniform vec2 uResolution;
+uniform float uLineWidth, uIsSkin;
 varying vec3 vRestPos;
 varying float vFadeHeight, vFacing;
 void main() {
   mat3 jac;
-  vec4 world = modelMatrix * vec4(skinPosition(position, jac), 1.0);
+  vec3 p = skinPosition(position, jac);
+  vec3 n = skinNormal(jac, normal);
+  // The line goes around the surface as the leg's own passes draw it, pressed in by the cuff.
+  if (uIsSkin < 0.5) pressCuff(position.y, normalize(jac * legTangent), p, n);
+  vec4 world = modelMatrix * vec4(p, 1.0);
   vRestPos = position;
   vFadeHeight = ${FADE_HEIGHT_GLSL};
   vec4 clip = projectionMatrix * viewMatrix * world;
-  vec3 nView = normalize(mat3(viewMatrix) * mat3(modelMatrix) * skinNormal(jac, normal));
+  vec3 nView = normalize(mat3(viewMatrix) * mat3(modelMatrix) * n);
   vFacing = dot(nView, normalize(-(viewMatrix * world).xyz));
   vec2 dir = normalize((projectionMatrix * vec4(nView, 0.0)).xy + 1e-6);
   clip.xy += dir * uLineWidth * 2.0 / uResolution * clip.w;
