@@ -44,6 +44,18 @@ export const LID_BINS = 32;
  */
 export const LID_REACH = 0.97;
 
+/**
+ * How much of the skin shows through white yarn itself at the middle between two of a fabric's ribs, where the
+ * knit is thin. Less through darker yarn, by how much light it throws back (see the leg's fragment shader).
+ */
+export const RIB_THROUGH = 0.3;
+
+/**
+ * How much the stitches of a fuzzy fabric shade it between them: the share of the knit's pattern in the color of
+ * the lightest yarn.
+ */
+export const STITCH_SHADE = 0.5;
+
 export const LID_NEAR: readonly [number, number] = [0.01, 0.05];
 
 /** How far above a point of the fading top its lid lies (see LID_GLSL). */
@@ -518,14 +530,23 @@ ${LID_GLSL}void main() {
   denier *= 1.0 + toeKnit * (0.6 * smoothstep(-0.0012, 0.0012, capEdge) + 0.4 * (1.0 - aaStep(0.0007, abs(capEdge)))) + 1.3 * seam;
   // The sole is stretched thin where it bears weight and hangs slack under the arch.
   denier *= 1.0 + 0.2 * sole - 0.42 * contact;
-  float ribAmt = max(rib, uMatKnit.y * fabric), ribShade = 1.0;
+  vec3 dye = mix(uDye, uDye2, accent);
+  dye = mix(dye, uWetDye.rgb, uWetDye.a * wetness);
+  // How much light the yarn throws back, and how light it is to the eye.
+  float yarnAlbedo = dot(dye, vec3(0.2126, 0.7152, 0.0722)), yarnLight = sqrt(yarnAlbedo);
+  // Ribs: the knit is thin between them, and the skin shows there. Dark yarn lets it show between its stitches
+  // alone. Light yarn lets light through itself as well (RIB_THROUGH for white yarn, at the middle between two
+  // ribs), however little the knit is stretched.
+  float ribAmt = max(rib, uMatKnit.y * fabric), ribShade = 1.0, yarnThrough = 0.0;
   if (ribAmt > 0.001) {
     float ribWave = 0.5 + 0.5 * sin(vUv.x * 6.2832 / 0.0042);
     ribShade = mix(1.0, 0.82 + 0.3 * ribWave, ribAmt);
     denier *= mix(1.0, 0.7 + 0.6 * ribWave, ribAmt);
+    yarnThrough = ${RIB_THROUGH.toFixed(2)} * yarnAlbedo * ribAmt * (1.0 - ribWave) * (1.0 - ribWave);
   }
   denier *= 1.0 - uMatWet.x * wetness;
   float trans0 = exp(-denier / 50.0);
+  trans0 += (1.0 - trans0) * yarnThrough;
   float transView = pow(trans0, 1.0 / max(ndv, 0.035));
   float grazing = 1.0 - ndv;
   float transSoft = trans0 * (1.0 - smoothstep(0.30, 0.97, pow(grazing, 0.85)));
@@ -534,13 +555,16 @@ ${LID_GLSL}void main() {
   float knitAmt = (isNet ? 0.0 : uMatKnit.x) * (1.0 - 0.75 * wetness);
   sheer = clamp(sheer * (1.0 + knitAmt * (0.5 - knit) * 1.6), 0.0, 1.0);
   float fabLit = smoothstep(-0.28, 0.34, ndl) * lit;
-  vec3 dye = mix(uDye, uDye2, accent);
-  dye = mix(dye, uWetDye.rgb, uWetDye.a * wetness);
   vec3 dyeDark = dye * (1.0 - uMatWet.y * wetness * (1.0 - 0.8 * uWetDye.a));
-  vec3 fabCol = dyeDark * mix(uShade, vec3(1.0), fabLit) * hemi * mix(1.0, bumpShade, 0.6) * ribShade * (1.0 - 0.2 * bandEdge) * (1.0 - 0.15 * seam);
   // Fuzzy fabrics (cotton, velvet) scatter light off their fibers: their sheen and the rim lights on them are
   // softer and broken up by the fibers' grain, the knit and the ribs, where a smooth yarn gives a clean highlight.
   float fuzz = (1.0 - smoothstep(0.1, 0.25, uGloss)) * fabric, fuzzShade = 1.0;
+  // The ribs shade the fabric between them, and so do the stitches of a fuzzy fabric's thick yarn, by how light
+  // it is (STITCH_SHADE: dark yarn shows its stitches in its sheen alone, below). A light fabric lights its
+  // own folds again with the light it throws back, so they shade it less.
+  float folds = ribShade * mix(1.0, knit / uKnitMean, ${STITCH_SHADE.toFixed(2)} * yarnLight * knitAmt * fuzz);
+  vec3 foldLit = folds / (1.0 - dyeDark * (1.0 - folds));
+  vec3 fabCol = dyeDark * mix(uShade, vec3(1.0), fabLit) * hemi * mix(1.0, bumpShade, 0.6) * foldLit * (1.0 - 0.2 * bandEdge) * (1.0 - 0.15 * seam);
   float grainSize = max(fwidth(vUv.x), fwidth(vUv.y)) * 4200.0;
   if (uGloss < 0.25) {
     float grain = 1.0 + clamp(1.3 - grainSize, 0.0, 1.0) * (0.55 * valueNoise(vUv * 4200.0) + 0.3 * valueNoise(vUv * vec2(9500.0, 2100.0)));

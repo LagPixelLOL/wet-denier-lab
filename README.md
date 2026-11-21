@@ -159,14 +159,15 @@ so what it leaves out hides nothing. Right under the lid it stops 3% short of th
 The curtain covers what the lid cannot tell (what is seen through the top's side, under its rim where it flares,
 and right along the rim). It is everything of the leg's top that is not solid: the fading top, and the inside up
 there (`CURTAIN`). The stage's target has a stencil buffer (`createSceneTarget` in `stage/target.ts`; it is not
-resolved out of the samples, which costs milliseconds), and each leg has three bits of it (the third is for the line around its top, below). While a leg is drawn, the
-curtain sets the first where it lies in front of the solid leg's depth, and the solid leg's color is not drawn
-there. Where such a pixel's depth is the solid leg's own, the second bit is set (`gone`) and the depth is taken out
-(`erase`, drawn at the far end of the depth range), so that whatever lies behind is drawn. After everything else of
-the legs, what is gone comes back by how much of it shows: its depth again, where the second bit is set, with the
-target's alpha set to one; then the curtain in front of that depth, which takes the alpha down to how far each part
-of it has faded out (`VEIL`, the least of them stays); then its color at that depth, weighed by the alpha. The leg
-from the ankle down is drawn in a pass of its own, before the curtain.
+resolved out of the samples, which costs milliseconds), and each leg has three bits of it (the third is for the
+line around its top, below). While a leg is drawn, the curtain sets the first where it lies in front of the solid
+leg's depth, and the solid leg's color is not drawn there. Where such a pixel's depth is the solid leg's own, the
+second bit is set (`gone`) and the depth is taken out (`erase`, drawn at the far end of the depth range), so that
+whatever lies behind is drawn. After everything else of the legs, what is gone comes back by how much of it shows:
+its depth again, where the second bit is set, with the target's alpha set to one; then the curtain in front of that
+depth, which takes the alpha down to how far each part of it has faded out (`VEIL`, the least of them stays); then
+its color at that depth, weighed by the alpha. The leg from the ankle down is drawn in a pass of its own, before
+the curtain.
 
 Most of the time none of this is needed, and it is left out (`lookInto` in `stage/createStage.ts`, before every
 render of the scene). Nothing of a leg is seen through its top, nor is its inside seen, unless the eye looks down
@@ -236,6 +237,15 @@ How much a fabric shines by itself is set per material in `catalog/garments.ts` 
 `sheen` and `sheenPow` for the soft glow toward its edges, `shine` for latex). Cotton and velvet are the matte ones,
 velvet only a little less so than cotton. Latex has no sheen: it is smooth rubber, and what it shows is what it
 mirrors.
+
+Cotton is knit in ribs (`rib` of the material; a ribbed cuff has them on any material), and what shows them goes by
+how light the yarn is. Between two ribs the knit is thin and the skin shows: through dark yarn only between its
+stitches, through light yarn also through the yarn itself (`RIB_THROUGH` in `stage/shaders/leg.ts`, by how much
+light the dye throws back), however little the knit is stretched. The ribs also shade the fabric between them, and
+so do the stitches of a fuzzy fabric's thick yarn (`STITCH_SHADE`, by how light the yarn is to the eye: dark yarn
+shows its stitches in its sheen alone). A light fabric lights its own folds again with the light it throws back, so
+they shade it far less than a dark one (`foldLit`): white cotton has faint skin-colored lines between its ribs, not
+grey stripes.
 
 Water makes a mirroring film only on a smooth surface: nylon, latex, skin. A fuzzy fabric (cotton, velvet) takes it
 into its pile and stays rough. Wet, it turns darker and loses its sheen, and of a film's shine it keeps only a trace

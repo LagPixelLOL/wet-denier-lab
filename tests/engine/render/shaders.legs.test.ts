@@ -1,7 +1,14 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import { MATERIALS, MATERIAL_ORDER } from "../../../src/engine/catalog/garments";
-import { FUZZ_WET_SHINE, LEG_FRAGMENT_SHADER, SHINE_ENV, SHINE_KEY } from "../../../src/engine/stage/shaders/leg";
+import {
+  FUZZ_WET_SHINE,
+  LEG_FRAGMENT_SHADER,
+  RIB_THROUGH,
+  SHINE_ENV,
+  SHINE_KEY,
+  STITCH_SHADE,
+} from "../../../src/engine/stage/shaders/leg";
 import { parseShader, resolveIncludes, splitDeclaratorLists } from "../../helpers/glsl";
 import {
   defineProgramSuite,
@@ -202,6 +209,71 @@ describe("leg, bow, outline, shadow and post shaders", () => {
     expect(LEG_FRAGMENT_SHADER).toContain("col += uKeyColor * sheenStripe * uStripe * uGloss * 0.55 * fabric");
     // The tight glint on wet and shiny surfaces is kept to the same streak.
     expect(LEG_FRAGMENT_SHADER).toMatch(/float glint = [^;]* \* lobe \* /);
+  });
+
+  describe("the ribs and stitches of a knit, by how light its yarn is", () => {
+    // The shader's measures: how much a fold shades a fabric of this albedo, and how much of the skin shows
+    // through the yarn itself between two ribs.
+    const foldLit = (folds: number, albedo: number) => folds / (1 - albedo * (1 - folds));
+    const yarnThrough = (albedo: number, ribWave: number) => RIB_THROUGH * albedo * (1 - ribWave) ** 2;
+    const [white, grey, black] = [0.9, 0.17, 0.0064];
+
+    it("shades a light fabric between its ribs far less than a dark one: no grey stripes on white", () => {
+      expect(LEG_FRAGMENT_SHADER).toContain("ribShade = mix(1.0, 0.82 + 0.3 * ribWave, ribAmt);");
+      expect(LEG_FRAGMENT_SHADER).toContain("vec3 foldLit = folds / (1.0 - dyeDark * (1.0 - folds));");
+      expect(LEG_FRAGMENT_SHADER).toMatch(/vec3 fabCol = dyeDark \* [^;]* \* foldLit \* /);
+      expect(LEG_FRAGMENT_SHADER).not.toMatch(/vec3 fabCol = [^;]* \* ribShade/);
+      // Between two ribs, where the shade is deepest: black yarn keeps all of it, white yarn next to none.
+      expect(foldLit(0.82, black)).toBeCloseTo(0.82, 2);
+      expect(foldLit(0.82, grey)).toBeCloseTo(0.846, 3);
+      expect(foldLit(0.82, white)).toBeGreaterThan(0.97);
+      // On a rib, where the fabric is lit more than its share, likewise.
+      expect(foldLit(1.12, black)).toBeCloseTo(1.12, 2);
+      expect(foldLit(1.12, white)).toBeLessThan(1.02);
+      // No fold, no change; and the lighter the fabric, the less a fold shades it.
+      for (const albedo of [black, grey, white]) {
+        expect(foldLit(1, albedo)).toBe(1);
+      }
+      expect(foldLit(0.6, grey)).toBeGreaterThan(foldLit(0.6, black));
+      expect(foldLit(0.6, white)).toBeGreaterThan(foldLit(0.6, grey));
+    });
+
+    it("lets the skin show through light yarn itself between the ribs, however little the knit is stretched", () => {
+      expect(LEG_FRAGMENT_SHADER).toContain(
+        "float yarnAlbedo = dot(dye, vec3(0.2126, 0.7152, 0.0722)), yarnLight = sqrt(yarnAlbedo);",
+      );
+      expect(LEG_FRAGMENT_SHADER).toContain(
+        `yarnThrough = ${RIB_THROUGH.toFixed(2)} * yarnAlbedo * ribAmt * (1.0 - ribWave) * (1.0 - ribWave);`,
+      );
+      // It adds to what shows between the stitches, before the angle of view and the knit's pattern weigh in.
+      expect(LEG_FRAGMENT_SHADER).toMatch(
+        /float trans0 = exp\(-denier \/ 50\.0\);\s+trans0 \+= \(1\.0 - trans0\) \* yarnThrough;\s+float transView = /,
+      );
+      // The knit itself is as thin between the ribs as it was, whatever its color: dark yarn looks as it did.
+      expect(LEG_FRAGMENT_SHADER).toContain("denier *= mix(1.0, 0.7 + 0.6 * ribWave, ribAmt);");
+      expect(yarnThrough(black, 0)).toBeLessThan(0.003);
+      expect(yarnThrough(grey, 0)).toBeGreaterThan(0.04);
+      expect(yarnThrough(white, 0)).toBeGreaterThan(0.25);
+      // Between the ribs only.
+      expect(yarnThrough(white, 1)).toBe(0);
+      expect(yarnThrough(white, 0.5)).toBeCloseTo(yarnThrough(white, 0) / 4, 12);
+    });
+
+    it("shows the stitches of a fuzzy fabric in its color, the more the lighter the yarn", () => {
+      expect(LEG_FRAGMENT_SHADER).toContain(
+        `float folds = ribShade * mix(1.0, knit / uKnitMean, ${STITCH_SHADE.toFixed(2)} * yarnLight * knitAmt * fuzz);`,
+      );
+      // Cotton is knit from thick yarn and fuzzy; hosiery is neither, and its color stays free of the pattern.
+      expect(MATERIALS.cotton.knit).toBe(1);
+      expect(MATERIALS.cotton.gloss).toBeLessThan(0.1);
+      expect(MATERIALS.sheer.gloss).toBeGreaterThan(0.25);
+      // Between two stitches (the pattern at nothing), by the yarn: black as it was, grey and white shaded.
+      const between = (albedo: number) => foldLit(1 - STITCH_SHADE * Math.sqrt(albedo), albedo);
+      expect(between(black)).toBeGreaterThan(0.95);
+      expect(between(grey)).toBeLessThan(0.85);
+      expect(between(white)).toBeLessThan(0.95);
+      expect(between(white)).toBeGreaterThan(0.85);
+    });
   });
 
   describe("what belongs to the leg's outline", () => {
