@@ -188,6 +188,7 @@ export class WaterSim {
    * cuff presses into the leg.
    */
   declare legTop: number[];
+  declare legPress: number[];
   declare _waterAt: BeadWater;
   declare _shownAt: [number, number, number];
   declare events: WaterEvents;
@@ -260,6 +261,7 @@ export class WaterSim {
       },
     ];
     this.legTop = [NO_SKIN_ABOVE, NO_SKIN_ABOVE];
+    this.legPress = [1, 1];
     this._waterAt = { bead: 1, slip: 1 };
     this._shownAt = [0, 0, 0];
     this.events = {
@@ -514,12 +516,14 @@ export class WaterSim {
   }
   /**
    * How drops behave on a leg: `water` for what it wears (or for its skin, if it is bare), and bare skin's way
-   * above `top`, the height at rest where a stocking ends. Leave `top` out for tights and for a bare leg.
+   * above `top`, the height at rest where a stocking ends. Leave `top` out for tights and for a bare leg. `press`
+   * is how much the cuff there presses into the leg (see shownAt).
    */
-  setLegWater(legIndex: number, water: BeadWater, top = NO_SKIN_ABOVE): void {
+  setLegWater(legIndex: number, water: BeadWater, top = NO_SKIN_ABOVE, press = 1): void {
     this.legWater[legIndex].bead = water.bead;
     this.legWater[legIndex].slip = water.slip;
     this.legTop[legIndex] = top;
+    this.legPress[legIndex] = press;
   }
   /** How drops behave at this height of a leg at rest: on its fabric, on the skin above it, or at the edge between. */
   waterAt(leg: number, restY: number): BeadWater {
@@ -1089,7 +1093,8 @@ export class WaterSim {
    * the bead goes with it, or it would sink into the bulge and float over the dent.
    */
   shownAt(bead: Bead, out: [number, number, number] = this._shownAt): [number, number, number] {
-    const press = cuffPressAt(bead.restY - this.legTop[bead.leg || 0]);
+    const leg = bead.leg || 0;
+    const press = cuffPressAt(bead.restY - this.legTop[leg]) * this.legPress[leg];
     out[0] = bead.x + bead.nx * press;
     out[1] = bead.y + bead.ny * press;
     out[2] = bead.z + bead.nz * press;

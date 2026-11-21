@@ -775,7 +775,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
         value: defaultLook.hasCuff,
       },
       uCuffBulge: {
-        value: defaultLook.hasCuff,
+        value: defaultLook.cuffPress,
       },
       uClip: {
         value: 0,
@@ -1885,8 +1885,9 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     fabric.uGloss.value = look.gloss;
     fabric.uCuffY.value = look.cuffY;
     fabric.uHasCuff.value = look.hasCuff;
-    // Only a cuff presses into the leg: tights have none, so their line at cuffY leaves the leg's shape alone.
-    fabric.uCuffBulge.value = look.hasCuff;
+    // A cuff presses into the leg by how soft the leg is where it sits. Tights have none, so their line at cuffY
+    // leaves the leg's shape alone.
+    fabric.uCuffBulge.value = look.cuffPress;
     for (const part of leg.cuffParts) {
       part.geometry = stockingFor(look);
     }

@@ -14,6 +14,7 @@ import {
 } from "./garments";
 import type { CatalogIdDef, CuffStyleDef, MaterialDef, MaterialWater, StockingLengthDef } from "./garments";
 import { withLegDefaults } from "./presets";
+import { legSoftness } from "../model/cuffPress";
 import type { LegSpec } from "./presets";
 
 /** Shader and simulation parameters for one leg, resolved from a LegSpec. */
@@ -32,6 +33,8 @@ export interface LegLook {
   gloss: number;
   cuffY: number;
   hasCuff: number;
+  /** How much the cuff presses into the leg: by how soft the leg is where it sits (legSoftness), 0 without one. */
+  cuffPress: number;
   /** 1 when no stocking is worn. */
   bare: number;
   cuff: number;
@@ -87,6 +90,7 @@ export function resolveLegLook(input?: Partial<LegSpec>): LegLook {
     gloss: materialDef.gloss,
     cuffY: lengthDef.cuffY,
     hasCuff: isTights ? 0 : 1,
+    cuffPress: isTights || isBare ? 0 : legSoftness(lengthDef.cuffY),
     bare: isBare ? 1 : 0,
     cuff: cuffDef.id,
     band: lengthDef.band,

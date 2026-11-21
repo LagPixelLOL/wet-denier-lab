@@ -198,9 +198,13 @@ passes through), and the other leg's shader takes the two together (`castShadowA
 none.
 
 **Cuff.** A stocking's cuff presses into the leg: `pressCuff` (`CUFF_PRESS_GLSL` in `stage/shaders/leg.ts`, scaled
-by `uCuffBulge`) pushes the surface out just above the cuff's edge and draws it in below. The leg's vertex shader
-and the outline's both use it, so the line follows the pressed shape. Every length with a cuff gets this. Tights
-have no cuff, so `setStocking` turns it off for them and the thigh keeps its own shape.
+by `uCuffBulge`) pushes the surface out just above the cuff's edge and draws it in below. How much goes by how soft
+the leg is where the cuff sits (`legSoftness` in `model/cuffPress.ts`, which `resolveLegLook` turns into the look's
+`cuffPress`): all of it at the thigh, half on the calf (crew socks), three quarters of that under the knee
+(knee-highs), and a tenth, next to nothing, at the ankle and on the knee (over-knee socks), where the leg is bone
+and sinew. The leg's vertex shader, the outline's and the bow's all read that one uniform, so the line and the bow
+follow the pressed shape, and the drops are told the same share (`setLegWater`). Tights have no cuff, so there is
+no press for them and the thigh keeps its own shape.
 
 The press happens within a few millimeters, and the leg's triangles are up to a centimeter across there, so the
 model also builds the stocking's mesh once per cuff height with rings of vertices around it

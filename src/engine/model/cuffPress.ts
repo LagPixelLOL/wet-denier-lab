@@ -31,3 +31,26 @@ export function cuffPressAt(dy: number): number {
   const inward = dent * smoothstep(dentFrom, dentFull, dy) * (1 - smoothstep(dentEdge[0], dentEdge[1], dy));
   return out - inward;
 }
+
+/**
+ * How soft the leg is at a height at rest, as a share of the thigh: a cuff presses into it by that much (the
+ * numbers of CUFF_PRESS are for the thigh). The calf gives half as much, and its top under the knee three quarters
+ * of that. The ankle and the knee are bone and sinew and hardly give at all.
+ */
+export const LEG_SOFTNESS: readonly (readonly [height: number, softness: number])[] = [
+  [0.132, 0.1],
+  [0.285, 0.5],
+  [0.425, 0.375],
+  [0.545, 0.1],
+  [0.7, 1],
+];
+
+export function legSoftness(height: number): number {
+  const above = LEG_SOFTNESS.findIndex(([at]) => at >= height);
+  if (above <= 0) {
+    return LEG_SOFTNESS[above === 0 ? 0 : LEG_SOFTNESS.length - 1][1];
+  }
+  const [[from, soft], [to, softer]] = [LEG_SOFTNESS[above - 1], LEG_SOFTNESS[above]];
+  const along = (height - from) / (to - from);
+  return soft * (1 - along) + softer * along;
+}

@@ -881,6 +881,14 @@ describe("sync", () => {
     expect(out(beads[2])).toBeCloseTo(0, 12);
     expect(out(beads[3])).toBeCloseTo(0, 12);
     expect(out(beads[4])).toBeCloseTo(0, 12);
+    // Where the leg gives less, the cuff presses it less, and the bead goes less far with it.
+    water.setLegWater(0, MATERIALS.sheer.water, top, 0.5);
+    expect(out(beads[0])).toBeCloseTo(CUFF_PRESS.bulge * 0.5, 6);
+    expect(out(beads[1])).toBeCloseTo(cuffPressAt(-0.01) * 0.5, 9);
+    expect(out(beads[2])).toBeCloseTo(0, 12);
+    water.setLegWater(0, MATERIALS.sheer.water, top, 0);
+    expect([out(beads[0]), out(beads[1])]).toEqual([0, 0]);
+    water.setLegWater(0, MATERIALS.sheer.water, top);
     // The bead, its shadow on the surface and its glint are all drawn from there.
     water.sync(camera(), null, new THREE.Vector2(1, 1), light);
     const origin = (array: ArrayLike<number>, i: number) => [

@@ -17,7 +17,9 @@ import {
 } from "../../../src/engine/catalog/garments";
 import { DEFAULT_LEG_SPEC, PRESETS, randomLegSpec, withLegDefaults } from "../../../src/engine/catalog/presets";
 import type { LegSpec } from "../../../src/engine/catalog/presets";
+import type { StockingLengthKey } from "../../../src/engine/catalog/garments";
 import { resolveLegLook } from "../../../src/engine/catalog/resolveLegLook";
+import { LEG_SOFTNESS, legSoftness } from "../../../src/engine/model/cuffPress";
 import type { LegLook } from "../../../src/engine/catalog/resolveLegLook";
 import { seedRandom } from "../../helpers/random";
 
@@ -267,6 +269,7 @@ describe("resolveLegLook", () => {
         "bare": 0,
         "bow": false,
         "cuff": 1,
+        "cuffPress": 1,
         "cuffY": 0.7,
         "denier": 40,
         "dye": "#141318",
@@ -331,6 +334,31 @@ describe("resolveLegLook", () => {
   it("raises the denier to the material minimum", () => {
     expect(resolveLegLook({ material: "latex", denier: 15 }).denier).toBe(900);
     expect(resolveLegLook({ material: "sheer", denier: 70 }).denier).toBe(70);
+  });
+
+  it("presses a cuff into the leg by how soft the leg is where the cuff sits", () => {
+    const press = (length: StockingLengthKey) => resolveLegLook({ length }).cuffPress;
+    // The numbers the cuff's shape is given in are the thigh's.
+    expect(press("thigh")).toBe(1);
+    // Half of that on the calf, and three quarters of that at its top, under the knee...
+    expect(press("crew")).toBe(0.5);
+    expect(press("knee")).toBe(0.375);
+    expect(press("knee")).toBe(press("crew") * 0.75);
+    // ...and next to nothing, but not nothing, where the leg is bone and sinew: at the ankle and on the knee.
+    for (const length of ["ankle", "over"] as const) {
+      expect(press(length)).toBe(0.1);
+    }
+    // No cuff, no press.
+    expect([press("tights"), press("bare")]).toEqual([0, 0]);
+    // Between the heights it is given at, the leg's softness goes over from the one to the other, and beyond
+    // them it stays.
+    expect(LEG_SOFTNESS.map(([height]) => height)).toEqual(
+      (["ankle", "crew", "knee", "over", "thigh"] as const).map((length) => STOCKING_LENGTHS[length].cuffY),
+    );
+    expect(legSoftness(0.2085)).toBeCloseTo(0.3, 12);
+    expect(legSoftness(0.485)).toBeCloseTo(0.2375, 12);
+    expect(legSoftness(0.6225)).toBeCloseTo(0.55, 12);
+    expect([legSoftness(0), legSoftness(0.9)]).toEqual([0.1, 1]);
   });
 
   it("drops the cuff and the bow for tights, whose legs fade out as high up as any other", () => {

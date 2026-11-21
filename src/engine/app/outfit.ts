@@ -42,7 +42,7 @@ function refreshLeg(leg: number) {
     app.water.reseat(leg);
   }
   app.wetmap.setLegWater(leg, resolved.water, resolved.skinFrom);
-  app.water.setLegWater(leg, resolved.water, resolved.skinFrom);
+  app.water.setLegWater(leg, resolved.water, resolved.skinFrom, resolved.cuffPress);
 }
 
 export function previewPreset(index: number | null) {

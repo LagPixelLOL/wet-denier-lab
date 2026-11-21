@@ -93,7 +93,7 @@ function expectLookApplied(leg: StageLeg, look: LegLook, { initial = false } = {
     gloss: look.gloss,
     cuffY: look.cuffY,
     hasCuff: look.hasCuff,
-    cuffBulge: look.hasCuff,
+    cuffBulge: look.cuffPress,
     cuff: look.cuff,
     band: look.band,
     garter: look.garter,
@@ -620,18 +620,27 @@ describe("setStocking", () => {
     expect(stage.legs[0].fabric.uCuffY.value).toBeLessThan(lowest - 0.1);
   });
 
-  it("presses the cuff into the leg for every length but tights, which have no cuff", () => {
+  it("presses the cuff into the leg by how soft the leg is there, and not at all for tights, which have no cuff", () => {
     const { stage } = buildStage();
     const [leg, other] = stage.legs;
+    const pressed: Record<string, number> = {};
     for (const length of STOCKING_LENGTH_ORDER) {
-      stage.setStocking(0, resolveLegLook({ length }));
-      expect([length, leg.fabric.uCuffBulge.value]).toEqual([length, length === "tights" ? 0 : 1]);
-      // Every pass that places the stocking's vertices reads the same uniform, so they all agree on its shape.
+      const look = resolveLegLook({ length });
+      stage.setStocking(0, look);
+      pressed[length] = leg.fabric.uCuffBulge.value;
+      expect([length, leg.fabric.uCuffBulge.value]).toEqual([length, look.cuffPress]);
+      // Every pass that places the stocking's vertices reads the same uniform, so they all agree on its shape:
+      // the surface, the line around it and the bow on it.
       for (const part of [...leg.stockingParts, ...leg.stockingFrontParts, ...leg.forefootParts]) {
         expect(part.material.uniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
       }
+      expect(leg.outlineUniforms.uCuffBulge).toBe(leg.fabric.uCuffBulge);
+      expect(leg.bowU.uCuffBulge).toBe(leg.fabric.uCuffBulge);
       expect(other.fabric.uCuffBulge.value).toBe(1);
     }
+    // All of it at the thigh, half on the calf, three quarters of that under the knee, and next to nothing (but
+    // not nothing) at the ankle and on the knee.
+    expect(pressed).toEqual({ bare: 0, ankle: 0.1, crew: 0.5, knee: 0.375, over: 0.1, thigh: 1, tights: 0 });
   });
 
   it("draws a stocking with a cuff from the mesh ringed at the cuff's height, and the others from the plain one", () => {
