@@ -50,38 +50,42 @@ float legVein(float y, float turn, float radius, float y0, float y1, vec3 meande
   float shown = smoothstep(y0, y0 + 0.04, y) * (1.0 - smoothstep(y1 - 0.05, y1, y));
   return veinAt(turn * radius, 0.0021, shown * (0.5 + 0.65 * stretch.x * stretch.y));
 }
+// One way out, at the end: with a return inside the nested branches, the shader compiler some browsers use
+// (Direct3D's) warned that the result might not be set.
 float skinVeins(vec3 p, vec3 n) {
   float vein = 0.0;
   if (p.y < 0.1) {
-    if (n.y < 0.05 || p.z < 0.03 || p.z > 0.155) return 0.0;
-    // Nothing runs straight: the whole layout is bent by noise first.
-    vec2 q = p.xz + vec2(0.0028 * valueNoise(p.xz * 70.0), 0.0025 * valueNoise(p.zx * 60.0 + 9.0)) + 0.0009 * sin(p.zx * vec2(410.0, 370.0));
-    vec3 along = q.y * vec3(61.0, 27.0, 0.0), alongSin = sin(along), alongCos = cos(along);
-    // The arch across the instep, then the veins that leave it toward the toes and toward the ankle.
-    float across = q.x - 0.002;
-    float arch = 0.130 - 18.0 * across * across;
-    vein = veinAt((q.y - arch) / sqrt(1.0 + 1296.0 * across * across), 0.0014, step(abs(across), 0.034) * (0.6 + 0.6 * sin(q.x * 95.0) * sin(q.x * 41.0 + 2.0)));
-    float ahead = step(arch, q.y), behind = 1.0 - ahead;
-    // The branches toward the toes fade out well before the toes begin.
-    float toToes = q.y - 0.13;
-    vein = max(vein, ahead * max(max(footVein(q, -0.0200 + 0.08 * toToes, 0.10, 0.150, veinWaves(alongSin, alongCos, 1.0)), footVein(q, 0.0005 + 0.09 * toToes, 0.10, 0.151, veinWaves(alongSin, alongCos, 2.0))), max(footVein(q, 0.0165 + 0.12 * toToes, 0.10, 0.146, veinWaves(alongSin, alongCos, 3.0)), footVein(q, 0.0320 + 0.16 * toToes, 0.09, 0.138, veinWaves(alongSin, alongCos, 4.0)))));
-    float toAnkle = 0.123 - q.y;
-    vein = max(vein, behind * max(footVein(q, -0.0300 + 0.06 * toAnkle + 1.1 * toAnkle * toAnkle, 0.035, 0.128, veinWaves(alongSin, alongCos, 5.0)), max(footVein(q, -0.0060 + 0.05 * toAnkle, 0.06, 0.143, veinWaves(alongSin, alongCos, 6.0)), footVein(q, 0.0330 + 0.12 * toAnkle, 0.06, 0.128, veinWaves(alongSin, alongCos, 7.0)))));
-    return vein * smoothstep(0.05, 0.4, n.y);
+    if (n.y >= 0.05 && p.z >= 0.03 && p.z <= 0.155) {
+      // Nothing runs straight: the whole layout is bent by noise first.
+      vec2 q = p.xz + vec2(0.0028 * valueNoise(p.xz * 70.0), 0.0025 * valueNoise(p.zx * 60.0 + 9.0)) + 0.0009 * sin(p.zx * vec2(410.0, 370.0));
+      vec3 along = q.y * vec3(61.0, 27.0, 0.0), alongSin = sin(along), alongCos = cos(along);
+      // The arch across the instep, then the veins that leave it toward the toes and toward the ankle.
+      float across = q.x - 0.002;
+      float arch = 0.130 - 18.0 * across * across;
+      vein = veinAt((q.y - arch) / sqrt(1.0 + 1296.0 * across * across), 0.0014, step(abs(across), 0.034) * (0.6 + 0.6 * sin(q.x * 95.0) * sin(q.x * 41.0 + 2.0)));
+      float ahead = step(arch, q.y), behind = 1.0 - ahead;
+      // The branches toward the toes fade out well before the toes begin.
+      float toToes = q.y - 0.13;
+      vein = max(vein, ahead * max(max(footVein(q, -0.0200 + 0.08 * toToes, 0.10, 0.150, veinWaves(alongSin, alongCos, 1.0)), footVein(q, 0.0005 + 0.09 * toToes, 0.10, 0.151, veinWaves(alongSin, alongCos, 2.0))), max(footVein(q, 0.0165 + 0.12 * toToes, 0.10, 0.146, veinWaves(alongSin, alongCos, 3.0)), footVein(q, 0.0320 + 0.16 * toToes, 0.09, 0.138, veinWaves(alongSin, alongCos, 4.0)))));
+      float toAnkle = 0.123 - q.y;
+      vein = max(vein, behind * max(footVein(q, -0.0300 + 0.06 * toAnkle + 1.1 * toAnkle * toAnkle, 0.035, 0.128, veinWaves(alongSin, alongCos, 5.0)), max(footVein(q, -0.0060 + 0.05 * toAnkle, 0.06, 0.143, veinWaves(alongSin, alongCos, 6.0)), footVein(q, 0.0330 + 0.12 * toAnkle, 0.06, 0.128, veinWaves(alongSin, alongCos, 7.0)))));
+      vein *= smoothstep(0.05, 0.4, n.y);
+    }
+  } else {
+    // Around the leg's axis: 0 is the outer side, a quarter turn the front, half a turn the inner side.
+    vec2 axis = vec2(0.004 - 0.005 * p.y, 0.004 + 0.029 * p.y);
+    vec2 out2 = p.xz - axis;
+    float angle = atan(out2.y, out2.x), radius = length(out2);
+    vec3 bend = p.y * vec3(23.0, 57.0, 131.0), bendSin = sin(bend), bendCos = cos(bend);
+    vec3 come = p.y * vec3(14.0, 5.3, 0.0), comeSin = sin(come), comeCos = cos(come);
+    // Up the inner side from ankle to thigh, up the back of the calf, across the back of the knee, and on the
+    // front and the outer side of the thigh.
+    vein = legVein(p.y, angle - 2.95 - 0.35 * sin(6.0 * (p.y - 0.33)), radius, 0.085, 0.84, veinWaves(bendSin, bendCos, 1.0), veinWaves(comeSin, comeCos, 1.0));
+    vein = max(vein, legVein(p.y, angle + 1.5 - 0.55 * (1.0 - smoothstep(0.08, 0.25, p.y)), radius, 0.09, 0.47, veinWaves(bendSin, bendCos, 2.0), veinWaves(comeSin, comeCos, 2.0)));
+    vein = max(vein, legVein(p.y, angle + 1.15 + 6.0 * (p.y - 0.44), radius, 0.43, 0.58, veinWaves(bendSin, bendCos, 3.0), veinWaves(comeSin, comeCos, 3.0)));
+    vein = max(vein, legVein(p.y, angle - 2.25 - 0.2 * sin(9.0 * p.y), radius, 0.56, 0.86, veinWaves(bendSin, bendCos, 4.0), veinWaves(comeSin, comeCos, 4.0)));
+    vein = max(vein, legVein(p.y, angle - 0.35 - 2.0 * (p.y - 0.6), radius, 0.6, 0.85, veinWaves(bendSin, bendCos, 5.0), veinWaves(comeSin, comeCos, 5.0)));
   }
-  // Around the leg's axis: 0 is the outer side, a quarter turn the front, half a turn the inner side.
-  vec2 axis = vec2(0.004 - 0.005 * p.y, 0.004 + 0.029 * p.y);
-  vec2 out2 = p.xz - axis;
-  float angle = atan(out2.y, out2.x), radius = length(out2);
-  vec3 bend = p.y * vec3(23.0, 57.0, 131.0), bendSin = sin(bend), bendCos = cos(bend);
-  vec3 come = p.y * vec3(14.0, 5.3, 0.0), comeSin = sin(come), comeCos = cos(come);
-  // Up the inner side from ankle to thigh, up the back of the calf, across the back of the knee, and on the
-  // front and the outer side of the thigh.
-  vein = legVein(p.y, angle - 2.95 - 0.35 * sin(6.0 * (p.y - 0.33)), radius, 0.085, 0.84, veinWaves(bendSin, bendCos, 1.0), veinWaves(comeSin, comeCos, 1.0));
-  vein = max(vein, legVein(p.y, angle + 1.5 - 0.55 * (1.0 - smoothstep(0.08, 0.25, p.y)), radius, 0.09, 0.47, veinWaves(bendSin, bendCos, 2.0), veinWaves(comeSin, comeCos, 2.0)));
-  vein = max(vein, legVein(p.y, angle + 1.15 + 6.0 * (p.y - 0.44), radius, 0.43, 0.58, veinWaves(bendSin, bendCos, 3.0), veinWaves(comeSin, comeCos, 3.0)));
-  vein = max(vein, legVein(p.y, angle - 2.25 - 0.2 * sin(9.0 * p.y), radius, 0.56, 0.86, veinWaves(bendSin, bendCos, 4.0), veinWaves(comeSin, comeCos, 4.0)));
-  vein = max(vein, legVein(p.y, angle - 0.35 - 2.0 * (p.y - 0.6), radius, 0.6, 0.85, veinWaves(bendSin, bendCos, 5.0), veinWaves(comeSin, comeCos, 5.0)));
   return vein;
 }
 vec2 toeNailCoord(vec3 p) {
