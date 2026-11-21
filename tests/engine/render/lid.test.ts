@@ -15,6 +15,7 @@ import {
   LID_NEAR,
   LID_REACH,
   LID_STEP,
+  ROOM_LIGHT_GLSL,
   SOFT_SHADOW_BEHIND,
   SOFT_SHADOW_LEVEL,
 } from "../../../src/engine/stage/shaders/leg";
@@ -277,6 +278,21 @@ describe("what of a leg is seen through", () => {
     // those.
     expect(2 ** SOFT_SHADOW_LEVEL).toBe(8);
     expect(SOFT_SHADOW_BEHIND).toBe(0.03);
+    // In the other leg's shadow the lamp is not seen, so nothing mirrors it there: every highlight of the lamp's
+    // (on latex, on a wet film, the streak and the glints along glossy nylon, the sparkles, the garter's clip)
+    // goes out with the light, none is left at part strength. Only the room's light is (see roomLight).
+    const main = LEG_FRAGMENT_SHADER.replace(ROOM_LIGHT_GLSL, "");
+    expect(main).not.toMatch(/mix\([0-9.]+, 1\.0, lit\)/);
+    for (const line of [
+      "float aniso = pow(sqrt(max(0.0, 1.0 - tdh * tdh)), 55.0) * smoothstep(-0.15, 0.35, ndl) * lit;",
+      "float glint = smoothstep(0.25, 0.6, anisoTight) * smoothstep(-0.2, 0.3, ndl) * lobe * lit * onLeg * (1.0 - fuzz);",
+      "col += uKeyColor * (spec * lit + glint * 1.15) * keyAmt + env * fres * 0.9 * envAmt;",
+      "col += uKeyColor * wetRing * 0.22 * smoothstep(-0.3, 0.4, ndl) * lit;",
+      "* spark * smoothstep(-0.4, 0.3, ndl) * lit;",
+      "+ vec3(0.5) * pow(max(dot(n, normalize(uKeyDir + v)), 0.0), 30.0) * lit;",
+    ]) {
+      expect(main).toContain(line);
+    }
     // Half solid at the leg's edge (half of the texels around are the leg's), and half as solid in its fade.
     const solid = (cover: [number, number]) => cover[0] / Math.max(cover[1], 0.004);
     expect(solid([0.5, 0.5])).toBe(1);

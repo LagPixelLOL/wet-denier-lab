@@ -663,7 +663,7 @@ ${LID_GLSL}${ROOM_LIGHT_GLSL}void main() {
     vec3 strapCol = (uDye * 0.92 + 0.02) * mix(uShade, vec3(1.0), fabLit) * hemi;
     strapCol += uSheenColor * 0.16 * (1.0 - smoothstep(0.0, 0.0072, strapD)) * mix(0.4, 1.0, fabLit) * roomLit;
     strapCol *= 1.0 - 0.25 * smoothstep(0.0052, 0.0072, strapD);
-    vec3 clipCol = vec3(0.80, 0.80, 0.86) * mix(0.55, 1.15, fabLit) * hemi + vec3(0.5) * pow(max(dot(n, normalize(uKeyDir + v)), 0.0), 30.0);
+    vec3 clipCol = vec3(0.80, 0.80, 0.86) * mix(0.55, 1.15, fabLit) * hemi + vec3(0.5) * pow(max(dot(n, normalize(uKeyDir + v)), 0.0), 30.0) * lit;
     col *= 1.0 - 0.14 * (1.0 - smoothstep(0.0072, 0.0115, strapD)) * aaStep(0.004, cuffDy) * (1.0 - strap);
     col = mix(col, strapCol, strap);
     col = mix(col, clipCol, clip);
@@ -712,15 +712,18 @@ ${LID_GLSL}${ROOM_LIGHT_GLSL}void main() {
   // fuzzy fabric has none: its wet patch is only darker. (Latex has no wet patch at all.)
   wetRing *= edgeAmt * (1.0 - fuzz);
   col *= 1.0 - wetEdge * 0.38;
+  // The lamp's highlights are the lamp's own mirror image: where the other leg stands in its way there are none
+  // (lit), and they go out as softly as that leg's shadow comes on. What a wet or shiny surface mirrors of the
+  // room is not the lamp's, and stays.
   float anisoTight = pow(sqrt(max(0.0, 1.0 - tdh * tdh)), 260.0);
-  float glint = smoothstep(0.25, 0.6, anisoTight) * smoothstep(-0.2, 0.3, ndl) * lobe * mix(0.4, 1.0, lit) * onLeg * (1.0 - fuzz);
+  float glint = smoothstep(0.25, 0.6, anisoTight) * smoothstep(-0.2, 0.3, ndl) * lobe * lit * onLeg * (1.0 - fuzz);
   if (specAmt > 0.0) {
     float spec = mix(smoothstep(0.962, 0.982, ndh) * 1.4 + pow(ndh, 140.0) * 0.6 + pow(ndh, 22.0) * 0.22, pow(ndh, 22.0), fuzz);
     float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
     vec3 refl = reflect(-v, n);
     vec3 env = mix(uEnvLo, uEnvHi, smoothstep(-0.05, 0.6, refl.y * uMirrorFlipY));
     env += uEnvAColor * pow(max(dot(refl, uEnvADir), 0.0), 5.0) + uEnvBColor * pow(max(dot(refl, uEnvBDir), 0.0), 5.0);
-    col += uKeyColor * (spec * mix(0.4, 1.0, lit) + glint * 1.15) * keyAmt + env * fres * 0.9 * envAmt;
+    col += uKeyColor * (spec * lit + glint * 1.15) * keyAmt + env * fres * 0.9 * envAmt;
   }
   col += uKeyColor * wetRing * 0.22 * smoothstep(-0.3, 0.4, ndl) * lit;
   float pearl = uMatWet.w * fabric;
@@ -734,7 +737,7 @@ ${LID_GLSL}${ROOM_LIGHT_GLSL}void main() {
     float d = length(fract(gridUv) - 0.5 - (rnd - 0.5) * 0.6);
     float twinkle = smoothstep(0.55, 0.95, sin(dot(v, vec3(rnd * 37.0, 11.0)) * 3.0 + rnd.y * 6.28));
     float spark = (1.0 - smoothstep(sparkR * 0.5, sparkR, d)) * twinkle * step(0.78 - 0.3 * pearl, rnd.x) * smoothstep(0.2, 0.6, sparkAmt);
-    col += mix(vec3(1.05), 0.75 + 0.5 * cos(6.2832 * (rnd.y + vec3(0.0, 0.33, 0.67))), pearl * 0.7) * spark * smoothstep(-0.4, 0.3, ndl) * mix(0.4, 1.0, lit);
+    col += mix(vec3(1.05), 0.75 + 0.5 * cos(6.2832 * (rnd.y + vec3(0.0, 0.33, 0.67))), pearl * 0.7) * spark * smoothstep(-0.4, 0.3, ndl) * lit;
   }
   // Skin under a stocking that wears no fabric itself looks exactly as it does right under the fabric.
   if (uUnder > 0.5) col = mix(underSeen, col, vCover);

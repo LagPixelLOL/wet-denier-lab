@@ -253,7 +253,10 @@ it. So there it is read from the map's color instead, which holds how solid the 
 near the light (`CASTER_COVER_FRAGMENT_SHADER`), at one of the map's smaller, blurred levels (`SOFT_SHADOW_LEVEL`),
 smoothly (`castCoverSmooth`: a cubic curve through the texels, as straight pieces between them showed as steps
 along the edge), for a point that lies behind the other leg (`SOFT_SHADOW_BEHIND`). In a light room the shadow is
-as it was.
+as it was. In any room, the lamp's highlights are the lamp's own mirror image, and where the other leg stands in
+the lamp's way there are none: the bright patch on latex and on a wet film, the streak and the glints along glossy
+nylon and the sparkles all go out with the lamp's light, as softly as the shadow comes on. What such a surface
+mirrors of the room stays.
 
 How much a fabric shines by itself is set per material in `catalog/garments.ts` (`gloss` for the long highlight,
 `sheen` and `sheenPow` for the soft glow toward its edges, `shine` for latex). Cotton and velvet are the matte ones,
