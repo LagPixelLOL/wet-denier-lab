@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { STOCKING_LENGTHS } from "../../../src/engine/catalog/garments";
-import { computeBowMatrix, createBowGeometry } from "../../../src/engine/stage/bow";
+import { BOW_SEAT, computeBowMatrix, createBowGeometry } from "../../../src/engine/stage/bow";
+import { SurfaceGrid } from "../../../src/engine/surface/SurfaceGrid";
 import { digest, digestRounded } from "../../helpers/digest";
 import { legModel } from "../../helpers/model";
 
@@ -38,8 +39,8 @@ describe("createBowGeometry", () => {
   });
 
   it("produces the pinned vertex data", () => {
-    expect(digest(position.array)).toMatchInlineSnapshot(`"f6a70a19"`);
-    expect(digestRounded(normal.array, 5)).toMatchInlineSnapshot(`"ec48fd02"`);
+    expect(digest(position.array)).toMatchInlineSnapshot(`"a1f90dd1"`);
+    expect(digestRounded(normal.array, 5)).toMatchInlineSnapshot(`"9d2a8c08"`);
   });
 });
 
@@ -59,8 +60,8 @@ describe("computeBowMatrix", () => {
     expect(dot(tangent, normal)).toBeCloseTo(0, 6);
     expect(dot(bitangent, normal)).toBeCloseTo(0, 6);
     expect([m[3], m[7], m[11], m[15]]).toEqual([0, 0, 0, 1]);
-    // the anchor sits 1.6 cm under the cuff, nudged 0.4 mm along the normal
-    expect(m[13]).toBeCloseTo(cuffY - 0.016 + normal[1] * 0.0004, 9);
+    // the bow's base sits 1.6 cm under the cuff, a little inside the surface
+    expect(m[13]).toBeCloseTo(cuffY - 0.016 - normal[1] * BOW_SEAT, 9);
     // on the outer (+x) side of the leg
     expect(m[12]).toBeGreaterThan(0);
   });
@@ -73,7 +74,38 @@ describe("computeBowMatrix", () => {
     const m = computeBowMatrix({ pos, nrm }, 0.5);
     expect([...m.subarray(0, 3)].map((v) => v + 0)).toEqual([0, 0, 0]);
     expect([...m.subarray(8, 11)]).toEqual([0, 1, 0]);
-    expect(m[13]).toBeCloseTo(ringY + 0.0004, 7);
+    expect(m[13]).toBeCloseTo(ringY - BOW_SEAT, 7);
+  });
+
+  it("puts the bow's base just inside the leg's surface, so its knot and tails rest on it", () => {
+    const grid = new SurfaceGrid(collision, 0.01);
+    for (const [key, def] of Object.entries(STOCKING_LENGTHS)) {
+      if (key === "bare") {
+        continue;
+      }
+      const m = computeBowMatrix(collision, def.cuffY);
+      const normal = [m[8], m[9], m[10]];
+      // Back out of the surface by as much as the base is seated into it: that point is on the surface, at
+      // the ring's height. (Straight up or down from a vertex, as it once was placed, misses by up to 1 mm.)
+      const on = [0, 1, 2].map((k) => m[12 + k] + normal[k] * BOW_SEAT);
+      expect(on[1]).toBeCloseTo(def.cuffY - 0.016, 9);
+      const hit = grid.closest(on[0], on[1], on[2], 0.01)!;
+      expect([key, Math.hypot(hit.x - on[0], hit.y - on[1], hit.z - on[2]) < 0.00015]).toEqual([key, true]);
+      // The frame's normal is the surface's there, to within a few degrees.
+      expect(hit.nx * normal[0] + hit.ny * normal[1] + hit.nz * normal[2]).toBeGreaterThan(0.99);
+    }
+    // Nothing of the bow is lower than that: its loops' edges and its tails' ends are at the fabric's level,
+    // and the knot starts 0.4 mm above it.
+    const z = createBowGeometry().attributes.position.array.filter((_, i) => i % 3 === 2);
+    const [loops, tails, knot] = [
+      z.slice(0, 2 * 29 * 7),
+      z.slice(2 * 29 * 7, 2 * 29 * 7 + 2 * 5 * 7),
+      z.slice(-13 * 7),
+    ];
+    expect(Math.min(...loops)).toBeCloseTo(BOW_SEAT, 9);
+    expect(Math.min(...tails)).toBeGreaterThanOrEqual(BOW_SEAT);
+    expect(Math.min(...tails) - BOW_SEAT).toBeLessThan(0.00005);
+    expect(Math.min(...knot) - BOW_SEAT).toBeCloseTo(0.0004, 9);
   });
 
   it("writes into the given array and pins the placement for each stocking length", () => {
@@ -85,12 +117,12 @@ describe("computeBowMatrix", () => {
       .map(([key, def]) => `${key}: ${digestRounded(computeBowMatrix(collision, def.cuffY), 6)}`);
     expect(results).toMatchInlineSnapshot(`
       [
-        "ankle: 207c21aa",
-        "crew: e98b6f0f",
-        "knee: 861ab584",
-        "over: 42499e44",
-        "thigh: 78737ebe",
-        "tights: 78737ebe",
+        "ankle: bb4a4c8d",
+        "crew: 775b1363",
+        "knee: 23da09b7",
+        "over: d596d613",
+        "thigh: 62610905",
+        "tights: 62610905",
       ]
     `);
   });

@@ -134,6 +134,11 @@ cuff's edge (`CUFF_RING_OFFSETS`). The rings only cut the triangles that were th
 move. These meshes share one set of vertices, and `setStocking` picks the one for the leg's cuff for the stocking's
 passes and its outline. Tights and bare legs draw the plain mesh, as do the floor's reflection and the shadows.
 
+The bow of the bow cuff is tied on 16 mm below the cuff's edge, where the cuff draws the fabric in.
+`computeBowMatrix` (`stage/bow.ts`) places it on the leg's own surface, seated so that its lowest parts (the loops'
+edges, the tails' ends) are level with the fabric (`BOW_SEAT`), and the bow's vertex shader then moves it in and out
+with the fabric by the same `cuffProfile`. So it rests on the stocking instead of hovering over it.
+
 The cuff's band is a denser knit than the stocking below it. Across the band's lower edge the fragment shader
 blends from the band's density to the stocking's, so the two join without a bright or dark line between them.
 

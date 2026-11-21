@@ -2,15 +2,19 @@
  * Bow shaders.
  */
 import { LEG_SKINNING_GLSL } from "../../rig/joints";
+import { CUFF_PRESS_GLSL } from "./leg";
 
 export const BOW_VERTEX_SHADER = `
-${LEG_SKINNING_GLSL}uniform mat4 uBowMatrix;
+${LEG_SKINNING_GLSL}${CUFF_PRESS_GLSL}uniform mat4 uBowMatrix;
 varying vec3 vWorldPos, vNormal, vLocalPos;
 varying float vFadeHeight;
 void main() {
   vec3 local = (uBowMatrix * vec4(position, 1.0)).xyz;
   mat3 jac;
   vec3 p = skinPosition(local, jac);
+  // The bow lies on the fabric, so it goes in and out with it where the cuff presses the leg (see pressCuff):
+  // each part by as much as the fabric at its height, along the bow's own axis.
+  p += skinNormal(jac, normalize(uBowMatrix[2].xyz)) * cuffProfile(local.y - uCuffY);
   vec4 world = modelMatrix * vec4(p, 1.0);
   vWorldPos = world.xyz;
   vNormal = normalize(mat3(modelMatrix) * skinNormal(jac, mat3(uBowMatrix) * normal));

@@ -184,6 +184,8 @@ export type BowUniforms = LightUniforms &
     uBowMatrix: U<THREE.Matrix4>;
     uBowColor: U<THREE.Color>;
     uBowShade: U<THREE.Vector3>;
+    uCuffY: U<number>;
+    uCuffBulge: U<number>;
     uFadeStart: U<number>;
     uFadeEnd: U<number>;
     uOpacity: U<number>;
@@ -920,6 +922,8 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       uBowShade: {
         value: new THREE.Vector3(0.8, 0.74, 0.86),
       },
+      uCuffY: stockingUniforms.uCuffY,
+      uCuffBulge: stockingUniforms.uCuffBulge,
       uFadeStart: stockingUniforms.uFadeStart,
       uFadeEnd: stockingUniforms.uFadeEnd,
       uOpacity: stockingUniforms.uOpacity,

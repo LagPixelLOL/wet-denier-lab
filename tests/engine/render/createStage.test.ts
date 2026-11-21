@@ -9,6 +9,7 @@ import { LegRig } from "../../../src/engine/rig/LegRig";
 import { computeBowMatrix } from "../../../src/engine/stage/bow";
 import type { Stage, StageLeg } from "../../../src/engine/stage/createStage";
 import { BACKDROPS, BACKDROP_ORDER, SCENES, SCENE_ORDER, makeCustomBackdrop } from "../../../src/engine/stage/scenes";
+import { BOW_VERTEX_SHADER } from "../../../src/engine/stage/shaders/bow";
 import { CUFF_PRESS_GLSL, LEG_VERTEX_SHADER } from "../../../src/engine/stage/shaders/leg";
 import { OUTLINE_VERTEX_SHADER } from "../../../src/engine/stage/shaders/outline";
 import { digestRounded } from "../../helpers/digest";
@@ -590,6 +591,18 @@ describe("setStocking", () => {
       ).toEqual(elsewhere);
       expect(other.stocking.geometry).toBe(model.stockingAtCuff.get(0.7));
     }
+  });
+
+  it("moves the bow in with the fabric where the cuff presses it", () => {
+    const { stage } = buildStage();
+    for (const leg of stage.legs) {
+      expect(leg.bowU.uCuffY).toBe(leg.fabric.uCuffY);
+      expect(leg.bowU.uCuffBulge).toBe(leg.fabric.uCuffBulge);
+      expect(leg.bow.material.uniforms).toBe(leg.bowU);
+    }
+    // The bow is placed on the leg's plain shape (computeBowMatrix); its shader presses it like the fabric.
+    expect(BOW_VERTEX_SHADER).toContain(CUFF_PRESS_GLSL);
+    expect(BOW_VERTEX_SHADER).toMatch(/p \+= skinNormal\(jac, [^;]*\) \* cuffProfile\(local\.y - uCuffY\);/);
   });
 
   it("draws the outline around the surface as the cuff presses it, not around the leg's plain shape", () => {

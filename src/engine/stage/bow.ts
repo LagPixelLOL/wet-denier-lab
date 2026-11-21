@@ -74,7 +74,10 @@ export function createBowGeometry(): THREE.BufferGeometry {
       const notch = v > 0.86 ? ((v - 0.86) / 0.14) * 0.0045 * (1 - Math.abs(u * 2 - 1)) : 0;
       const y = -(v * 0.026) + notch;
       const x = side * 0.0022 + spread * v * 0.026 + (u - 0.5) * 0.0075 * (0.8 + v * 0.3);
-      const z = 0.0012 + Math.sin(Math.PI * u) * 0.0016 * (1 - v * 0.4) + Math.sin(v * 5) * 0.0012;
+      // The tails wave out from the fabric and come back to it at their ends: down to the level of the loops'
+      // edges, where the fabric is (see BOW_SEAT), and no further.
+      const wave = Math.sin(v * 5) * 0.0012;
+      const z = 0.0012 + Math.sin(Math.PI * u) * 0.0016 * (1 - v * 0.4) + (wave < 0 ? wave / 3 : wave);
       return [x, y, z];
     });
   }
@@ -111,7 +114,17 @@ export function createBowGeometry(): THREE.BufferGeometry {
   return geometry;
 }
 
-/** Column-major matrix placing the bow on the outer side of the cuff at `cuffY`. */
+/**
+ * How far the bow's base lies inside the surface (m): as far as its lowest parts are above its base (the loops'
+ * edges and the tails' ends; the knot starts 0.4 mm higher). So the bow rests on the fabric where it is tied
+ * on, and only stands off it where the leg curves away under its loops and tails.
+ */
+export const BOW_SEAT = 0.0008;
+
+/**
+ * Column-major matrix placing the bow on the outer side of the cuff at `cuffY`, on the leg's own shape: the
+ * bow's shader moves it in with the fabric where the cuff presses that in.
+ */
 export function computeBowMatrix(
   collision: Pick<CollisionMesh, "pos" | "nrm">,
   cuffY: number,
@@ -149,7 +162,6 @@ export function computeBowMatrix(
       bestIndex = i;
     }
   }
-  const anchor = [pos[bestIndex * 3], ringY, pos[bestIndex * 3 + 2]];
   const normal = [nrm[bestIndex * 3], nrm[bestIndex * 3 + 1], nrm[bestIndex * 3 + 2]];
   let tangent = [normal[2], 0, -normal[0]];
   const len = Math.hypot(tangent[0], tangent[2]) || 1;
@@ -159,6 +171,10 @@ export function computeBowMatrix(
     normal[2] * tangent[0] - normal[0] * tangent[2],
     normal[0] * tangent[1] - normal[1] * tangent[0],
   ];
+  // From the vertex to the ring's height along the surface (up its slope), not straight up: where the leg
+  // widens upward, straight up from a vertex is inside the leg, and straight down from one is off it.
+  const climb = bitangent[1] > 1e-6 ? (ringY - pos[bestIndex * 3 + 1]) / bitangent[1] : 0;
+  const anchor = [pos[bestIndex * 3] + bitangent[0] * climb, ringY, pos[bestIndex * 3 + 2] + bitangent[2] * climb];
   out.set([
     tangent[0],
     tangent[1],
@@ -172,9 +188,9 @@ export function computeBowMatrix(
     normal[1],
     normal[2],
     0,
-    anchor[0] + normal[0] * 0.0004,
-    anchor[1] + normal[1] * 0.0004,
-    anchor[2] + normal[2] * 0.0004,
+    anchor[0] - normal[0] * BOW_SEAT,
+    anchor[1] - normal[1] * BOW_SEAT,
+    anchor[2] - normal[2] * BOW_SEAT,
     1,
   ]);
   return out;
