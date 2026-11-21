@@ -10,7 +10,7 @@ import { installDevHooks } from "./devHooks";
 import { $ } from "./dom";
 import { bindUi } from "./input";
 import { applyLayout, layout, setPanel } from "./layout";
-import { frame, holdPerf, resize } from "./loop";
+import { frame, holdPerf, resize, restoreContext } from "./loop";
 import { applyLook, currentLook, wear, wearPreset, wearRandom } from "./outfit";
 import { setBackdrop, setPose, setRain, setScene, syncFootprint } from "./scene";
 import { pick, splashAt } from "./splash";
@@ -133,6 +133,8 @@ export function startApp() {
     alpha: false,
     powerPreference: "high-performance",
   });
+  // The renderer keeps the page from giving up on a lost context; when it comes back, the app redraws its part.
+  app.canvas.addEventListener("webglcontextrestored", restoreContext);
   app.renderer.autoClear = false;
   app.renderer.setClearColor(15920883, 1);
   app.camera = new THREE.PerspectiveCamera(30, 1, 0.02, 12);

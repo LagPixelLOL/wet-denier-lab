@@ -94,8 +94,11 @@ export class FakeRenderer {
     return this.clearAlpha;
   }
 
-  getContext(): null {
-    return null;
+  /** Set to play a lost WebGL context. */
+  contextLost = false;
+
+  getContext(): { isContextLost(): boolean } {
+    return { isContextLost: () => this.contextLost };
   }
 
   getPixelRatio(): number {

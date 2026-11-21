@@ -1,7 +1,8 @@
 /**
  * Headless render check: builds the app, serves dist/, renders it in headless Chromium and saves a screenshot
  * plus a JSON report. Fails unless WebGL ran on a hardware GPU (pass --allow-software to accept SwiftShader,
- * llvmpipe and other software renderers).
+ * llvmpipe and other software renderers). The report's contextEvents counts the times the WebGL context was lost
+ * and given back while the page ran.
  *
  *   node scripts/render-check.ts [options]
  *
@@ -259,6 +260,14 @@ try {
     // The development build takes its render scale from this global, ignoring the pixel budget.
     await page.addInitScript((dpr) => Object.assign(window, { __YUSI_DPR__: dpr }), Number(opts.dpr));
   }
+  // Counts the times the page's WebGL context is lost and given back (seen from the window, on the way down to
+  // the canvas). A browser that has only just started can lose it once while the app boots.
+  await page.addInitScript(() => {
+    const counts = { lost: 0, restored: 0 };
+    Object.assign(window, { __contextEvents: counts });
+    addEventListener("webglcontextlost", () => counts.lost++, true);
+    addEventListener("webglcontextrestored", () => counts.restored++, true);
+  });
   page.on("console", (msg) => msg.type() === "error" && consoleErrors.push(msg.text()));
   page.on("pageerror", (err) => consoleErrors.push(String(err)));
 
@@ -297,6 +306,9 @@ try {
   }
   const benchMs = opts.perf && opts.dev ? await benchFrames(page, 40) : null;
   const webgl = await readWebGLInfo(page);
+  const contextEvents = await page.evaluate(
+    () => (window as { __contextEvents?: { lost: number; restored: number } }).__contextEvents ?? null,
+  );
   const bootError = await page.evaluate(() => {
     const loading = document.getElementById("loading");
     return loading && !loading.querySelector("span") ? loading.textContent : null;
@@ -322,6 +334,7 @@ try {
     ...frameStats(frameTimes),
     ...(benchMs === null ? {} : { benchMs: Math.round(benchMs * 1000) / 1000 }),
     webgl,
+    contextEvents,
     hardware,
     gpuDevices: info.gpu.devices.map((d) => `${d.vendorString} ${d.deviceString}`.trim()),
     featureStatus: info.gpu.featureStatus,

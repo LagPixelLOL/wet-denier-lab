@@ -10,7 +10,7 @@ import { takePhoto } from "./photo";
 import { frontLeg, updateAwayLeg } from "./scene";
 import { pick, pourAt, splashAt } from "./splash";
 import { state } from "./state";
-import { refreshThumbs, renderThumb, thumbJobs } from "./thumbnails";
+import { forgetThumbs, refreshThumbs, renderThumb, thumbJobs } from "./thumbnails";
 import { AIR_DRY_RATE } from "../water/shaders/wet";
 
 export function resize() {
@@ -116,8 +116,29 @@ function isIdle() {
   );
 }
 
+/**
+ * The browser took the WebGL context away (the GPU process restarted, the driver was reset, a phone reclaimed
+ * memory) and has given it back. The renderer rebuilds its own state; everything the app drew once into a texture
+ * is gone with the old context and is drawn again here: the wet map's baked maps (without them no water marks
+ * the legs), the stage's shadows, the thumbnails. The water the legs had soaked up is lost.
+ */
+export function restoreContext() {
+  if (!app.wetmap) {
+    // Still booting: nothing was built yet, and what is built from here on has a live context.
+    return;
+  }
+  app.wetmap.restore();
+  app.stage.restore();
+  forgetThumbs();
+  holdPerf(1.5);
+}
+
 export function frame(now: number) {
   requestAnimationFrame(frame);
+  // Without the context nothing is drawn, and whatever would be baked or read back now would stay empty.
+  if (app.renderer.getContext().isContextLost()) {
+    return;
+  }
   if (!app.isMobile || !((app.idle = isIdle()), now - app.lastFrameTime < (app.idle ? 30 : 10.5))) {
     app.lastFrameTime = now;
     step(now);

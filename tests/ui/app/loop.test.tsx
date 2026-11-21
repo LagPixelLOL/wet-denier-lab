@@ -2,10 +2,11 @@ import * as THREE from "three";
 import { beforeAll, describe, expect, it, vi, type MockInstance } from "vitest";
 import { actions } from "../../../src/engine/app/actions";
 import { orbit } from "../../../src/engine/app/camera";
-import { holdPerf } from "../../../src/engine/app/loop";
+import { holdPerf, restoreContext } from "../../../src/engine/app/loop";
 import { app } from "../../../src/engine/app/runtime";
 import { setRain } from "../../../src/engine/app/scene";
 import { state } from "../../../src/engine/app/state";
+import { thumbJobs } from "../../../src/engine/app/thumbnails";
 import type { WaterSim } from "../../../src/engine/water/WaterSim";
 import { bootApp, type Harness } from "../../helpers/appHarness";
 import { seedRandom } from "../../helpers/random";
@@ -89,6 +90,57 @@ describe("frame step", () => {
     h.frames(900, FRAME);
     expect(orbit.yaw).toBe(yaw);
     expect(orbit.cur.yaw).toBeCloseTo(yaw, 9);
+  });
+});
+
+describe("a lost WebGL context", () => {
+  it("draws and bakes nothing while the context is gone, and keeps asking for frames", () => {
+    h.frame(20);
+    h.renderer.contextLost = true;
+    h.renderer.reset();
+    const t0 = app.water.time;
+    const stamp = vi.spyOn(app.wetmap, "stamp");
+    h.frames(10, FRAME);
+    // Not a frame is stepped: whatever would be baked, stamped or read back now would stay empty for good.
+    expect(h.renderer.calls).toEqual([]);
+    expect(app.water.time).toBe(t0);
+    expect(stamp).not.toHaveBeenCalled();
+    stamp.mockRestore();
+    h.renderer.contextLost = false;
+    h.frame(20);
+    expect(h.renderer.ops("render").length).toBeGreaterThan(0);
+    expect(app.water.time).toBeGreaterThan(t0);
+  });
+
+  it("draws again what was drawn once into textures when the browser gives the context back", () => {
+    const restoreWet = vi.spyOn(app.wetmap, "restore");
+    const restoreStage = vi.spyOn(app.stage, "restore");
+    actions.toggleScenes();
+    h.frames(45, FRAME);
+    thumbJobs.push({ kind: "scenes", canvas: document.createElement("canvas"), scene: "bath" });
+    h.renderer.reset();
+    // The renderer listens on the canvas too, and rebuilds its own state first.
+    app.canvas.dispatchEvent(new Event("webglcontextrestored"));
+    expect(restoreWet).toHaveBeenCalledTimes(1);
+    expect(restoreStage).toHaveBeenCalledTimes(1);
+    // The wet map's position and flow maps (no water marks the legs without them) and the stage's shadows.
+    const targets = h.renderer.ops("render").map((call) => call.target);
+    expect(targets.slice(0, 2)).toEqual([app.wetmap.posRT, app.wetmap.flowRT]);
+    expect(targets.length).toBeGreaterThan(2);
+    // Thumbnails queued under the old context are dropped, and the open sheet's are rendered again.
+    expect(thumbJobs).toHaveLength(0);
+    h.frames(45, FRAME);
+    expect(h.renderer.ops("render").some((call) => call.target === app.thumbTarget)).toBe(true);
+    actions.toggleScenes();
+    restoreWet.mockRestore();
+    restoreStage.mockRestore();
+  });
+
+  it("leaves it to the boot when the context comes back before anything was built", () => {
+    const { wetmap } = app;
+    app.wetmap = undefined!;
+    expect(() => restoreContext()).not.toThrow();
+    app.wetmap = wetmap;
   });
 });
 

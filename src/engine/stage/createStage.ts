@@ -277,6 +277,8 @@ export interface Stage extends LegRigTarget {
   setCastPoints(points: Iterable<Vec3>, radii?: ArrayLike<number>): void;
   aimLights(yaw: number, tilt?: number): void;
   bakeShadow(force?: boolean): void;
+  /** After the WebGL context was lost and given back: draws again what the stage draws only now and then. */
+  restore(): void;
   shadowScene: THREE.Scene;
   blit(colorTexture: THREE.Texture, depthTexture: THREE.Texture | null): void;
 }
@@ -1434,6 +1436,17 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     renderer.setRenderTarget(prevTarget);
     return compilePromise;
   }
+  /**
+   * After the WebGL context was lost and given back. The renderer rebuilds its programs, buffers and textures by
+   * itself; what was drawn into a texture is gone. Here that is the shadows, which are only baked again when the
+   * light turns, and the contact shadow, baked once. A scene still being warmed up may never finish: forget it,
+   * so the next request starts over.
+   */
+  function restore(): void {
+    warming.clear();
+    lastShadowKey = "";
+    bakeShadow(true);
+  }
   const flipY = (vec: THREE.Vector3): void => {
     vec.y = -vec.y;
   };
@@ -1512,6 +1525,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
     setCastPoints: setCastPoints,
     aimLights: aimLights,
     bakeShadow: bakeShadow,
+    restore: restore,
     shadowScene: shadowScene,
     blit(colorTexture: THREE.Texture, depthTexture: THREE.Texture | null): void {
       blitMaterial.uniforms.uColorTex.value = colorTexture;

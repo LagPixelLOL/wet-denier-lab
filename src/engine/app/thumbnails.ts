@@ -41,6 +41,12 @@ const thumbKeys = {
   scenes: "",
 };
 
+/** Drops the queued thumbnails and has all of them rendered again the next time their sheet asks. */
+export function forgetThumbs() {
+  thumbKeys.presets = thumbKeys.scenes = "";
+  thumbJobs.length = 0;
+}
+
 /** The outfit the user picked: while a preset is previewed on hover, `outfit.legs` holds the preview instead. */
 const pickedLegs = () => app.previewBackup ?? outfit.legs;
 

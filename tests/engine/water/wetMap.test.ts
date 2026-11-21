@@ -220,6 +220,26 @@ describe("WetMap.setLegWater", () => {
   });
 });
 
+describe("WetMap.restore", () => {
+  it("draws the baked maps again and starts dry, after the WebGL context was lost and given back", () => {
+    const world = waterWorld();
+    const { wetmap, renderer } = world;
+    const hit = surfacePoint(world, 0);
+    wetmap.stamp(hit.x, hit.y, hit.z, 0.01, 0.8, 0.5, 1, 0.7);
+    expect(wetmap.count).toBeGreaterThan(0);
+    expect(wetmap.wetBound).toBeGreaterThan(0);
+    renderer.reset();
+    wetmap.restore();
+    // Without the position map no stamp lands and nothing ever gets wet: it is baked again, with the flow map.
+    expect(renderer.ops("render").map((call) => call.target)).toEqual([wetmap.posRT, wetmap.flowRT]);
+    // The water went with the old context: both wet maps cleared, nothing queued, nothing left to dry.
+    const cleared = renderer.ops("clear").map((call) => call.target);
+    expect(cleared).toEqual(expect.arrayContaining([wetmap.a, wetmap.b, wetmap.posRT, wetmap.flowRT]));
+    expect([wetmap.count, wetmap.wetBound]).toEqual([0, 0]);
+    expect(renderer.target).toBeNull();
+  });
+});
+
 describe("wiping dry", () => {
   it("takes the flash of fresh water along, however much of it has piled up", () => {
     const { wetmap } = waterWorld();

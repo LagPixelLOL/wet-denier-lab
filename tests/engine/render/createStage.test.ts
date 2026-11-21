@@ -848,6 +848,18 @@ describe("bakeShadow", () => {
     expect(renderer.target).toBeNull();
   });
 
+  it("bakes every shadow again after the WebGL context was lost and given back, light unchanged", () => {
+    const { stage, renderer } = riggedStage();
+    stage.bakeShadow();
+    renderer.reset();
+    stage.bakeShadow();
+    expect(renderer.calls).toEqual([]);
+    // The floor's shadow, the contact shadow (otherwise baked once) and the legs' shadows on each other.
+    stage.restore();
+    expect(renderer.ops("render")).toHaveLength(3 + 3 + 2);
+    expect(renderer.target).toBeNull();
+  });
+
   it("skips rebaking for the same light unless forced, and redoes contact shadows only when forced", () => {
     const { stage, renderer } = riggedStage();
     stage.bakeShadow();

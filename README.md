@@ -117,6 +117,13 @@ simulation, binds input and starts the frame loop. Layout state is kept as class
 (`ready`, `wide`, `roomy`, `short`, `fine`, `view-mode`, `mat-open`, `scene-open`, `about-open`, `photo-open`,
 `dim`, ...), because the engine measures the layout right after changing it.
 
+**Lost WebGL context.** A browser can take the WebGL context away and give it back (the GPU process restarted, the
+driver was reset, a phone reclaimed memory; a headless Chromium that has only just started does it once while the
+production build boots). three.js rebuilds its programs, buffers and textures by itself, but whatever was drawn once
+into a texture is gone. While the context is lost the frame loop steps nothing, and when it is back `restoreContext`
+(`app/loop.ts`) draws those things again: the wet map's baked position and flow maps (without them no water marks
+the legs), the stage's shadows, the thumbnails. The water the legs had soaked up is lost; drops stay.
+
 **Rendering.** `createStage()` builds the scene: a depth prepass plus an equal-depth color pass for the legs,
 a mirrored floor reflection, baked floor and contact shadows, leg-on-leg shadow maps, a ray-traced backdrop per
 scene and a final composite. Legs are skinned in the vertex shader (`LEG_SKINNING_GLSL`); the same skinning runs
@@ -340,7 +347,8 @@ Tests run in Node without a browser or GPU and take a few seconds. Vitest has tw
 `npm run render:check` builds the app, serves `dist/` with `vite preview`, opens it in headless Chromium
 (Playwright) and saves `render-check/render.png` plus a `render.json` report. The report has the WebGL renderer
 string of the app's own context, Chromium's GPU feature status, the frame rate and frame times (mean, median, 95th
-percentile, max), `nvidia-smi` samples (when available), pixel statistics and any console errors. The check fails if the app does not boot, the screenshot is
+percentile, max), `nvidia-smi` samples (when available), pixel statistics, how often the WebGL context was lost and
+given back (`contextEvents`) and any console errors. The check fails if the app does not boot, the screenshot is
 blank, or WebGL ran on a software renderer (SwiftShader, llvmpipe, ...).
 
 ```sh

@@ -356,6 +356,14 @@ export class WetMap {
     renderer.setRenderTarget(null);
     [this.a, this.b] = [this.b, this.a];
   }
+  /**
+   * After the WebGL context was lost and given back: the baked position and flow maps are drawn again, and the
+   * water the map held is gone with the context.
+   */
+  restore(): void {
+    this.clear();
+    this.bake();
+  }
   clear(): void {
     this.wetBound = 0;
     const renderer = this.renderer;
