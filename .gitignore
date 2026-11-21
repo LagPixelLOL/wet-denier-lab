@@ -28,3 +28,6 @@ coverage
 
 # Render check output
 render-check
+
+# Python garbage
+__pycache__
