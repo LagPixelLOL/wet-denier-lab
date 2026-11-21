@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { LEG_FRAGMENT_SHADER, SHINE_ENV } from "../../../src/engine/stage/shaders/leg";
+import { LEG_FRAGMENT_SHADER, SHINE_ENV, SHINE_KEY } from "../../../src/engine/stage/shaders/leg";
 import { parseShader, resolveIncludes, splitDeclaratorLists } from "../../helpers/glsl";
 import {
   defineProgramSuite,
@@ -89,14 +89,29 @@ describe("shader catalog", () => {
 describe("leg, bow, outline, shadow and post shaders", () => {
   defineProgramSuite(isStageProgram);
 
-  it("has a shiny material mirror the room less than water on it does, and take the lamps' highlights in full", () => {
-    expect(SHINE_ENV).toBeGreaterThan(0.3);
-    expect(SHINE_ENV).toBeLessThan(0.8);
+  it("has a shiny material mirror the room less than water on it does, and take dimmer highlights from the lamps", () => {
+    for (const amount of [SHINE_ENV, SHINE_KEY]) {
+      expect(amount).toBeGreaterThan(0.2);
+      expect(amount).toBeLessThan(0.8);
+    }
     expect(LEG_FRAGMENT_SHADER).toContain(
       `float specAmt = max(waterSpec, shineSpec), envAmt = max(waterSpec, shineSpec * ${SHINE_ENV.toFixed(2)});`,
     );
-    // The lamps' highlights by specAmt, the surroundings by envAmt.
-    expect(LEG_FRAGMENT_SHADER).toMatch(/col \+= uKeyColor \* \([^;]*\) \* specAmt \+ env \* fres \* 0\.9 \* envAmt;/);
+    expect(LEG_FRAGMENT_SHADER).toContain(`float keyAmt = max(waterSpec, shineSpec * ${SHINE_KEY.toFixed(2)});`);
+    // The lamps' highlights by keyAmt, the surroundings by envAmt; specAmt only says whether anything shines.
+    expect(LEG_FRAGMENT_SHADER).toMatch(/col \+= uKeyColor \* \([^;]*\) \* keyAmt \+ env \* fres \* 0\.9 \* envAmt;/);
+    expect(LEG_FRAGMENT_SHADER).toContain("if (specAmt > 0.0) {");
+  });
+
+  it("keeps the long highlight along the leg a streak where the surface faces the light", () => {
+    // Across the leg the highlight falls off steeply from where the surface faces the light (a twentieth power:
+    // half strength 15 degrees to either side). With a broad falloff, and a good part of the highlight given to
+    // the whole leg whichever way it faced, a leg seen right at the angle that mirrors the lamp washed out white.
+    expect(LEG_FRAGMENT_SHADER).toContain("mix(1.0, pow(hdn, 20.0), uHighlightFalloff)");
+    expect(Math.cos((15 * Math.PI) / 180) ** 20).toBeCloseTo(0.5, 1);
+    expect(LEG_FRAGMENT_SHADER).toContain("col += uKeyColor * sheenStripe * uStripe * uGloss * 0.55 * fabric");
+    // The tight glint on wet and shiny surfaces is kept to the same streak.
+    expect(LEG_FRAGMENT_SHADER).toMatch(/float glint = [^;]* \* lobe \* /);
   });
 
   it("blends the cuff's density into the stocking's, never through a marker value", () => {

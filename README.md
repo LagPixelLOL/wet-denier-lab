@@ -149,7 +149,13 @@ how the chosen backdrop's bottom and top compare with the lilac one's, which the
 latex in front of the dusk backdrop mirrors a dark room, and in front of a pink one a pink room; the other scenes
 keep their own colors. The studio's rim light, which lights the legs' edges from behind, is what the backdrop
 throws onto them, so it dims and takes color the same way (`studioRimTint`). A film of water mirrors the room in full. A shiny material itself is finely rough and mirrors
-it at about half that (`SHINE_ENV` in `stage/shaders/leg.ts`), while it takes the lamps' highlights in full.
+it at about half that (`SHINE_ENV` in `stage/shaders/leg.ts`), and takes dimmer highlights from the lamps
+(`SHINE_KEY`).
+
+The main light's long highlight runs along the leg as a streak where the surface faces the light: across the leg it
+falls to half strength 15 degrees to either side, and only a little of it reaches the rest of the lit side
+(`uHighlightFalloff`). That keeps a leg seen right at the angle that mirrors the lamp from washing out, without
+touching the scene's light or exposure.
 
 **Water.** `WetMap` runs a ping-pong simulation in the stocking's UV atlas (soaked water, running film, fresh-hit
 highlight). `WaterSim` simulates thrown, spray, drip and rain drops, beads that cling and slide on the surface,

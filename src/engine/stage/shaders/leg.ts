@@ -9,6 +9,9 @@ import { FOOT_GLSL, NAIL_COUNT } from "./foot";
 /** How much of its surroundings a shiny material mirrors, next to a film of water on it (which mirrors all). */
 export const SHINE_ENV = 0.55;
 
+/** How strong the lamps' highlights are on a shiny material, next to those on a film of water. */
+export const SHINE_KEY = 0.35;
+
 export const fadeHeight = (x: number, y: number, z: number): number => y - (x - 0.066) * 0.3346 + (z - 0.04) * 0.0157;
 
 export const FADE_HEIGHT_GLSL = "position.y - 0.3346 * (position.x - 0.066) + 0.0157 * (position.z - 0.04)";
@@ -444,24 +447,28 @@ void main() {
   float side = smoothstep(0.86, 0.97, sqrt(max(0.0, 1.0 - restNy * restNy))) * smoothstep(0.07, 0.14, height);
   vec3 hPerp = h - fiber * tdh;
   float hdn = max(dot(n, hPerp) / max(length(hPerp), 1e-4), 0.0);
-  // The long highlight along the fibers belongs to the leg, where they run straight. Where a pose bends them it
-  // is kept to where the surface faces the light, and on the foot and around the ankle, where they turn, it
-  // fades out: there it only ever showed as stray streaks, and the round highlights are enough.
+  // The long highlight along the fibers belongs to the leg, where they run straight: a streak where the surface
+  // faces the light (half as strong 15 degrees to either side), with a little of it for the rest of the lit
+  // side (uHighlightFalloff). Broader than that, a leg seen at the angle that mirrors the lamp washes out.
+  // Where a pose bends the fibers it is kept tighter still, and on the foot and around the ankle, where they
+  // turn, it fades out: there it only ever showed as stray streaks, and the round highlights are enough.
   float onLeg = smoothstep(0.10, 0.18, height);
-  float lobe = mix(mix(1.0, pow(hdn, 5.0), uHighlightFalloff), pow(hdn, 30.0) * 0.6, max(smoothstep(0.004, 0.05, vTangentShift), 1.0 - onLeg));
+  float lobe = mix(mix(1.0, pow(hdn, 20.0), uHighlightFalloff), pow(hdn, 30.0) * 0.6, max(smoothstep(0.004, 0.05, vTangentShift), 1.0 - onLeg));
   float knitMod = mix(1.0, knit / uKnitMean, isNet ? 0.0 : uMatKnit.x);
   float sheenStripe = (smoothstep(0.42, 0.78, aniso) * 0.7 + aniso * 0.3) * side * lobe * knitMod;
-  col += uKeyColor * sheenStripe * uStripe * uGloss * 0.85 * fabric * (1.0 - 0.35 * sheer);
+  col += uKeyColor * sheenStripe * uStripe * uGloss * 0.55 * fabric * (1.0 - 0.35 * sheer);
   float rimShade = (1.0 - betweenToes) * mix(1.0, 0.3, fuzz) * fuzzShade;
   col += uRimColor * rim * mix(0.55, 0.30, fabric) * rimShade;
   col += uRim2Color * smoothstep(0.55, 0.86, 1.0 - ndv) * smoothstep(-0.1, 0.4, dot(n, uRim2Dir)) * mix(0.55, 0.34, fabric) * rimShade;
   if (uCaustic > 0.0) col *= 1.0 + uCaustic * (caustics(vWorldPos.xz * 2.6 + vWorldPos.y * uMirrorFlipY * vec2(1.1, 0.6), uTime * 0.8) - 0.2) * smoothstep(0.85, 0.05, vWorldPos.y * uMirrorFlipY) * smoothstep(-0.2, 0.3, ndl);
   float ndh = max(dot(n, h), 0.0);
-  // What shines: water on the surface, and a shiny material itself (latex). Water is a smooth film and mirrors
-  // its surroundings in full. The material is finely rough: it takes the lamps' highlights as water does, but
-  // mirrors the room less (SHINE_ENV), most of all at a glancing angle, where a mirror would turn all white.
+  // What shines: water on the surface, and a shiny material itself (latex). Water is a smooth film: it mirrors
+  // its surroundings in full and takes the lamps' highlights at full strength. The material is finely rough:
+  // it mirrors the room less (SHINE_ENV), most of all at a glancing angle, where a mirror would turn all white,
+  // and its highlights from the lamps are dimmer (SHINE_KEY).
   float waterSpec = max(max(film, wetness * 0.55), fresh * 0.8), shineSpec = uMatWet.z * fabric;
   float specAmt = max(waterSpec, shineSpec), envAmt = max(waterSpec, shineSpec * ${SHINE_ENV.toFixed(2)});
+  float keyAmt = max(waterSpec, shineSpec * ${SHINE_KEY.toFixed(2)});
   float wetEdge = smoothstep(0.06, 0.085, soak) * (1.0 - smoothstep(0.085, 0.2, soak));
   float wetRing = smoothstep(0.13, 0.17, soak) * (1.0 - smoothstep(0.17, 0.26, soak));
   float edgeAmt = mix(0.3, 1.0, fabric);
@@ -476,7 +483,7 @@ void main() {
     vec3 refl = reflect(-v, n);
     vec3 env = mix(uEnvLo, uEnvHi, smoothstep(-0.05, 0.6, refl.y * uMirrorFlipY));
     env += uEnvAColor * pow(max(dot(refl, uEnvADir), 0.0), 5.0) + uEnvBColor * pow(max(dot(refl, uEnvBDir), 0.0), 5.0);
-    col += uKeyColor * (spec * mix(0.4, 1.0, lit) + glint * 1.15) * specAmt + env * fres * 0.9 * envAmt;
+    col += uKeyColor * (spec * mix(0.4, 1.0, lit) + glint * 1.15) * keyAmt + env * fres * 0.9 * envAmt;
   }
   col += uKeyColor * wetRing * 0.22 * smoothstep(-0.3, 0.4, ndl) * lit;
   float pearl = uMatWet.w * fabric;

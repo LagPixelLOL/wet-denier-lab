@@ -411,7 +411,7 @@ export function createStage(renderer: THREE.WebGLRenderer, model: LegModel): Sta
       value: 0,
     },
     uHighlightFalloff: {
-      value: 0.7,
+      value: 0.94,
     },
   };
   const makeBackdropMaterial = (sceneId: number): THREE.ShaderMaterial =>

@@ -178,6 +178,12 @@ describe("createStage construction", () => {
     expect(a.skin.material.uniforms.uIsSkin.value).toBe(1);
   });
 
+  it("gives all but a little of the long highlight to where the leg faces the light", () => {
+    // The rest goes to the whole lit side of the leg: with much more than this, a leg at the angle that mirrors
+    // the lamp washes out.
+    expect(stage.uniforms.fabric.uHighlightFalloff.value).toBe(0.94);
+  });
+
   it("starts with the default leg look", () => {
     const look = resolveLegLook(DEFAULT_LEG_SPEC);
     for (const leg of stage.legs) {
